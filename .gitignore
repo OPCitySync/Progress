@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+local.db
+local.db-*
+.env
+.env.local
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+# Locally uploaded profile images (STORAGE_MODE=local). Prod uses Vercel Blob.
+public/uploads/*
+!public/uploads/.gitkeep
