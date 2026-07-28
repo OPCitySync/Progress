@@ -36,6 +36,10 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
   }
 
   switch (type) {
+    case 'IDENTITY_CREATED':
+      return p.orgId
+        ? `Organization identity created for ${l.orgName(p.orgId)}.`
+        : `New identity created for ${l.who(p.userId)}.`
     case 'USER_REGISTERED':
       return `New ${String(p.role ?? 'user')} account registered (${l.who(p.userId)}).`
     case 'ORG_REGISTERED':
@@ -46,6 +50,36 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
         : `${l.orgName(p.orgId)} approved by the network administrator.`
     case 'ORG_SUSPENDED':
       return `${l.orgName(p.orgId)} was suspended.`
+    case 'ORG_PROFILE_UPDATED':
+      return `${l.orgName(p.orgId)} updated its organizational identity.`
+    case 'CITY_LAUNCH_REQUESTED':
+      return `${l.orgName(p.orgId)} requested a City/Sync network for ${String(p.cityName ?? 'a new city')}.`
+    case 'CITY_LAUNCH_APPROVED':
+      return `${l.orgName(p.orgId)}’s City/Sync network for ${String(p.cityName ?? 'a new city')} was approved and provisioned.`
+    case 'CITY_LAUNCH_REJECTED':
+      return `${l.orgName(p.orgId)}’s City/Sync network request was not approved.`
+    case 'CITY_LAUNCH_OWNER_ASSIGNED':
+      return `Ownership of ${l.orgName(p.orgId)} in ${String(p.cityName ?? 'its city')} was assigned to ${l.who(p.ownerUserId)}.`
+    case 'ORG_AUTHORITY_GRANTED':
+      return `${l.orgName(p.orgId)} authorized ${l.who(p.userId)} to act for the organization.`
+    case 'ORG_AUTHORITY_REVOKED':
+      return `${l.orgName(p.orgId)} revoked an authorized account.`
+    case 'ORG_INVITE_CREATED':
+      return `${l.orgName(p.orgId)} created an invitation for the ${String(p.roleName ?? 'selected')} role.`
+    case 'ORG_INVITE_ACCEPTED':
+      return `${l.who(p.userId)} accepted an invitation to ${l.orgName(p.orgId)}.`
+    case 'ORG_ROLE_CREATED':
+      return `${l.orgName(p.orgId)} created the “${String(p.roleName ?? 'Unnamed')}” role.`
+    case 'ORG_ROLE_UPDATED':
+      return `${l.orgName(p.orgId)} updated the “${String(p.roleName ?? 'Unnamed')}” role.`
+    case 'CATALOG_ENTRY_SUBMITTED':
+      return `${l.orgName(p.orgId)} submitted an opportunity catalog entry for review.`
+    case 'CATALOG_ENTRY_APPROVED':
+      return `${l.orgName(p.orgId)} had an opportunity catalog entry approved.`
+    case 'CATALOG_ENTRY_REJECTED':
+      return `${l.orgName(p.orgId)} had an opportunity catalog entry rejected.`
+    case 'CATALOG_ENTRY_CHANGES_REQUESTED':
+      return `${l.orgName(p.orgId)} received requested changes on an opportunity catalog entry.`
     case 'WAIVER_VERSION_CREATED':
       return `${l.orgName(p.orgId)} published liability waiver v${String(p.version ?? '?')} (hash ${String(p.sha256 ?? '').slice(0, 12)}…).`
     case 'WAIVER_ACCEPTED':
@@ -54,6 +88,12 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
       return `${l.orgName(p.orgId)} published “${String(p.title ?? l.taskTitle(p.taskId))}” — ${String(p.credits ?? '?')} credits, ${String(p.slots ?? '?')} slot(s).`
     case 'TASK_CLOSED':
       return `“${l.taskTitle(p.taskId)}” was closed.`
+    case 'TASK_REOPENED':
+      return `“${l.taskTitle(p.taskId)}” was reopened.`
+    case 'SHIFT_CREATED':
+      return `A new shift was created for “${l.taskTitle(p.taskId)}”.`
+    case 'SHIFT_CLOSED':
+      return `A shift for “${l.taskTitle(p.taskId)}” was closed.`
     case 'TASK_CLAIMED':
       return `${l.who(actorId)} claimed “${l.taskTitle(p.taskId)}”.`
     case 'CLAIM_UNCLAIMED':
@@ -64,6 +104,10 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
       return `Completion of “${l.taskTitle(p.taskId)}” verified — ${String(p.credits ?? '?')} credits to ${l.who(p.participantId)}.`
     case 'COMPLETION_REJECTED':
       return `Completion of “${l.taskTitle(p.taskId)}” was rejected.`
+    case 'CLAIM_CHECKED_IN':
+      return `${l.who(actorId)} was checked in for “${l.taskTitle(p.taskId)}”.`
+    case 'CLAIM_NO_SHOW':
+      return `${l.who(p.userId)} was marked as a no-show for “${l.taskTitle(p.taskId)}”.`
     case 'CREDITS_MINTED':
       return `⬆ ${String(p.amount ?? '?')} civic credits minted to ${l.who(p.userId)} (${String(p.reason ?? '')}).`
     case 'CREDITS_BURNED':

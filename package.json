@@ -2,13 +2,14 @@
   "name": "citysync-progress",
   "version": "0.1.0",
   "private": true,
-  "description": "City/Sync Volunteer Management Application — pilot build with event-sourced civic credit ledger and on-chain anchoring adapters",
+  "description": "City/Sync Volunteer Management Application with an event-sourced civic credit ledger and on-chain anchoring adapters",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "verify:city-ledger": "tsx scripts/verify-city-ledger-outbox.ts",
     "setup": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {

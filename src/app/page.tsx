@@ -8,7 +8,7 @@ export default async function Home() {
   if (session) redirect(homeFor(session.role))
 
   return (
-    <div className="flex min-h-screen flex-col bg-brand-900">
+    <div className="skeuo-hero flex min-h-screen flex-col">
       <header className="flex items-center justify-between px-6 py-5 md:px-12">
         <Logo variant="light" size={28} />
         <div className="flex items-center gap-3">
@@ -35,7 +35,7 @@ export default async function Home() {
       <main className="flex flex-1 items-center px-6 md:px-12">
         <div className="mx-auto max-w-3xl py-16 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold-400">
-            Volunteer Management · Pilot
+            Volunteer Management
           </p>
           <h1 className="mt-4 font-display text-4xl font-semibold leading-tight text-white md:text-5xl">
             Civic contribution, recognized.

@@ -7,6 +7,7 @@ import { EventTypes } from '@/lib/ledger/events'
 import { features } from '@/lib/config'
 import { isCredentialKey } from '@/lib/credentials'
 import type { Result } from './identity'
+import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
 
 export type CatalogEntryRow = typeof catalogEntries.$inferSelect
 export type OpportunityTypeRow = typeof opportunityTypes.$inferSelect
@@ -51,22 +52,27 @@ type EntryInput = {
 
 export async function createEntry(input: EntryInput & { orgId: string; actorId: string }): Promise<Result<{ id: string }>> {
   if (!input.title.trim()) return { ok: false, error: 'Title is required.' }
+  const location = normalizeOrganizationLocation(input.location ?? '')
+  if (location.length > 240) return { ok: false, error: 'Default locations are limited to 240 characters.' }
   const id = randomUUID()
   const now = Date.now()
-  await db.insert(catalogEntries).values({
-    id,
-    orgId: input.orgId,
-    typeId: input.typeId || null,
-    title: input.title.trim(),
-    description: (input.description ?? '').trim(),
-    location: (input.location ?? '').trim(),
-    defaultCredits: input.defaultCredits ?? null,
-    requiredCredentials: JSON.stringify((input.requiredCredentials ?? []).filter(isCredentialKey)),
-    status: 'draft',
-    reviewNote: '',
-    createdBy: input.actorId,
-    createdAt: now,
-    updatedAt: now,
+  await db.transaction(async (tx) => {
+    await tx.insert(catalogEntries).values({
+      id,
+      orgId: input.orgId,
+      typeId: input.typeId || null,
+      title: input.title.trim(),
+      description: (input.description ?? '').trim(),
+      location,
+      defaultCredits: input.defaultCredits ?? null,
+      requiredCredentials: JSON.stringify((input.requiredCredentials ?? []).filter(isCredentialKey)),
+      status: 'draft',
+      reviewNote: '',
+      createdBy: input.actorId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
   })
   return { ok: true, id }
 }
@@ -78,18 +84,23 @@ export async function updateEntry(entryId: string, orgId: string, input: EntryIn
     return { ok: false, error: 'This template can’t be edited while it’s under review or approved.' }
   }
   if (!input.title.trim()) return { ok: false, error: 'Title is required.' }
-  await db
-    .update(catalogEntries)
-    .set({
-      typeId: input.typeId || null,
-      title: input.title.trim(),
-      description: (input.description ?? '').trim(),
-      location: (input.location ?? '').trim(),
-      defaultCredits: input.defaultCredits ?? null,
-      requiredCredentials: JSON.stringify((input.requiredCredentials ?? []).filter(isCredentialKey)),
-      updatedAt: Date.now(),
-    })
-    .where(eq(catalogEntries.id, entryId))
+  const location = normalizeOrganizationLocation(input.location ?? '')
+  if (location.length > 240) return { ok: false, error: 'Default locations are limited to 240 characters.' }
+  await db.transaction(async (tx) => {
+    await tx
+      .update(catalogEntries)
+      .set({
+        typeId: input.typeId || null,
+        title: input.title.trim(),
+        description: (input.description ?? '').trim(),
+        location,
+        defaultCredits: input.defaultCredits ?? null,
+        requiredCredentials: JSON.stringify((input.requiredCredentials ?? []).filter(isCredentialKey)),
+        updatedAt: Date.now(),
+      })
+      .where(eq(catalogEntries.id, entryId))
+    await rememberOrganizationLocation(tx, { orgId, address: location })
+  })
   return { ok: true }
 }
 
@@ -139,12 +150,16 @@ export async function reviewEntry(
 export type SubmittedEntry = { entry: CatalogEntryRow; orgName: string }
 
 /** Admin review queue: templates awaiting a decision. */
-export async function listSubmittedEntries(): Promise<SubmittedEntry[]> {
+export async function listSubmittedEntries(cityId?: string): Promise<SubmittedEntry[]> {
   const rows = await db
     .select({ entry: catalogEntries, orgName: orgs.name })
     .from(catalogEntries)
     .innerJoin(orgs, eq(catalogEntries.orgId, orgs.id))
-    .where(eq(catalogEntries.status, 'submitted'))
+    .where(
+      cityId
+        ? and(eq(catalogEntries.status, 'submitted'), eq(orgs.requestedCityId, cityId))
+        : eq(catalogEntries.status, 'submitted'),
+    )
     .orderBy(asc(catalogEntries.updatedAt))
   return rows.map((r) => ({ entry: r.entry, orgName: r.orgName }))
 }

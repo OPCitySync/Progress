@@ -1,5 +1,6 @@
 import { requireRole } from '@/lib/auth/session'
-import { getPublicStats } from '@/lib/services/stats'
+import { getCityAdminStats } from '@/lib/services/stats'
+import { getActiveCity } from '@/lib/services/city-networks'
 import { Card, PageHeader, StatCard } from '@/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -12,14 +13,18 @@ const EXPORTS: { type: string; title: string; body: string }[] = [
 ]
 
 export default async function AdminReportsPage() {
-  await requireRole('admin')
-  const stats = await getPublicStats()
+  const session = await requireRole('admin')
+  const city = await getActiveCity(session)
+  if (!city) {
+    return <PageHeader title="Reports & exports" subtitle="Choose a city network before viewing its reports." />
+  }
+  const stats = await getCityAdminStats(city.id)
 
   return (
     <>
       <PageHeader
         title="Reports & exports"
-        subtitle="Network-wide reporting. Every figure is backed by the public ledger."
+        subtitle={`${city.name} reporting. Every figure is backed by this city’s independent ledger.`}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

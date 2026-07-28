@@ -1,13 +1,16 @@
 import Link from 'next/link'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, tasks, shifts, orgs, users } from '@/lib/db/schema'
+import { claims, tasks, shifts, orgs } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { getMessagesForUser, markAllMessagesRead } from '@/lib/services/roster'
 import { getNotifications, markNotificationsRead } from '@/lib/services/notifications'
-import { submitCompletionAction, unclaimClaimAction } from '@/app/actions'
-import { Card, PageHeader, StatCard, statusBadge, EmptyState, Flash, Button, Textarea, Badge } from '@/components/ui'
+import { setResumePublicAction, submitCompletionAction, unclaimClaimAction } from '@/app/actions'
+import { Card, StatCard, statusBadge, EmptyState, Flash, Button, Textarea, Badge, Mono } from '@/components/ui'
 import { fmtDate, fmtDateTime } from '@/lib/format'
+import { getActiveCity } from '@/lib/services/city-networks'
+import { getMyResume } from '@/lib/services/resume'
+import { ResumeView } from '@/components/ResumeView'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,19 +33,19 @@ export default async function ParticipantDashboard({
   searchParams: { error?: string; ok?: string }
 }) {
   const session = await requireRole('participant')
-
-  const me = (await db.select().from(users).where(eq(users.id, session.sub)).limit(1))[0]
+  const [city, resume] = await Promise.all([getActiveCity(session), getMyResume(session.sub)])
   const myClaims = await db
     .select({ claim: claims, task: tasks, org: orgs, shift: shifts })
     .from(claims)
     .innerJoin(tasks, eq(claims.taskId, tasks.id))
     .innerJoin(orgs, eq(tasks.orgId, orgs.id))
     .leftJoin(shifts, eq(claims.shiftId, shifts.id))
-    .where(eq(claims.userId, session.sub))
+    .where(and(eq(claims.userId, session.sub), ...(city ? [eq(tasks.cityId, city.id)] : [])))
     .orderBy(desc(claims.updatedAt))
 
   const active = myClaims.filter((c) => c.claim.status === 'claimed' || c.claim.status === 'submitted')
-  const past = myClaims.filter((c) => c.claim.status === 'verified' || c.claim.status === 'rejected')
+  const past = myClaims.filter((c) => c.claim.status === 'verified' || c.claim.status === 'rejected' || c.claim.status === 'no_show')
+  const verifiedCount = past.filter((c) => c.claim.status === 'verified').length
 
   // Inbox: messages from organizations whose roster you're on.
   const messages = await getMessagesForUser(session.sub, 10)
@@ -61,25 +64,47 @@ export default async function ParticipantDashboard({
 
   return (
     <>
-      <PageHeader
-        title={`Welcome, ${session.name.split(' ')[0]}`}
-        subtitle="Your civic contributions and credit balance."
-        action={
+      <Card className="mb-6">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="skeuo-page-title font-display text-2xl font-semibold text-ink-900">Home</h1>
+            <p className="mt-1 text-sm text-ink-500">
+              {city ? `Welcome back, ${session.name.split(' ')[0]}. Your civic contributions in ${city.name}.` : `Welcome back, ${session.name.split(' ')[0]}. Add a city to begin participating.`}
+            </p>
+          </div>
           <Link
             href="/participant/opportunities"
             className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
           >
             Browse opportunities
           </Link>
-        }
-      />
+        </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+          <StatCard label="Active commitments" value={active.length} />
+          <StatCard label="Verified contributions" value={verifiedCount} />
+          <StatCard label="Organizations" value={resume?.totals.organizations ?? 0} />
+        </div>
+      </Card>
       <Flash searchParams={searchParams} />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Credit balance" value={me?.creditBalance ?? 0} hint="Redeemable now" />
-        <StatCard label="Lifetime earned" value={me?.lifetimeEarned ?? 0} hint="Total credits minted to you" />
-        <StatCard label="Verified contributions" value={past.filter((c) => c.claim.status === 'verified').length} />
-      </div>
+      {city?.participation ? (
+        <Card className="mb-6 border-brand-200 bg-brand-50">
+          <p className="text-sm font-semibold text-ink-800">
+            {city.participation.status === 'active'
+              ? `Active Participant · ${city.name}`
+              : city.participation.status === 'barred'
+                ? `Participation restricted · ${city.name}`
+                : `New Participant · ${city.name}`}
+          </p>
+          <p className="mt-1 text-sm text-ink-600">
+            {city.participation.status === 'active'
+              ? 'Your on-site onboarding attendance has been verified. You can reserve open opportunities in this city.'
+              : city.participation.status === 'barred'
+                ? `You can join this city again after ${city.participation.barredUntil ? fmtDate(city.participation.barredUntil) : 'the restriction period'}.`
+                : `Complete one onboarding task with a verified on-site check-in to activate this city. ${3 - city.participation.noShowCount} onboarding attempt${3 - city.participation.noShowCount === 1 ? '' : 's'} remain.`}
+          </p>
+        </Card>
+      ) : null}
 
       {notifications.length > 0 ? (
         <>
@@ -141,7 +166,7 @@ export default async function ParticipantDashboard({
       {active.length === 0 ? (
         <EmptyState
           title="No active commitments"
-          body="Claim an opportunity to start earning civic credits."
+          body="Claim an opportunity to start making a difference."
         />
       ) : (
         <div className="space-y-4">
@@ -156,7 +181,7 @@ export default async function ParticipantDashboard({
                     {task.title}
                   </Link>
                   <p className="mt-0.5 text-sm text-ink-500">
-                    {org.name} · {task.credits} credits{whenLabel(shift) ? ` · ${whenLabel(shift)}` : ''}
+                    {org.name}{whenLabel(shift) ? ` · ${whenLabel(shift)}` : ''}
                   </p>
                 </div>
                 {statusBadge(claim.status)}
@@ -179,7 +204,7 @@ export default async function ParticipantDashboard({
                     <input type="hidden" name="claimId" value={claim.id} />
                     <input type="hidden" name="redirectTo" value="/participant" />
                     <button className="text-xs font-medium text-ink-400 hover:text-red-600">
-                      Withdraw sign-up
+                      Withdraw sign-up (up to 24 hours ahead)
                     </button>
                   </form>
                 </div>
@@ -207,15 +232,44 @@ export default async function ParticipantDashboard({
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {claim.status === 'verified' ? (
-                  <span className="text-sm font-semibold text-emerald-600">+{task.credits}</span>
-                ) : null}
                 {statusBadge(claim.status)}
               </div>
             </div>
           ))}
         </Card>
       )}
+
+      {resume ? (
+        <section className="mt-10">
+          <Card className="mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-ink-800">Share link</p>
+                  <Badge tone={resume.isPublic ? 'green' : 'gray'}>{resume.isPublic ? 'Public' : 'Private'}</Badge>
+                </div>
+                {resume.isPublic && resume.token ? (
+                  <p className="mt-1 text-sm">
+                    <a href={`/resume/${resume.token}`} target="_blank" className="text-brand-600 hover:text-brand-500">
+                      <Mono>{`${process.env.APP_URL ?? ''}/resume/${resume.token}` || `/resume/${resume.token}`}</Mono>
+                    </a>
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-ink-500">Your résumé is private. Make it public to get a share link.</p>
+                )}
+              </div>
+              <form action={setResumePublicAction}>
+                <input type="hidden" name="public" value={resume.isPublic ? 'false' : 'true'} />
+                <input type="hidden" name="redirectTo" value="/participant" />
+                <Button type="submit" variant={resume.isPublic ? 'secondary' : 'primary'}>
+                  {resume.isPublic ? 'Make private' : 'Make shareable'}
+                </Button>
+              </form>
+            </div>
+          </Card>
+          <ResumeView data={resume} embedded showCredits={false} />
+        </section>
+      ) : null}
     </>
   )
 }

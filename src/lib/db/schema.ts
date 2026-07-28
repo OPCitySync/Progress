@@ -8,22 +8,129 @@ import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqli
 // adapter without renaming concepts.
 // ---------------------------------------------------------------------------
 
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey(),
-  email: text('email').notNull().unique(),
-  name: text('name').notNull(),
-  passwordHash: text('password_hash').notNull(),
-  role: text('role', { enum: ['admin', 'participant', 'issuer', 'redeemer'] }).notNull(),
-  status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
-  orgId: text('org_id'),
-  creditBalance: integer('credit_balance').notNull().default(0),
-  lifetimeEarned: integer('lifetime_earned').notNull().default(0),
-  interests: text('interests').notNull().default('[]'), // JSON: string[] of cause/interest tags
-  neighborhood: text('neighborhood').notNull().default(''),
-  resumeToken: text('resume_token'), // share link id for the public service résumé
-  resumePublic: integer('resume_public').notNull().default(0),
-  createdAt: integer('created_at').notNull(),
-})
+export const users = sqliteTable(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    email: text('email').notNull().unique(),
+    name: text('name').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    role: text('role', { enum: ['admin', 'participant', 'issuer', 'redeemer'] }).notNull(),
+    status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
+    orgId: text('org_id'),
+    creditBalance: integer('credit_balance').notNull().default(0),
+    lifetimeEarned: integer('lifetime_earned').notNull().default(0),
+    interests: text('interests').notNull().default('[]'), // JSON: string[] of cause/interest tags
+    neighborhood: text('neighborhood').notNull().default(''),
+    resumeToken: text('resume_token'), // share link id for the public service résumé
+    resumePublic: integer('resume_public').notNull().default(0),
+    username: text('username'),
+    avatarUrl: text('avatar_url').notNull().default(''),
+    // The city a participant selected during signup. It is only considered
+    // proven once their first onboarding shift has a verified check-in.
+    homeCityId: text('home_city_id'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    usernameUniq: uniqueIndex('users_username').on(t.username),
+  }),
+)
+
+// A person signs in once, but may operate through several distinct actors.
+// These durable, wallet-ready addresses deliberately are not blockchain
+// addresses yet: a future passkey/smart-wallet adapter can bind to them
+// without changing the authorization or audit model.
+export const identities = sqliteTable(
+  'identities',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id'),
+    orgId: text('org_id'),
+    kind: text('kind', { enum: ['participant', 'organization', 'authority'] }).notNull(),
+    address: text('address').notNull(),
+    status: text('status', { enum: ['active', 'revoked'] }).notNull().default('active'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    addressUniq: uniqueIndex('identities_address').on(t.address),
+    byUser: index('identities_user').on(t.userId),
+    byOrg: index('identities_org').on(t.orgId),
+  }),
+)
+
+// This is the many-to-many join between people and organizations. The
+// authority identity is separate from both the participant identity and the
+// organization identity, so access can be scoped and revoked independently.
+export const organizationDelegations = sqliteTable(
+  'organization_delegations',
+  {
+    id: text('id').primaryKey(),
+    identityId: text('identity_id').notNull(),
+    roleId: text('role_id'),
+    userId: text('user_id').notNull(),
+    orgId: text('org_id').notNull(),
+    role: text('role', { enum: ['owner', 'manager', 'member'] }).notNull().default('member'),
+    capabilities: text('capabilities').notNull().default('[]'),
+    cityIds: text('city_ids').notNull().default('[]'),
+    status: text('status', { enum: ['active', 'revoked'] }).notNull().default('active'),
+    grantedByUserId: text('granted_by_user_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    revokedAt: integer('revoked_at'),
+  },
+  (t) => ({
+    identityUniq: uniqueIndex('organization_delegations_identity').on(t.identityId),
+    personOrganizationUniq: uniqueIndex('organization_delegations_user_org').on(t.userId, t.orgId),
+    byOrganization: index('organization_delegations_org').on(t.orgId),
+    byUser: index('organization_delegations_user').on(t.userId),
+  }),
+)
+
+// Named, organization-owned permission bundles. `tierNumber` provides an
+// internal ordering value only; organizations choose every visible role name.
+export const organizationRoles = sqliteTable(
+  'organization_roles',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    tierNumber: integer('tier_number').notNull(),
+    name: text('name').notNull(),
+    permissions: text('permissions').notNull().default('[]'),
+    isOwnerRole: integer('is_owner_role').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    orgTierUniq: uniqueIndex('organization_roles_org_tier').on(t.orgId, t.tierNumber),
+    byOrganization: index('organization_roles_org').on(t.orgId),
+  }),
+)
+
+// Invite codes delegate an organization authority to a recipient's existing
+// person account. Only a hash is stored; the original code is shown once to
+// the issuer who generated it.
+export const organizationInvites = sqliteTable(
+  'organization_invites',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    roleId: text('role_id'),
+    codeHash: text('code_hash').notNull(),
+    role: text('role', { enum: ['manager', 'member'] }).notNull().default('member'),
+    capabilities: text('capabilities').notNull().default('[]'),
+    cityIds: text('city_ids').notNull().default('[]'),
+    maxUses: integer('max_uses').notNull().default(1),
+    uses: integer('uses').notNull().default(0),
+    issuedByDelegationId: text('issued_by_delegation_id').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    revokedAt: integer('revoked_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    codeHashUniq: uniqueIndex('organization_invites_code_hash').on(t.codeHash),
+    byOrganization: index('organization_invites_org').on(t.orgId),
+  }),
+)
 
 export const orgs = sqliteTable(
   'orgs',
@@ -36,11 +143,134 @@ export const orgs = sqliteTable(
     type: text('type', { enum: ['issuer', 'redeemer'] }).notNull(),
     description: text('description').notNull().default(''),
     status: text('status', { enum: ['pending', 'approved', 'suspended'] }).notNull().default('pending'),
+    // Organizations request a city at registration; a city administrator
+    // attaches the organization to it as part of approval.
+    requestedCityId: text('requested_city_id'),
+    // A city-local organization may be sponsored by an established
+    // organization while its local owner completes the ownership claim.
+    parentOrgId: text('parent_org_id'),
     ownerUserId: text('owner_user_id').notNull(),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
     slugUniq: uniqueIndex('orgs_slug').on(t.slug),
+  }),
+)
+
+// Reusable issuer locations. The primary address supplied at organization
+// signup is stored as the default; any later location used for an opportunity
+// or onboarding session is retained as another selectable option.
+export const organizationLocations = sqliteTable(
+  'organization_locations',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    address: text('address').notNull(),
+    isDefault: integer('is_default').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    uniqueAddress: uniqueIndex('organization_locations_org_address').on(t.orgId, t.address),
+    byOrganization: index('organization_locations_org').on(t.orgId, t.isDefault),
+  }),
+)
+
+// City networks are a lightweight membership layer. Opportunity and ledger
+// data remain network-wide for now; city-scoped data will be added as each
+// projection becomes tenant-aware.
+export const cities = sqliteTable(
+  'cities',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull().unique(),
+    description: text('description').notNull().default(''),
+    joinCode: text('join_code').notNull().unique(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    slugUniq: uniqueIndex('cities_slug').on(t.slug),
+    joinCodeUniq: uniqueIndex('cities_join_code').on(t.joinCode),
+  }),
+)
+
+// A membership may belong to a person or to an organization. `memberId`
+// deliberately avoids a foreign key so both entity kinds share one compact,
+// uniquely indexed table.
+export const cityMemberships = sqliteTable(
+  'city_memberships',
+  {
+    id: text('id').primaryKey(),
+    cityId: text('city_id').notNull(),
+    memberKind: text('member_kind', { enum: ['user', 'organization'] }).notNull(),
+    memberId: text('member_id').notNull(),
+    joinedAt: integer('joined_at').notNull(),
+  },
+  (t) => ({
+    uniqueMember: uniqueIndex('city_memberships_city_member').on(t.cityId, t.memberKind, t.memberId),
+    byMember: index('city_memberships_member').on(t.memberKind, t.memberId),
+  }),
+)
+
+// Participation is intentionally separate from city membership. A person may
+// add a city immediately, but is New there until an on-site onboarding
+// check-in proves their presence. No-show consequences are local to a city.
+export const cityParticipantStatuses = sqliteTable(
+  'city_participant_statuses',
+  {
+    id: text('id').primaryKey(),
+    cityId: text('city_id').notNull(),
+    userId: text('user_id').notNull(),
+    status: text('status', { enum: ['new', 'active', 'barred'] }).notNull().default('new'),
+    noShowCount: integer('no_show_count').notNull().default(0),
+    barredUntil: integer('barred_until'),
+    activatedAt: integer('activated_at'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    uniqueParticipant: uniqueIndex('city_participant_statuses_city_user').on(t.cityId, t.userId),
+    byUser: index('city_participant_statuses_user').on(t.userId),
+  }),
+)
+
+// An established issuer can request a new City/Sync network for another
+// physical location. Approval provisions the independent city database and a
+// new, city-local organization; the intended local owner must then claim it
+// with the email named in this application.
+export const cityLaunchApplications = sqliteTable(
+  'city_launch_applications',
+  {
+    id: text('id').primaryKey(),
+    sponsorOrgId: text('sponsor_org_id').notNull(),
+    bootstrapUserId: text('bootstrap_user_id').notNull(),
+    createdByDelegationId: text('created_by_delegation_id').notNull(),
+    cityName: text('city_name').notNull(),
+    citySlug: text('city_slug').notNull(),
+    cityDescription: text('city_description').notNull().default(''),
+    proposedOwnerName: text('proposed_owner_name').notNull(),
+    proposedOwnerEmail: text('proposed_owner_email').notNull(),
+    status: text('status', {
+      enum: ['submitted', 'awaiting_owner', 'owner_assigned', 'rejected'],
+    }).notNull().default('submitted'),
+    cityId: text('city_id'),
+    localOrgId: text('local_org_id'),
+    ownershipCodeHash: text('ownership_code_hash'),
+    ownershipExpiresAt: integer('ownership_expires_at'),
+    ownershipAcceptedAt: integer('ownership_accepted_at'),
+    ownerUserId: text('owner_user_id'),
+    reviewerNote: text('reviewer_note').notNull().default(''),
+    approvedByUserId: text('approved_by_user_id'),
+    createdAt: integer('created_at').notNull(),
+    reviewedAt: integer('reviewed_at'),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    bySponsor: index('city_launch_applications_sponsor').on(t.sponsorOrgId, t.createdAt),
+    byStatus: index('city_launch_applications_status').on(t.status, t.createdAt),
+    bySlug: index('city_launch_applications_slug').on(t.citySlug),
+    claimCode: uniqueIndex('city_launch_applications_claim_code').on(t.ownershipCodeHash),
   }),
 )
 
@@ -77,7 +307,13 @@ export const waiverVersions = sqliteTable('waiver_versions', {
   version: integer('version').notNull(),
   title: text('title').notNull(),
   body: text('body').notNull(),
-  sha256: text('sha256').notNull(), // hash of the waiver body — the value a future on-chain WaiverRegistry stores
+  documentUrl: text('document_url'),
+  documentName: text('document_name'),
+  documentMimeType: text('document_mime_type'),
+  documentSha256: text('document_sha256'),
+  // Hash of the waiver body and optional attachment hash — the value a future
+  // on-chain WaiverRegistry stores when a participant accepts this version.
+  sha256: text('sha256').notNull(),
   active: integer('active').notNull().default(1),
   createdAt: integer('created_at').notNull(),
 })
@@ -104,6 +340,7 @@ export const waiverAcceptances = sqliteTable(
 export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
   orgId: text('org_id').notNull(),
+  cityId: text('city_id').notNull().default('berkeley'),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
   location: text('location').notNull().default(''),
@@ -197,10 +434,11 @@ export const claims = sqliteTable(
     shiftId: text('shift_id'),
     userId: text('user_id').notNull(),
     status: text('status', {
-      enum: ['claimed', 'submitted', 'verified', 'rejected', 'unclaimed'],
+      enum: ['claimed', 'submitted', 'verified', 'rejected', 'unclaimed', 'no_show'],
     }).notNull().default('claimed'),
     note: text('note').notNull().default(''),
     checkedInAt: integer('checked_in_at'),
+    noShowAt: integer('no_show_at'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -233,6 +471,7 @@ export const credentials = sqliteTable(
 export const offerings = sqliteTable('offerings', {
   id: text('id').primaryKey(),
   orgId: text('org_id').notNull(),
+  cityId: text('city_id').notNull().default('berkeley'),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
   cost: integer('cost').notNull(),
@@ -245,6 +484,7 @@ export const redemptions = sqliteTable('redemptions', {
   offeringId: text('offering_id').notNull(),
   orgId: text('org_id').notNull(),
   userId: text('user_id').notNull(),
+  cityId: text('city_id').notNull().default('berkeley'),
   cost: integer('cost').notNull(),
   code: text('code').notNull().unique(),
   status: text('status', { enum: ['pending', 'finalized', 'cancelled'] }).notNull().default('pending'),
@@ -252,12 +492,47 @@ export const redemptions = sqliteTable('redemptions', {
   finalizedAt: integer('finalized_at'),
 })
 
+// Organization-defined collections of volunteers. These deliberately do not
+// derive from opportunities, so an issuer can organize people around any
+// operational need (team, neighborhood, shift lead, campaign, and so on).
+export const volunteerGroups = sqliteTable(
+  'volunteer_groups',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    name: text('name').notNull(),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    organizationNameUniq: uniqueIndex('volunteer_groups_org_name').on(t.orgId, t.name),
+    byOrganization: index('volunteer_groups_org').on(t.orgId),
+  }),
+)
+
+export const volunteerGroupMembers = sqliteTable(
+  'volunteer_group_members',
+  {
+    id: text('id').primaryKey(),
+    groupId: text('group_id').notNull(),
+    userId: text('user_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    groupMemberUniq: uniqueIndex('volunteer_group_members_group_user').on(t.groupId, t.userId),
+    byGroup: index('volunteer_group_members_group').on(t.groupId),
+    byUser: index('volunteer_group_members_user').on(t.userId),
+  }),
+)
+
 export const orgMessages = sqliteTable('org_messages', {
   id: text('id').primaryKey(),
   orgId: text('org_id').notNull(),
   senderUserId: text('sender_user_id').notNull(),
-  scope: text('scope', { enum: ['roster', 'task'] }).notNull(),
+  scope: text('scope', { enum: ['roster', 'task', 'group', 'members'] }).notNull(),
   taskId: text('task_id'),
+  groupId: text('group_id'),
   subject: text('subject').notNull(),
   body: text('body').notNull(),
   recipientCount: integer('recipient_count').notNull(),
@@ -361,6 +636,31 @@ export const events = sqliteTable('events', {
   prevHash: text('prev_hash').notNull(),
   hash: text('hash').notNull(),
 })
+
+// The control database and each city database intentionally do not share a
+// transaction.  This outbox is written alongside a control-plane event, then
+// delivered idempotently to the applicable independent city ledger.  Keeping
+// it here prevents a transient city database failure from dropping a public
+// ledger event after the source action has succeeded.
+export const cityLedgerOutbox = sqliteTable(
+  'city_ledger_outbox',
+  {
+    eventId: text('event_id').primaryKey(),
+    cityId: text('city_id').notNull(),
+    eventSeq: integer('event_seq').notNull(),
+    type: text('type').notNull(),
+    payload: text('payload').notNull(),
+    actorId: text('actor_id'),
+    ts: integer('ts').notNull(),
+    deliveredAt: integer('delivered_at'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    pendingByCity: index('city_ledger_outbox_pending_city').on(t.cityId, t.deliveredAt, t.eventSeq),
+  }),
+)
 
 export const anchors = sqliteTable('anchors', {
   id: text('id').primaryKey(),

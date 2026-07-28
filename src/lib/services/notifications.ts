@@ -3,6 +3,7 @@ import { and, desc, eq, isNull, lte } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { notifications, reminders, shifts, tasks, orgs, users } from '@/lib/db/schema'
 import { getEmailAdapter } from '@/lib/notify/email'
+import { processOverdueNoShows } from './city-participation'
 
 const PRE_SHIFT_MS = 24 * 60 * 60 * 1000
 
@@ -135,7 +136,7 @@ export async function cancelRemindersForTask(taskId: string): Promise<void> {
 }
 
 /** Drain due pending reminders into in-app notifications and/or email. */
-export async function processDueReminders(now = Date.now()): Promise<{ sent: number; failed: number }> {
+export async function processDueReminders(now = Date.now()): Promise<{ sent: number; failed: number; noShows: number; barred: number }> {
   const due = await db
     .select()
     .from(reminders)
@@ -166,7 +167,8 @@ export async function processDueReminders(now = Date.now()): Promise<{ sent: num
       failed++ // left pending; retried on the next run
     }
   }
-  return { sent, failed }
+  const attendance = await processOverdueNoShows(now)
+  return { sent, failed, noShows: attendance.marked, barred: attendance.barred }
 }
 
 /** Alert a set of participants about a new matching opportunity (in-app now, email queued). */

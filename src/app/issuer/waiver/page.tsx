@@ -32,51 +32,64 @@ export default async function WaiverPage({
 
   return (
     <>
-      <PageHeader
-        title="Liability waiver"
-        subtitle="Participants must accept your active waiver before claiming an opportunity. Acceptance is recorded against the document hash — chain-ready by design."
-      />
+      <Card className="mb-6">
+        <PageHeader
+          title="Liability waiver"
+          subtitle="Participants must accept your active waiver before claiming an opportunity. Acceptance is recorded against the document hash — chain-ready by design."
+        />
+
+        {active ? (
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-ink-900">
+                  Current Waiver <span className="text-ink-400">· v{active.version}</span>
+                </p>
+                <p className="mt-1 text-xs text-ink-400">
+                  Document hash (sha256): <Mono>{active.sha256}</Mono>
+                </p>
+                <p className="mt-1 text-xs text-ink-400">
+                  {countByVersion.get(active.id) ?? 0} acceptance
+                  {(countByVersion.get(active.id) ?? 0) === 1 ? '' : 's'} · created {fmtDateTime(active.createdAt)}
+                </p>
+                {active.documentUrl ? (
+                  <p className="mt-2 text-xs">
+                    <a
+                      href={active.documentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-brand-600 hover:text-brand-500"
+                    >
+                      View attached document{active.documentName ? `: ${active.documentName}` : ''} →
+                    </a>
+                  </p>
+                ) : null}
+              </div>
+              <Badge tone="green">active</Badge>
+            </div>
+            <div className="mt-4 max-h-44 overflow-y-auto whitespace-pre-line rounded-xl border border-ink-200 bg-ink-50 p-4 text-xs leading-relaxed text-ink-600">
+              {active.body}
+            </div>
+          </Card>
+        ) : (
+          <Card className="border-dashed">
+            <p className="font-semibold text-ink-900">Current Waiver</p>
+            <p className="mt-1 text-sm text-ink-500">
+              No waiver yet. {org?.name ?? 'Your organization'} can publish one below — until then,
+              participants can claim your opportunities without a waiver step.
+            </p>
+          </Card>
+        )}
+      </Card>
       <Flash searchParams={searchParams} />
 
-      {active ? (
-        <Card className="mb-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-semibold text-ink-900">
-                {active.title} <span className="text-ink-400">· v{active.version}</span>
-              </p>
-              <p className="mt-1 text-xs text-ink-400">
-                Document hash (sha256): <Mono>{active.sha256}</Mono>
-              </p>
-              <p className="mt-1 text-xs text-ink-400">
-                {countByVersion.get(active.id) ?? 0} acceptance
-                {(countByVersion.get(active.id) ?? 0) === 1 ? '' : 's'} · created {fmtDateTime(active.createdAt)}
-              </p>
-            </div>
-            <Badge tone="green">active</Badge>
-          </div>
-          <div className="mt-4 max-h-44 overflow-y-auto whitespace-pre-line rounded-xl border border-ink-200 bg-ink-50 p-4 text-xs leading-relaxed text-ink-600">
-            {active.body}
-          </div>
-        </Card>
-      ) : (
-        <Card className="mb-6 border-dashed">
-          <p className="text-sm text-ink-500">
-            No waiver yet. {org?.name ?? 'Your organization'} can publish one below — until then,
-            participants can claim your opportunities without a waiver step.
-          </p>
-        </Card>
-      )}
-
       <Card className="max-w-2xl">
-        <h2 className="font-semibold text-ink-900">
-          {active ? 'Publish a new version' : 'Publish your waiver'}
-        </h2>
+        <h2 className="font-semibold text-ink-900">Publish a New Waiver</h2>
         <p className="mt-1 text-sm text-ink-500">
           Publishing a new version deactivates the previous one (atomic rollover). Participants who
           accepted an older version will be asked to accept the new one on their next claim.
         </p>
-        <form action={createWaiverAction} className="mt-5 space-y-4">
+        <form action={createWaiverAction} encType="multipart/form-data" className="mt-5 space-y-4">
           <input type="hidden" name="redirectTo" value="/issuer/waiver" />
           <div>
             <Label htmlFor="title">Waiver title</Label>
@@ -91,6 +104,21 @@ export default async function WaiverPage({
               required
               placeholder="Paste the full waiver text your organization’s counsel approved…"
             />
+          </div>
+          <div>
+            <Label htmlFor="document">
+              Waiver document <span className="font-normal text-ink-400">(optional)</span>
+            </Label>
+            <input
+              id="document"
+              name="document"
+              type="file"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              className="mt-1.5 block w-full rounded-xl border border-ink-300 bg-white px-3 py-2 text-sm text-ink-700 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-brand-700 hover:file:bg-brand-200"
+            />
+            <p className="mt-1.5 text-xs text-ink-500">
+              Attach a PDF, DOC, or DOCX version of the waiver (up to 10 MB). The text above remains the accessible waiver record.
+            </p>
           </div>
           <Button type="submit">Publish version</Button>
         </form>

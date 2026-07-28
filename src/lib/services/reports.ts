@@ -1,6 +1,8 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { users, orgs, tasks, shifts, claims, redemptions, offerings } from '@/lib/db/schema'
+import { cityMemberships, users, orgs, tasks, shifts, claims, redemptions, offerings } from '@/lib/db/schema'
+import { participantDisplayName } from '@/lib/participant-name'
+import { getCityWallet } from '@/lib/services/city-wallets'
 
 export type Report = { filename: string; headers: string[]; rows: (string | number | null)[][] }
 
@@ -31,7 +33,7 @@ function hours(startsAt: number | null, endsAt: number | null): string {
  * Per-sign-up contributions. Network-wide for admins; org-scoped (grant/CSR
  * ready) when orgId is given. Every row is backed by a ledger event.
  */
-export async function contributionsReport(orgId?: string): Promise<Report> {
+export async function contributionsReport(orgId?: string, cityId?: string): Promise<Report> {
   const rows = await db
     .select({
       org: orgs.name,
@@ -41,6 +43,7 @@ export async function contributionsReport(orgId?: string): Promise<Report> {
       checkedInAt: claims.checkedInAt,
       updatedAt: claims.updatedAt,
       vName: users.name,
+      vUsername: users.username,
       vEmail: users.email,
       sStart: shifts.startsAt,
       sEnd: shifts.endsAt,
@@ -51,7 +54,15 @@ export async function contributionsReport(orgId?: string): Promise<Report> {
     .innerJoin(orgs, eq(tasks.orgId, orgs.id))
     .innerJoin(users, eq(claims.userId, users.id))
     .leftJoin(shifts, eq(claims.shiftId, shifts.id))
-    .where(orgId ? eq(tasks.orgId, orgId) : sql`1 = 1`)
+    .where(
+      orgId && cityId
+        ? and(eq(tasks.orgId, orgId), eq(tasks.cityId, cityId))
+        : orgId
+          ? eq(tasks.orgId, orgId)
+          : cityId
+            ? eq(tasks.cityId, cityId)
+            : sql`1 = 1`,
+    )
     .orderBy(desc(claims.updatedAt))
     .limit(10000)
 
@@ -73,7 +84,7 @@ export async function contributionsReport(orgId?: string): Promise<Report> {
       r.org,
       r.task,
       shiftWhen(r.sStart, r.sLabel),
-      r.vName,
+      participantDisplayName({ name: r.vName, username: r.vUsername }),
       r.vEmail,
       r.status,
       isoDate(r.checkedInAt),
@@ -85,8 +96,12 @@ export async function contributionsReport(orgId?: string): Promise<Report> {
 }
 
 /** Per-organization roll-up (admin). */
-export async function organizationsReport(): Promise<Report> {
-  const orgRows = await db.select().from(orgs).orderBy(orgs.name)
+export async function organizationsReport(cityId?: string): Promise<Report> {
+  const orgRows = await db
+    .select()
+    .from(orgs)
+    .where(cityId ? eq(orgs.requestedCityId, cityId) : sql`1 = 1`)
+    .orderBy(orgs.name)
 
   const verified = await db
     .select({
@@ -97,7 +112,7 @@ export async function organizationsReport(): Promise<Report> {
     })
     .from(claims)
     .innerJoin(tasks, eq(claims.taskId, tasks.id))
-    .where(eq(claims.status, 'verified'))
+    .where(cityId ? and(eq(claims.status, 'verified'), eq(tasks.cityId, cityId)) : eq(claims.status, 'verified'))
     .groupBy(tasks.orgId)
   const vById = new Map(verified.map((v) => [v.orgId, v]))
 
@@ -110,10 +125,16 @@ export async function organizationsReport(): Promise<Report> {
     .innerJoin(tasks, eq(claims.taskId, tasks.id))
     .innerJoin(shifts, eq(claims.shiftId, shifts.id))
     .where(
-      and(
-        eq(claims.status, 'verified'),
-        sql`${shifts.startsAt} is not null and ${shifts.endsAt} is not null and ${shifts.endsAt} > ${shifts.startsAt}`,
-      ),
+      cityId
+        ? and(
+            eq(claims.status, 'verified'),
+            eq(tasks.cityId, cityId),
+            sql`${shifts.startsAt} is not null and ${shifts.endsAt} is not null and ${shifts.endsAt} > ${shifts.startsAt}`,
+          )
+        : and(
+            eq(claims.status, 'verified'),
+            sql`${shifts.startsAt} is not null and ${shifts.endsAt} is not null and ${shifts.endsAt} > ${shifts.startsAt}`,
+          ),
     )
     .groupBy(tasks.orgId)
   const hoursById = new Map(hoursByOrg.map((h) => [h.orgId, Number(h.ms)]))
@@ -121,7 +142,7 @@ export async function organizationsReport(): Promise<Report> {
   const openByOrg = await db
     .select({ orgId: tasks.orgId, n: sql<number>`count(*)` })
     .from(tasks)
-    .where(eq(tasks.status, 'open'))
+    .where(cityId ? and(eq(tasks.status, 'open'), eq(tasks.cityId, cityId)) : eq(tasks.status, 'open'))
     .groupBy(tasks.orgId)
   const openById = new Map(openByOrg.map((o) => [o.orgId, Number(o.n)]))
 
@@ -154,45 +175,71 @@ export async function organizationsReport(): Promise<Report> {
 }
 
 /** Per-participant roll-up (admin). */
-export async function participantsReport(): Promise<Report> {
-  const ppl = await db.select().from(users).where(eq(users.role, 'participant')).orderBy(users.name)
+export async function participantsReport(cityId?: string): Promise<Report> {
+  const people = cityId
+    ? (
+        await db
+          .select({ user: users })
+          .from(cityMemberships)
+          .innerJoin(users, eq(cityMemberships.memberId, users.id))
+          .where(
+            and(
+              eq(cityMemberships.cityId, cityId),
+              eq(cityMemberships.memberKind, 'user'),
+              eq(users.role, 'participant'),
+            ),
+          )
+      ).map(({ user }) => user)
+    : await db.select().from(users).where(eq(users.role, 'participant'))
+  const ppl = people.sort((a, b) => participantDisplayName(a).localeCompare(participantDisplayName(b)))
 
   const verified = await db
     .select({ userId: claims.userId, n: sql<number>`count(*)` })
     .from(claims)
-    .where(eq(claims.status, 'verified'))
+    .where(cityId ? and(eq(claims.status, 'verified'), eq(tasks.cityId, cityId)) : eq(claims.status, 'verified'))
     .groupBy(claims.userId)
   const vById = new Map(verified.map((v) => [v.userId, Number(v.n)]))
 
   const hoursByUser = await db
     .select({ userId: claims.userId, ms: sql<number>`coalesce(sum(${shifts.endsAt} - ${shifts.startsAt}), 0)` })
     .from(claims)
+    .innerJoin(tasks, eq(claims.taskId, tasks.id))
     .innerJoin(shifts, eq(claims.shiftId, shifts.id))
     .where(
-      and(
-        eq(claims.status, 'verified'),
-        sql`${shifts.startsAt} is not null and ${shifts.endsAt} is not null and ${shifts.endsAt} > ${shifts.startsAt}`,
-      ),
+      cityId
+        ? and(
+            eq(claims.status, 'verified'),
+            eq(tasks.cityId, cityId),
+            sql`${shifts.startsAt} is not null and ${shifts.endsAt} is not null and ${shifts.endsAt} > ${shifts.startsAt}`,
+          )
+        : and(
+            eq(claims.status, 'verified'),
+            sql`${shifts.startsAt} is not null and ${shifts.endsAt} is not null and ${shifts.endsAt} > ${shifts.startsAt}`,
+          ),
     )
     .groupBy(claims.userId)
   const hoursById = new Map(hoursByUser.map((h) => [h.userId, Number(h.ms)]))
+
+  const walletByUser = cityId
+    ? new Map(await Promise.all(ppl.map(async (person) => [person.id, await getCityWallet(cityId, person.id)] as const)))
+    : null
 
   return {
     filename: 'participants.csv',
     headers: ['Name', 'Email', 'Verified contributions', 'Volunteer hours', 'Lifetime credits', 'Current balance'],
     rows: ppl.map((u) => [
-      u.name,
+      participantDisplayName(u),
       u.email,
       vById.get(u.id) ?? 0,
       ((hoursById.get(u.id) ?? 0) / 3_600_000).toFixed(2),
-      u.lifetimeEarned,
-      u.creditBalance,
+      walletByUser?.get(u.id)?.lifetimeEarned ?? u.lifetimeEarned,
+      walletByUser?.get(u.id)?.creditBalance ?? u.creditBalance,
     ]),
   }
 }
 
 /** Credit mints (verified work) and burns (finalized redemptions) (admin). */
-export async function creditsReport(): Promise<Report> {
+export async function creditsReport(cityId?: string): Promise<Report> {
   const mints = await db
     .select({
       ts: claims.updatedAt,
@@ -200,13 +247,14 @@ export async function creditsReport(): Promise<Report> {
       reason: tasks.title,
       org: orgs.name,
       vName: users.name,
+      vUsername: users.username,
       vEmail: users.email,
     })
     .from(claims)
     .innerJoin(tasks, eq(claims.taskId, tasks.id))
     .innerJoin(orgs, eq(tasks.orgId, orgs.id))
     .innerJoin(users, eq(claims.userId, users.id))
-    .where(eq(claims.status, 'verified'))
+    .where(cityId ? and(eq(claims.status, 'verified'), eq(tasks.cityId, cityId)) : eq(claims.status, 'verified'))
 
   const burns = await db
     .select({
@@ -215,20 +263,21 @@ export async function creditsReport(): Promise<Report> {
       reason: offerings.title,
       org: orgs.name,
       vName: users.name,
+      vUsername: users.username,
       vEmail: users.email,
     })
     .from(redemptions)
     .innerJoin(offerings, eq(redemptions.offeringId, offerings.id))
     .innerJoin(orgs, eq(redemptions.orgId, orgs.id))
     .innerJoin(users, eq(redemptions.userId, users.id))
-    .where(eq(redemptions.status, 'finalized'))
+    .where(cityId ? and(eq(redemptions.status, 'finalized'), eq(redemptions.cityId, cityId)) : eq(redemptions.status, 'finalized'))
 
   const rows = [
     ...mints.map((m) => ({
       ts: Number(m.ts ?? 0),
       type: 'mint',
       amount: m.amount,
-      vName: m.vName,
+      vName: participantDisplayName({ name: m.vName, username: m.vUsername }),
       vEmail: m.vEmail,
       org: m.org,
       reason: m.reason,
@@ -237,7 +286,7 @@ export async function creditsReport(): Promise<Report> {
       ts: Number(b.ts ?? 0),
       type: 'burn',
       amount: b.amount,
-      vName: b.vName,
+      vName: participantDisplayName({ name: b.vName, username: b.vUsername }),
       vEmail: b.vEmail,
       org: b.org,
       reason: b.reason,

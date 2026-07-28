@@ -3,20 +3,27 @@ import { db } from '@/lib/db/client'
 import { orgs, users } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { approveOrgAction, suspendOrgAction } from '@/app/actions'
-import { getPublicStats } from '@/lib/services/stats'
+import { getCityAdminStats } from '@/lib/services/stats'
 import { Card, PageHeader, StatCard, EmptyState, Flash, Button, statusBadge, Badge } from '@/components/ui'
 import { fmtDate } from '@/lib/format'
+import { getActiveCity } from '@/lib/services/city-networks'
 
 export default async function AdminPage({
   searchParams,
 }: {
   searchParams: { error?: string; ok?: string }
 }) {
-  await requireRole('admin')
+  const session = await requireRole('admin')
+  const city = await getActiveCity(session)
+  if (!city) {
+    return <PageHeader title="Network administration" subtitle="Choose a city network before administering it." />
+  }
 
-  const stats = await getPublicStats()
-  const allOrgs = await db.select().from(orgs).orderBy(desc(orgs.createdAt))
-  const owners = await db.select({ id: users.id, email: users.email }).from(users)
+  const [stats, allOrgs, owners] = await Promise.all([
+    getCityAdminStats(city.id),
+    db.select().from(orgs).where(eq(orgs.requestedCityId, city.id)).orderBy(desc(orgs.createdAt)),
+    db.select({ id: users.id, email: users.email }).from(users),
+  ])
   const emailById = new Map(owners.map((o) => [o.id, o.email]))
 
   const pending = allOrgs.filter((o) => o.status === 'pending')
@@ -24,7 +31,7 @@ export default async function AdminPage({
 
   return (
     <>
-      <PageHeader title="Network administration" subtitle="Approve organizations and monitor the pilot." />
+      <PageHeader title="Network administration" subtitle={`Approve organizations and monitor ${city.name}.`} />
       <Flash searchParams={searchParams} />
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -55,8 +62,9 @@ export default async function AdminPage({
                     <p className="mt-2 max-w-xl text-sm text-ink-500">{org.description}</p>
                   ) : null}
                 </div>
-                <form action={approveOrgAction}>
+                <form action={approveOrgAction} className="flex items-center gap-2">
                   <input type="hidden" name="orgId" value={org.id} />
+                  <input type="hidden" name="cityId" value={city.id} />
                   <input type="hidden" name="redirectTo" value="/admin" />
                   <Button type="submit">Approve</Button>
                 </form>
@@ -82,7 +90,10 @@ export default async function AdminPage({
                     {org.type}
                   </span>
                 </p>
-                <p className="text-xs text-ink-400">{emailById.get(org.ownerUserId) ?? '—'}</p>
+                <p className="text-xs text-ink-400">
+                  {emailById.get(org.ownerUserId) ?? '—'}
+                  {' · '}{city.name}
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 {statusBadge(org.status)}

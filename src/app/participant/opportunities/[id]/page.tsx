@@ -11,6 +11,7 @@ import { parseCredentialList, credentialLabel } from '@/lib/credentials'
 import { claimShiftAction, selfCheckInAction } from '@/app/actions'
 import { Card, PageHeader, Badge, Button, Input, Flash, Mono, statusBadge } from '@/components/ui'
 import { fmtDateTime } from '@/lib/format'
+import { getActiveCity } from '@/lib/services/city-networks'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,13 +35,15 @@ export default async function OpportunityDetail({
   searchParams: { error?: string; ok?: string }
 }) {
   const session = await requireRole('participant')
+  const city = await getActiveCity(session)
+  if (!city) notFound()
 
   const row = (
     await db
       .select({ task: tasks, org: orgs })
       .from(tasks)
       .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-      .where(eq(tasks.id, params.id))
+      .where(and(eq(tasks.id, params.id), eq(tasks.cityId, city.id)))
       .limit(1)
   )[0]
   if (!row) notFound()
@@ -109,6 +112,16 @@ export default async function OpportunityDetail({
           <p className="mt-1 text-xs text-ink-400">
             {waiver!.title} — version {waiver!.version} · document hash: <Mono>{waiver!.sha256.slice(0, 16)}…</Mono>
           </p>
+          {waiver!.documentUrl ? (
+            <a
+              href={waiver!.documentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block text-xs font-semibold text-brand-600 hover:text-brand-500"
+            >
+              View attached waiver document{waiver!.documentName ? `: ${waiver!.documentName}` : ''} →
+            </a>
+          ) : null}
           <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-line rounded-xl border border-ink-200 bg-ink-50 p-4 text-xs leading-relaxed text-ink-600">
             {waiver!.body}
           </div>

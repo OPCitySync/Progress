@@ -49,7 +49,7 @@ export async function listAllCauses(): Promise<string[]> {
 export type RecommendedOpportunity = { card: PublicOpportunity; orgName: string; orgSlug: string }
 
 /** Open-shift opportunities from orgs whose causes intersect the user's interests. */
-export async function recommendedOpportunities(userId: string): Promise<RecommendedOpportunity[]> {
+export async function recommendedOpportunities(userId: string, cityId?: string): Promise<RecommendedOpportunity[]> {
   const interests = (await getInterests(userId)).map((s) => s.toLowerCase())
   if (interests.length === 0) return []
 
@@ -67,7 +67,7 @@ export async function recommendedOpportunities(userId: string): Promise<Recommen
   const taskRows = await db
     .select()
     .from(tasks)
-    .where(and(inArray(tasks.orgId, matchedIds), eq(tasks.status, 'open')))
+    .where(and(inArray(tasks.orgId, matchedIds), eq(tasks.status, 'open'), ...(cityId ? [eq(tasks.cityId, cityId)] : [])))
     .orderBy(desc(tasks.createdAt))
   const agg = await aggregateOpportunities(taskRows)
 

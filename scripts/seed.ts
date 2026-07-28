@@ -1,5 +1,5 @@
 /**
- * Seed: demo accounts and sample data for the pilot.
+ * Seed: demo accounts and sample data for City/Sync.
  * Run after db:migrate: npm run db:seed
  *
  * All writes go through the protocol services so the event ledger is
@@ -7,7 +7,7 @@
  */
 import { eq } from 'drizzle-orm'
 import { db, client } from '../src/lib/db/client'
-import { users, opportunityTypes } from '../src/lib/db/schema'
+import { cityMemberships, users, opportunityTypes } from '../src/lib/db/schema'
 import { registerParticipant, registerOrg, setOrgStatus } from '../src/lib/services/identity'
 import { createWaiverVersion } from '../src/lib/services/waivers'
 import { createTask, createShift } from '../src/lib/services/opportunities'
@@ -18,6 +18,7 @@ import { hashPassword } from '../src/lib/auth/password'
 import { appendEvent } from '../src/lib/ledger/ledger'
 import { EventTypes } from '../src/lib/ledger/events'
 import { randomUUID } from 'crypto'
+import { BERKELEY_CITY_ID } from '../src/lib/services/city-networks'
 
 const ADMIN_EMAIL = 'admin@city-sync.org'
 const DAY = 86_400_000
@@ -50,6 +51,13 @@ async function main() {
       role: 'admin',
       orgId: null,
       createdAt: Date.now(),
+    })
+    await tx.insert(cityMemberships).values({
+      id: randomUUID(),
+      cityId: BERKELEY_CITY_ID,
+      memberKind: 'user',
+      memberId: adminId,
+      joinedAt: Date.now(),
     })
     await appendEvent(tx, EventTypes.USER_REGISTERED, { userId: adminId, role: 'admin' }, adminId)
   })
@@ -84,6 +92,7 @@ async function main() {
     name: 'Maria Lopez',
     email: 'issuer@demo.city-sync.org',
     password: 'demo1234',
+    cityId: BERKELEY_CITY_ID,
   })
   if (!issuer.ok) throw new Error(issuer.error)
   await setOrgStatus(issuer.orgId, 'approved', adminId)
@@ -98,7 +107,7 @@ In consideration of being permitted to volunteer, I acknowledge and agree:
 
 1. I am volunteering of my own free will and receive civic credits as recognition, not wages.
 2. I will follow all posted safety rules and staff instructions while on site.
-3. I release Riverside Food Bank, its staff, and the City/Sync pilot network from liability for
+3. I release Riverside Food Bank, its staff, and the City/Sync network from liability for
    ordinary negligence arising out of my volunteer activities, to the extent permitted by law.
 4. I grant permission for anonymized records of my participation to appear on the public ledger.
 5. This release applies to all opportunities I claim from Riverside Food Bank under this version.
@@ -108,6 +117,7 @@ If under 18, a parent or guardian must also review this waiver during in-person 
 
   const pantry = await createTask({
     orgId: issuer.orgId,
+    cityId: BERKELEY_CITY_ID,
     actorId: issuer.userId,
     title: 'Saturday pantry sorting shift',
     description:
@@ -144,6 +154,7 @@ If under 18, a parent or guardian must also review this waiver during in-person 
 
   const delivery = await createTask({
     orgId: issuer.orgId,
+    cityId: BERKELEY_CITY_ID,
     actorId: issuer.userId,
     title: 'Senior grocery delivery route',
     description:
@@ -170,6 +181,7 @@ If under 18, a parent or guardian must also review this waiver during in-person 
   // --- issuer onboarding task + public profile -------------------------------
   const orientation = await createTask({
     orgId: issuer.orgId,
+    cityId: BERKELEY_CITY_ID,
     actorId: issuer.userId,
     title: 'New volunteer orientation',
     description:
@@ -222,12 +234,14 @@ If under 18, a parent or guardian must also review this waiver during in-person 
     name: 'James Chen',
     email: 'redeemer@demo.city-sync.org',
     password: 'demo1234',
+    cityId: BERKELEY_CITY_ID,
   })
   if (!redeemer.ok) throw new Error(redeemer.error)
   await setOrgStatus(redeemer.orgId, 'approved', adminId)
 
   await createOffering({
     orgId: redeemer.orgId,
+    cityId: BERKELEY_CITY_ID,
     actorId: redeemer.userId,
     title: '10-ride transit pass',
     description: 'Ten rides on any metro bus or light-rail line. Off-peak and peak.',
@@ -235,6 +249,7 @@ If under 18, a parent or guardian must also review this waiver during in-person 
   })
   await createOffering({
     orgId: redeemer.orgId,
+    cityId: BERKELEY_CITY_ID,
     actorId: redeemer.userId,
     title: 'Monthly transit pass',
     description: 'Unlimited rides for one calendar month.',
@@ -245,12 +260,12 @@ If under 18, a parent or guardian must also review this waiver during in-person 
   await createPost({
     orgId: issuer.orgId,
     actorId: issuer.userId,
-    body: 'Welcome to the City/Sync pilot! Our Saturday pantry shifts are now live — 15 credits per shift, and every verified hour helps us reach 200 more families this month. 🥫',
+    body: 'Welcome to City/Sync! Our Saturday pantry shifts are now live — 15 credits per shift, and every verified hour helps us reach 200 more families this month. 🥫',
   })
   await createPost({
     orgId: redeemer.orgId,
     actorId: redeemer.userId,
-    body: 'Metro Transit is proud to be the pilot’s first redeemer. Your civic credits are good for 10-ride and monthly passes — empty seats become earned rides.',
+    body: 'Metro Transit is proud to be City/Sync’s first redeemer. Your civic credits are good for 10-ride and monthly passes — empty seats become earned rides.',
   })
 
   // --- participant ----------------------------------------------------------
@@ -258,6 +273,7 @@ If under 18, a parent or guardian must also review this waiver during in-person 
     name: 'Alex Rivera',
     email: 'participant@demo.city-sync.org',
     password: 'demo1234',
+    homeCityId: BERKELEY_CITY_ID,
   })
   if (!participant.ok) throw new Error(participant.error)
 

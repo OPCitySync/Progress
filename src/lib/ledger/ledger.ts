@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
-import { desc } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { events } from '@/lib/db/schema'
+import { cityLedgerOutbox, events, offerings, orgs, redemptions, tasks, users } from '@/lib/db/schema'
 import { sha256Hex, canonicalJson } from './hash'
 import type { EventType } from './events'
 
@@ -10,6 +10,50 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 export type DbOrTx = typeof db | Tx
 
 export const GENESIS_HASH = '0'.repeat(64)
+
+async function inferCityId(
+  tx: DbOrTx,
+  payload: Record<string, unknown>,
+  actorId: string | null | undefined,
+  explicitCityId: string | null | undefined,
+): Promise<string | null> {
+  const explicit = explicitCityId?.trim() || (typeof payload.cityId === 'string' ? payload.cityId.trim() : '')
+  if (explicit) return explicit
+
+  const taskId = typeof payload.taskId === 'string' ? payload.taskId : null
+  if (taskId) {
+    const task = (await tx.select({ cityId: tasks.cityId }).from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
+    if (task?.cityId) return task.cityId
+  }
+
+  const offeringId = typeof payload.offeringId === 'string' ? payload.offeringId : null
+  if (offeringId) {
+    const offering = (await tx.select({ cityId: offerings.cityId }).from(offerings).where(eq(offerings.id, offeringId)).limit(1))[0]
+    if (offering?.cityId) return offering.cityId
+  }
+
+  const redemptionId = typeof payload.redemptionId === 'string' ? payload.redemptionId : null
+  if (redemptionId) {
+    const redemption = (await tx.select({ cityId: redemptions.cityId }).from(redemptions).where(eq(redemptions.id, redemptionId)).limit(1))[0]
+    if (redemption?.cityId) return redemption.cityId
+  }
+
+  const orgId = typeof payload.orgId === 'string' ? payload.orgId : null
+  if (orgId) {
+    const org = (await tx.select({ cityId: orgs.requestedCityId }).from(orgs).where(eq(orgs.id, orgId)).limit(1))[0]
+    if (org?.cityId) return org.cityId
+  }
+
+  // A participant-level event belongs to the participant's home city unless
+  // the service supplied a more specific city above.
+  const userId = typeof payload.userId === 'string' ? payload.userId : actorId
+  if (userId) {
+    const user = (await tx.select({ cityId: users.homeCityId }).from(users).where(eq(users.id, userId)).limit(1))[0]
+    if (user?.cityId) return user.cityId
+  }
+
+  return null
+}
 
 /**
  * Append an event to the hash-chained ledger.
@@ -24,6 +68,7 @@ export async function appendEvent(
   type: EventType,
   payload: Record<string, unknown>,
   actorId?: string | null,
+  cityId?: string | null,
 ): Promise<{ id: string; hash: string }> {
   const last = await tx
     .select({ hash: events.hash })
@@ -37,7 +82,7 @@ export async function appendEvent(
   const body = canonicalJson(payload)
   const hash = sha256Hex(`${prevHash}|${type}|${ts}|${actorId ?? ''}|${body}`)
 
-  await tx.insert(events).values({
+  const inserted = await tx.insert(events).values({
     id,
     type,
     payload: body,
@@ -45,7 +90,28 @@ export async function appendEvent(
     ts,
     prevHash,
     hash,
-  })
+  }).returning({ seq: events.seq })
+
+  // A city id can be supplied explicitly by the service that owns the
+  // action. When an established source event predates that convention, use
+  // its task/offering/redemption/organization/person relationship instead of
+  // silently leaving it out of the public city ledger.
+  const targetCityId = await inferCityId(tx, payload, actorId, cityId)
+  if (targetCityId) {
+    const eventSeq = inserted[0]?.seq
+    if (eventSeq === undefined) throw new Error('Ledger event sequence was not returned.')
+    await tx.insert(cityLedgerOutbox).values({
+      eventId: id,
+      cityId: targetCityId,
+      eventSeq,
+      type,
+      payload: body,
+      actorId: actorId ?? null,
+      ts,
+      attempts: 0,
+      createdAt: ts,
+    })
+  }
 
   return { id, hash }
 }

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { features } from '@/lib/config'
 import { getEntry, listTypes, isEntryUsable } from '@/lib/services/catalog'
+import { getOrganizationLocations } from '@/lib/services/organization-locations'
 import {
   updateCatalogEntryAction,
   submitCatalogEntryAction,
@@ -12,6 +13,7 @@ import { Card, PageHeader, Flash, Input, Label, Textarea, Button } from '@/compo
 import { CredentialPicker } from '@/components/CredentialPicker'
 import { CatalogStatusBadge } from '@/components/CatalogStatusBadge'
 import { parseCredentialList } from '@/lib/credentials'
+import { IssuerLocationField } from '@/components/organization/IssuerLocationField'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +32,7 @@ export default async function CatalogEntryPage({
   const entry = await getEntry(params.id)
   if (!entry || entry.orgId !== session.orgId) notFound()
 
-  const types = await listTypes()
+  const [types, locations] = await Promise.all([listTypes(), getOrganizationLocations(session.orgId!)])
   const selectedType = types.find((t) => t.id === entry.typeId)
   const approvalOn = features().catalogApproval
   const showCredits = features().credits
@@ -85,10 +87,7 @@ export default async function CatalogEntryPage({
               <Textarea id="description" name="description" rows={4} defaultValue={entry.description} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="location">Default location</Label>
-                <Input id="location" name="location" defaultValue={entry.location} />
-              </div>
+              <IssuerLocationField id="location" locations={locations} defaultValue={entry.location} />
               <div>
                 <Label htmlFor="typeId">Opportunity type</Label>
                 <select id="typeId" name="typeId" className={selectClass} defaultValue={entry.typeId ?? ''}>

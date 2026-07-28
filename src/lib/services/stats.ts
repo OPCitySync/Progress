@@ -1,6 +1,7 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { users, orgs, tasks, claims, redemptions, events, anchors } from '@/lib/db/schema'
+import { users, orgs, tasks, claims, redemptions, events, anchors, cityMemberships } from '@/lib/db/schema'
+import { getCityFinanceStats } from '@/lib/services/city-wallets'
 
 export async function getPublicStats() {
   const [participantCount] = await db
@@ -45,5 +46,50 @@ export async function getPublicStats() {
     creditsBurned: Number(burned?.n ?? 0),
     ledgerEvents: Number(eventCount?.n ?? 0),
     anchors: anchorList,
+  }
+}
+
+/** Headline figures for one independently operated City Network. */
+export async function getCityAdminStats(cityId: string) {
+  const [participantCount, issuerCount, redeemerCount, taskCount, verifiedCount, finance] = await Promise.all([
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(cityMemberships)
+      .innerJoin(users, eq(cityMemberships.memberId, users.id))
+      .where(
+        and(
+          eq(cityMemberships.cityId, cityId),
+          eq(cityMemberships.memberKind, 'user'),
+          eq(users.role, 'participant'),
+        ),
+      ),
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(orgs)
+      .where(and(eq(orgs.requestedCityId, cityId), eq(orgs.type, 'issuer'), eq(orgs.status, 'approved'))),
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(orgs)
+      .where(and(eq(orgs.requestedCityId, cityId), eq(orgs.type, 'redeemer'), eq(orgs.status, 'approved'))),
+    db.select({ n: sql<number>`count(*)` }).from(tasks).where(eq(tasks.cityId, cityId)),
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(claims)
+      .innerJoin(tasks, eq(claims.taskId, tasks.id))
+      .where(and(eq(tasks.cityId, cityId), eq(claims.status, 'verified'))),
+    getCityFinanceStats(cityId),
+  ])
+
+  return {
+    participants: Number(participantCount[0]?.n ?? 0),
+    issuers: Number(issuerCount[0]?.n ?? 0),
+    redeemers: Number(redeemerCount[0]?.n ?? 0),
+    tasks: Number(taskCount[0]?.n ?? 0),
+    verifiedCompletions: Number(verifiedCount[0]?.n ?? 0),
+    creditsMinted: finance.creditsMinted,
+    creditsOutstanding: finance.creditsOutstanding,
+    creditsBurned: finance.creditsBurned,
+    ledgerEvents: finance.ledgerEvents,
+    anchors: finance.anchors,
   }
 }

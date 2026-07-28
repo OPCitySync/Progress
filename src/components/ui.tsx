@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={clsx('rounded-2xl border border-ink-200 bg-white p-6 shadow-card', className)}>
+    <div className={clsx('skeuo-card rounded-2xl p-6', className)}>
       {children}
     </div>
   )
@@ -21,7 +21,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="font-display text-2xl font-semibold text-ink-900">{title}</h1>
+        <h1 className="skeuo-page-title font-display text-2xl font-semibold text-ink-900">{title}</h1>
         {subtitle ? <p className="mt-1 text-sm text-ink-500">{subtitle}</p> : null}
       </div>
       {action}
@@ -33,7 +33,7 @@ export function StatCard({ label, value, hint }: { label: string; value: ReactNo
   return (
     <Card className="p-5">
       <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">{label}</p>
-      <p className="mt-2 text-3xl font-semibold text-ink-900">{value}</p>
+      <p className="mt-2 text-3xl font-semibold text-ink-900 [text-shadow:0_1px_0_rgba(255,255,255,0.85)]">{value}</p>
       {hint ? <p className="mt-1 text-xs text-ink-400">{hint}</p> : null}
     </Card>
   )
@@ -51,7 +51,7 @@ export function Badge({ tone = 'gray', children }: { tone?: keyof typeof badgeTo
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium',
+        'skeuo-badge inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium',
         badgeTones[tone],
       )}
     >
@@ -68,7 +68,7 @@ export function statusBadge(status: string) {
         ? 'gold'
         : status === 'claimed'
           ? 'blue'
-          : status === 'rejected' || status === 'suspended' || status === 'cancelled'
+          : status === 'rejected' || status === 'suspended' || status === 'cancelled' || status === 'no_show'
             ? 'red'
             : 'gray'
   return <Badge tone={tone as 'green'}>{status}</Badge>
@@ -87,11 +87,11 @@ export function Button({
   return (
     <button
       className={clsx(
-        'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50',
-        variant === 'primary' && 'bg-brand-700 text-white hover:bg-brand-600',
-        variant === 'secondary' && 'border border-ink-300 bg-white text-ink-700 hover:bg-ink-50',
-        variant === 'danger' && 'border border-red-200 bg-white text-red-600 hover:bg-red-50',
-        variant === 'ghost' && 'text-ink-500 hover:text-ink-800',
+        'skeuo-button inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50',
+        variant === 'primary' && 'skeuo-button-primary text-white',
+        variant === 'secondary' && 'skeuo-button-secondary text-ink-700',
+        variant === 'danger' && 'skeuo-button-danger text-red-700',
+        variant === 'ghost' && 'skeuo-button-ghost text-ink-500 hover:text-ink-800',
         className,
       )}
       {...props}
@@ -106,7 +106,7 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={clsx(
-        'w-full rounded-xl border border-ink-300 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200',
+        'skeuo-input w-full rounded-xl px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none',
         props.className,
       )}
     />
@@ -118,7 +118,7 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
     <textarea
       {...props}
       className={clsx(
-        'w-full rounded-xl border border-ink-300 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200',
+        'skeuo-input w-full rounded-xl px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none',
         props.className,
       )}
     />
@@ -135,7 +135,7 @@ export function Label({ children, htmlFor }: { children: ReactNode; htmlFor?: st
 
 export function EmptyState({ title, body }: { title: string; body?: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-ink-300 bg-ink-50 px-6 py-10 text-center">
+    <div className="skeuo-empty rounded-2xl px-6 py-10 text-center">
       <p className="text-sm font-semibold text-ink-600">{title}</p>
       {body ? <p className="mt-1 text-sm text-ink-400">{body}</p> : null}
     </div>
@@ -146,14 +146,14 @@ export function Flash({ searchParams }: { searchParams?: { error?: string; ok?: 
   if (!searchParams) return null
   if (searchParams.error) {
     return (
-      <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <div className="skeuo-card mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         {searchParams.error}
       </div>
     )
   }
   if (searchParams.ok) {
     return (
-      <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+      <div className="skeuo-card mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
         {searchParams.ok}
       </div>
     )

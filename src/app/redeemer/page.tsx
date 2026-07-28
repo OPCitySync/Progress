@@ -6,6 +6,8 @@ import { createOfferingAction, toggleOfferingAction, finalizeRedemptionAction } 
 import { Card, PageHeader, StatCard, EmptyState, Flash, Input, Label, Textarea, Button, statusBadge } from '@/components/ui'
 import { OrgStatusBanner } from '@/components/OrgStatusBanner'
 import { fmtDateTime } from '@/lib/format'
+import { getActiveCity } from '@/lib/services/city-networks'
+import { participantDisplayName } from '@/lib/participant-name'
 
 export default async function RedeemerDashboard({
   searchParams,
@@ -14,33 +16,35 @@ export default async function RedeemerDashboard({
 }) {
   const session = await requireRole('redeemer')
   const orgId = session.orgId!
+  const city = await getActiveCity(session)
 
   const org = (await db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1))[0]
-  const myOfferings = await db
+  const myOfferings = city ? await db
     .select()
     .from(offerings)
-    .where(eq(offerings.orgId, orgId))
-    .orderBy(desc(offerings.createdAt))
+    .where(sql`${offerings.orgId} = ${orgId} AND ${offerings.cityId} = ${city.id}`)
+    .orderBy(desc(offerings.createdAt)) : []
 
-  const recent = await db
+  const recent = city ? await db
     .select({ redemption: redemptions, offering: offerings, participant: users })
     .from(redemptions)
     .innerJoin(offerings, eq(redemptions.offeringId, offerings.id))
     .innerJoin(users, eq(redemptions.userId, users.id))
-    .where(eq(redemptions.orgId, orgId))
+    .where(sql`${redemptions.orgId} = ${orgId} AND ${redemptions.cityId} = ${city.id}`)
     .orderBy(desc(redemptions.createdAt))
-    .limit(25)
+    .limit(25) : []
 
-  const [burned] = await db
+  const burnedRows = city ? await db
     .select({ n: sql<number>`coalesce(sum(${redemptions.cost}), 0)` })
     .from(redemptions)
-    .where(sql`${redemptions.orgId} = ${orgId} AND ${redemptions.status} = 'finalized'`)
+    .where(sql`${redemptions.orgId} = ${orgId} AND ${redemptions.cityId} = ${city.id} AND ${redemptions.status} = 'finalized'`) : []
+  const burned = burnedRows[0]
 
   return (
     <>
       <PageHeader
         title={org?.name ?? 'Redeemer dashboard'}
-        subtitle="Publish offerings and finalize redemptions. Credits burn when you enter a participant’s code."
+        subtitle={city ? `Publish ${city.name} offerings and finalize local redemptions.` : 'Choose an organization city before publishing offerings.'}
       />
       <OrgStatusBanner status={org?.status ?? 'pending'} />
       <Flash searchParams={searchParams} />
@@ -145,7 +149,7 @@ export default async function RedeemerDashboard({
                 <div key={redemption.id} className="flex items-center justify-between gap-3 px-6 py-4">
                   <div>
                     <p className="text-sm font-medium text-ink-800">
-                      {offering.title} · {participant.name}
+                      {offering.title} · {participantDisplayName(participant)}
                     </p>
                     <p className="text-xs text-ink-400">
                       {redemption.cost} credits · {fmtDateTime(redemption.finalizedAt ?? redemption.createdAt)}

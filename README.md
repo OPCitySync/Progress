@@ -1,6 +1,6 @@
 # City/Sync — Volunteer Management Application
 
-The pilot application: a closed-loop civic credit system connecting **Participants**,
+An application for a closed-loop civic credit system connecting **Participants**,
 **Issuer Organizations**, and **Redeemer Organizations** — built database-first with an
 event-sourced ledger designed to migrate module-by-module onto the City::Sync contract suite.
 
@@ -10,8 +10,8 @@ event-sourced ledger designed to migrate module-by-module onto the City::Sync co
 UI (Next.js App Router, server actions)
   └── Protocol services           src/lib/services/
         identity · waivers · opportunities · redemption
-  └── Append-only event ledger    src/lib/ledger/
-        hash-chained events, canonical JSON, Merkle roots
+  └── Control database            identities · city registry · access
+  └── One database per city       wallets · credit journal · hash chain · anchors
   └── Anchoring port              src/lib/protocol/anchor.ts
         StubAnchorAdapter (default) | BaseAnchorAdapter (integration point)
   └── Drizzle ORM + libSQL        src/lib/db/
@@ -20,9 +20,9 @@ UI (Next.js App Router, server actions)
 
 Design rules carried over from the protocol work:
 
-- **Event names mirror the contract suite** (`TASK_CLAIMED`, `CREDITS_MINTED`, `WAIVER_ACCEPTED`…)
-  so pilot history can be replayed onto chain modules later.
-- **Credits are non-transferable** — there is no transfer endpoint, by design.
+- **Each city has an independent credit economy**: Berkeley credits never appear in Mexico City,
+  and each city has its own wallet table, credit journal, and hash chain.
+- **A single global identity** follows the participant between cities, without sharing city balances.
 - **Every state mutation writes its event in the same transaction** as the projection update.
   The ledger is the system of record; tables are projections.
 - **Waivers are hash-first**: the org keeps the document; the ledger records `sha256(body)` and
@@ -74,6 +74,8 @@ recorded on the ledger as `ORG_APPROVED { sandbox: true }` — the history stays
 2. In Vercel project settings, set:
    - `DATABASE_URL` = `libsql://<your-db>.turso.io`
    - `DATABASE_AUTH_TOKEN` = your Turso token
+   - `CITY_DB_BERKELEY_URL` and `CITY_DB_MEXICO_CITY_URL` = separate Turso databases
+   - matching `CITY_DB_<CITY>_AUTH_TOKEN` values
    - `AUTH_SECRET` = `openssl rand -hex 32`
    - `ANCHOR_MODE` = `stub`
 3. Run migrate + seed once against the Turso URL from your machine:
@@ -89,7 +91,7 @@ recorded on the ledger as `ORG_APPROVED { sandbox: true }` — the history stays
 | 2    | Waivers | On-chain `IssuerWaiverRegistry`: same hashes, embedded smart-account signatures |
 | 3    | Identity | `IssuerRegistry` mirrors org approvals |
 | 4    | Credits | `CityToken` mint/burn as async mirror, then authoritative |
-| 5    | Governance | Last — after pilot learnings settle the rules |
+| 5    | Governance | Last — after the city rules settle |
 
 ## Verifying the ledger
 

@@ -4,7 +4,7 @@ import { db } from '@/lib/db/client'
 import { waiverVersions, waiverAcceptances } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
-import { sha256Hex } from '@/lib/ledger/hash'
+import { canonicalJson, sha256Hex } from '@/lib/ledger/hash'
 import type { Result } from './identity'
 
 /**
@@ -19,6 +19,12 @@ export async function createWaiverVersion(input: {
   title: string
   body: string
   actorId: string
+  document?: {
+    url: string
+    name: string
+    mimeType: string
+    sha256: string
+  }
 }): Promise<Result<{ id: string; version: number; sha256: string }>> {
   if (!input.title.trim() || !input.body.trim()) {
     return { ok: false, error: 'Waiver title and body are required.' }
@@ -33,7 +39,11 @@ export async function createWaiverVersion(input: {
 
   const version = latest.length > 0 ? latest[0].version + 1 : 1
   const id = randomUUID()
-  const hash = sha256Hex(input.body)
+  // The acceptance hash covers both accessible waiver text and the optional
+  // uploaded source document, without storing the binary in the database.
+  const hash = sha256Hex(
+    canonicalJson({ body: input.body, documentSha256: input.document?.sha256 ?? null }),
+  )
 
   await db.transaction(async (tx) => {
     // Atomic rollover: deactivate prior versions, activate the new one.
@@ -45,6 +55,10 @@ export async function createWaiverVersion(input: {
       version,
       title: input.title.trim(),
       body: input.body,
+      documentUrl: input.document?.url ?? null,
+      documentName: input.document?.name ?? null,
+      documentMimeType: input.document?.mimeType ?? null,
+      documentSha256: input.document?.sha256 ?? null,
       sha256: hash,
       active: 1,
       createdAt: Date.now(),
@@ -52,7 +66,13 @@ export async function createWaiverVersion(input: {
     await appendEvent(
       tx,
       EventTypes.WAIVER_VERSION_CREATED,
-      { waiverVersionId: id, orgId: input.orgId, version, sha256: hash },
+      {
+        waiverVersionId: id,
+        orgId: input.orgId,
+        version,
+        sha256: hash,
+        documentSha256: input.document?.sha256 ?? null,
+      },
       input.actorId,
     )
   })

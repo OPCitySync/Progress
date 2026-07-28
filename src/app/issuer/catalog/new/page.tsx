@@ -3,9 +3,11 @@ import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { features } from '@/lib/config'
 import { listTypes } from '@/lib/services/catalog'
+import { getOrganizationLocations } from '@/lib/services/organization-locations'
 import { createCatalogEntryAction } from '@/app/actions'
 import { Card, PageHeader, Flash, Input, Label, Textarea, Button } from '@/components/ui'
 import { CredentialPicker } from '@/components/CredentialPicker'
+import { IssuerLocationField } from '@/components/organization/IssuerLocationField'
 
 const selectClass =
   'w-full rounded-xl border border-ink-300 bg-white px-3.5 py-2.5 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200'
@@ -15,9 +17,9 @@ export default async function NewCatalogEntryPage({
 }: {
   searchParams: { error?: string; ok?: string }
 }) {
-  await requireRole('issuer')
+  const session = await requireRole('issuer')
   if (!features().catalog) notFound()
-  const types = await listTypes()
+  const [types, locations] = await Promise.all([listTypes(), getOrganizationLocations(session.orgId!)])
 
   return (
     <>
@@ -39,10 +41,7 @@ export default async function NewCatalogEntryPage({
             <Textarea id="description" name="description" rows={4} placeholder="Scope, time commitment, what counts as completed…" />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="location">Default location</Label>
-              <Input id="location" name="location" placeholder="e.g. Riverside Park" />
-            </div>
+            <IssuerLocationField id="location" locations={locations} placeholder="e.g. Riverside Park" />
             <div>
               <Label htmlFor="typeId">Opportunity type</Label>
               <select id="typeId" name="typeId" className={selectClass} defaultValue="">

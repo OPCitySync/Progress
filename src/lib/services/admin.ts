@@ -6,6 +6,7 @@ import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { hashPassword } from '@/lib/auth/password'
 import type { Result } from './identity'
+import { burnCityCredits, mintCityCredits } from './city-wallets'
 
 /**
  * Network-administration functions. Every action is ledgered — admin power
@@ -68,6 +69,7 @@ export async function adjustCredits(
   amount: number,
   reason: string,
   actorId: string,
+  cityId: string,
 ): Promise<Result> {
   if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 100000) {
     return { ok: false, error: 'Amount must be a non-zero whole number (±100,000 max).' }
@@ -77,22 +79,26 @@ export async function adjustCredits(
   const user = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0]
   if (!user) return { ok: false, error: 'User not found.' }
   if (user.role !== 'participant') return { ok: false, error: 'Only participant balances can be adjusted.' }
-  if (amount < 0 && user.creditBalance + amount < 0) {
-    return { ok: false, error: `Balance is ${user.creditBalance}; cannot remove ${-amount}.` }
+  const refId = `admin-adjustment:${cityId}:${randomUUID()}`
+  if (amount > 0) {
+    await mintCityCredits({ cityId, userId, amount, refId, reason: `admin_adjustment:${reason.trim()}`, actorId })
+  } else {
+    const burn = await burnCityCredits({
+      cityId,
+      userId,
+      amount: -amount,
+      refId,
+      reason: `admin_adjustment:${reason.trim()}`,
+      actorId,
+    })
+    if (!burn.ok) return burn
   }
 
   await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({
-        creditBalance: user.creditBalance + amount,
-        lifetimeEarned: amount > 0 ? user.lifetimeEarned + amount : user.lifetimeEarned,
-      })
-      .where(eq(users.id, userId))
     await appendEvent(
       tx,
       EventTypes.CREDITS_ADJUSTED,
-      { userId, amount, reason: reason.trim() },
+      { userId, amount, cityId, reason: reason.trim() },
       actorId,
     )
   })

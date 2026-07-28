@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { validateActiveSession } from '@/lib/services/identity-access'
 
 const COOKIE = 'cs_session'
 
@@ -10,6 +11,10 @@ export type Session = {
   orgId: string | null
   name: string
   email: string
+  /** The participant or delegated-organization actor currently in use. */
+  activeIdentityId: string | null
+  /** Set only while operating for an organization. */
+  authorityId: string | null
 }
 
 function secret() {
@@ -43,6 +48,8 @@ export async function getSession(): Promise<Session | null> {
       orgId: (payload.orgId as string | null) ?? null,
       name: String(payload.name ?? ''),
       email: String(payload.email ?? ''),
+      activeIdentityId: (payload.activeIdentityId as string | null) ?? null,
+      authorityId: (payload.authorityId as string | null) ?? null,
     }
   } catch {
     return null
@@ -56,7 +63,12 @@ export function clearSession() {
 export async function requireSession(): Promise<Session> {
   const session = await getSession()
   if (!session) redirect('/login')
-  return session
+  const active = await validateActiveSession(session)
+  if (!active) {
+    clearSession()
+    redirect('/login?error=' + encodeURIComponent('This identity is no longer authorized to act.'))
+  }
+  return active
 }
 
 export async function requireRole(role: Session['role']): Promise<Session> {

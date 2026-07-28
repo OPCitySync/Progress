@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   claims,
@@ -9,11 +9,14 @@ import {
   waiverAcceptances,
   orgMessages,
   messageRecipients,
+  volunteerGroups,
+  volunteerGroupMembers,
 } from '@/lib/db/schema'
 import { getActiveWaiver } from './waivers'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from './identity'
+import { participantDisplayName } from '@/lib/participant-name'
 
 /**
  * Volunteer roster + communication for issuer organizations.
@@ -45,6 +48,14 @@ export type Roster = {
   counts: { total: number; active: number; needsWaiver: number }
 }
 
+export type VolunteerGroup = {
+  id: string
+  name: string
+  memberIds: string[]
+  createdAt: number
+  updatedAt: number
+}
+
 export async function getRoster(orgId: string, query?: string): Promise<Roster> {
   const rows = await db
     .select({ claim: claims, task: tasks, volunteer: users })
@@ -71,7 +82,7 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
     if (!v) {
       v = {
         userId: volunteer.id,
-        name: volunteer.name,
+        name: participantDisplayName(volunteer),
         email: volunteer.email,
         status: 'inactive',
         completedCount: 0,
@@ -134,17 +145,143 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
   }
 }
 
+/** Organization-defined volunteer groupings and their current membership. */
+export async function getVolunteerGroups(orgId: string): Promise<VolunteerGroup[]> {
+  const groups = await db
+    .select()
+    .from(volunteerGroups)
+    .where(eq(volunteerGroups.orgId, orgId))
+    .orderBy(asc(volunteerGroups.name))
+
+  if (groups.length === 0) return []
+
+  const members = await db
+    .select({ groupId: volunteerGroupMembers.groupId, userId: volunteerGroupMembers.userId })
+    .from(volunteerGroupMembers)
+  const membersByGroup = new Map<string, string[]>()
+  for (const member of members) {
+    const list = membersByGroup.get(member.groupId) ?? []
+    list.push(member.userId)
+    membersByGroup.set(member.groupId, list)
+  }
+
+  return groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    memberIds: membersByGroup.get(group.id) ?? [],
+    createdAt: group.createdAt,
+    updatedAt: group.updatedAt,
+  }))
+}
+
+function normalizeGroupName(name: string) {
+  return name.trim().replace(/\s+/g, ' ')
+}
+
+async function eligibleRosterMemberIds(orgId: string, memberIds: string[]) {
+  const roster = await getRoster(orgId)
+  const eligible = new Set(roster.volunteers.map((volunteer) => volunteer.userId))
+  return Array.from(new Set(memberIds)).filter((id) => eligible.has(id))
+}
+
+/** Create an issuer-owned grouping. Members are restricted to that issuer's roster. */
+export async function createVolunteerGroup(input: {
+  orgId: string
+  actorId: string
+  name: string
+  memberIds: string[]
+}): Promise<Result<{ id: string }>> {
+  const name = normalizeGroupName(input.name)
+  if (!name) return { ok: false, error: 'Give the grouping a name.' }
+  if (name.length > 80) return { ok: false, error: 'Grouping names are limited to 80 characters.' }
+
+  const duplicate = (
+    await db
+      .select({ id: volunteerGroups.id })
+      .from(volunteerGroups)
+      .where(and(eq(volunteerGroups.orgId, input.orgId), sql`lower(${volunteerGroups.name}) = lower(${name})`))
+      .limit(1)
+  )[0]
+  if (duplicate) return { ok: false, error: 'A grouping with that name already exists.' }
+
+  const memberIds = await eligibleRosterMemberIds(input.orgId, input.memberIds)
+  const id = randomUUID()
+  const now = Date.now()
+
+  await db.transaction(async (tx) => {
+    await tx.insert(volunteerGroups).values({
+      id,
+      orgId: input.orgId,
+      name,
+      createdByUserId: input.actorId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    if (memberIds.length > 0) {
+      await tx.insert(volunteerGroupMembers).values(
+        memberIds.map((userId) => ({ id: randomUUID(), groupId: id, userId, createdAt: now })),
+      )
+    }
+    await appendEvent(
+      tx,
+      EventTypes.VOLUNTEER_GROUP_CREATED,
+      { groupId: id, orgId: input.orgId, name, memberCount: memberIds.length },
+      input.actorId,
+    )
+  })
+
+  return { ok: true, id }
+}
+
+/** Replace a grouping's member list with the issuer-selected roster members. */
+export async function updateVolunteerGroupMembers(input: {
+  orgId: string
+  actorId: string
+  groupId: string
+  memberIds: string[]
+}): Promise<Result> {
+  const group = (
+    await db
+      .select({ id: volunteerGroups.id, name: volunteerGroups.name })
+      .from(volunteerGroups)
+      .where(and(eq(volunteerGroups.id, input.groupId), eq(volunteerGroups.orgId, input.orgId)))
+      .limit(1)
+  )[0]
+  if (!group) return { ok: false, error: 'That grouping could not be found.' }
+
+  const memberIds = await eligibleRosterMemberIds(input.orgId, input.memberIds)
+  const now = Date.now()
+  await db.transaction(async (tx) => {
+    await tx.delete(volunteerGroupMembers).where(eq(volunteerGroupMembers.groupId, group.id))
+    if (memberIds.length > 0) {
+      await tx.insert(volunteerGroupMembers).values(
+        memberIds.map((userId) => ({ id: randomUUID(), groupId: group.id, userId, createdAt: now })),
+      )
+    }
+    await tx.update(volunteerGroups).set({ updatedAt: now }).where(eq(volunteerGroups.id, group.id))
+    await appendEvent(
+      tx,
+      EventTypes.VOLUNTEER_GROUP_MEMBERS_UPDATED,
+      { groupId: group.id, orgId: input.orgId, name: group.name, memberCount: memberIds.length },
+      input.actorId,
+    )
+  })
+
+  return { ok: true }
+}
+
 /**
- * Send an in-app message to the full roster or to the group of volunteers
- * who completed a specific opportunity. Recipients are resolved and frozen
- * at send time. The ledger records the send (subject + scope + count — the
- * body stays in the application database).
+ * Send an in-app message to the full roster or one saved grouping. The issuer
+ * can include every person in that audience or choose a smaller subset.
+ * Recipients are resolved and frozen at send time.
  */
 export async function sendRosterMessage(input: {
   orgId: string
   actorId: string
-  scope: 'roster' | 'task'
-  taskId?: string
+  audience: 'roster' | 'group'
+  groupId?: string
+  allRecipients: boolean
+  memberIds?: string[]
   subject: string
   body: string
 }): Promise<Result<{ id: string; recipientCount: number }>> {
@@ -158,32 +295,46 @@ export async function sendRosterMessage(input: {
     return { ok: false, error: 'Your organization must be active to send messages.' }
   }
 
-  if (input.scope === 'task') {
-    if (!input.taskId) return { ok: false, error: 'Choose an opportunity for a group message.' }
-    const task = (await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1))[0]
-    if (!task || task.orgId !== input.orgId) return { ok: false, error: 'Opportunity not found.' }
-  }
-
   const roster = await getRoster(input.orgId)
-  const recipients =
-    input.scope === 'roster'
-      ? roster.volunteers
-      : (roster.taskGroups.find((g) => g.taskId === input.taskId)?.volunteers ?? [])
+  let audienceVolunteers = roster.volunteers
+  if (input.audience === 'group') {
+    if (!input.groupId) return { ok: false, error: 'Choose a volunteer grouping.' }
+    const group = (
+      await db
+        .select({ id: volunteerGroups.id })
+        .from(volunteerGroups)
+        .where(and(eq(volunteerGroups.id, input.groupId), eq(volunteerGroups.orgId, input.orgId)))
+        .limit(1)
+    )[0]
+    if (!group) return { ok: false, error: 'That volunteer grouping could not be found.' }
+    const members = await db
+      .select({ userId: volunteerGroupMembers.userId })
+      .from(volunteerGroupMembers)
+      .where(eq(volunteerGroupMembers.groupId, group.id))
+    const memberIds = new Set(members.map((member) => member.userId))
+    audienceVolunteers = roster.volunteers.filter((volunteer) => memberIds.has(volunteer.userId))
+  }
+  const selectedIds = new Set(input.memberIds ?? [])
+  const recipients = input.allRecipients
+    ? audienceVolunteers
+    : audienceVolunteers.filter((volunteer) => selectedIds.has(volunteer.userId))
 
   if (recipients.length === 0) {
-    return { ok: false, error: 'No volunteers in that group yet.' }
+    return { ok: false, error: 'Choose at least one volunteer to message.' }
   }
 
   const id = randomUUID()
   const now = Date.now()
+  const scope = input.allRecipients ? input.audience : 'members'
 
   await db.transaction(async (tx) => {
     await tx.insert(orgMessages).values({
       id,
       orgId: input.orgId,
       senderUserId: input.actorId,
-      scope: input.scope,
-      taskId: input.scope === 'task' ? input.taskId! : null,
+      scope,
+      taskId: null,
+      groupId: input.audience === 'group' ? input.groupId! : null,
       subject,
       body,
       recipientCount: recipients.length,
@@ -204,8 +355,9 @@ export async function sendRosterMessage(input: {
       {
         messageId: id,
         orgId: input.orgId,
-        scope: input.scope,
-        taskId: input.scope === 'task' ? input.taskId : undefined,
+        scope,
+        groupId: input.audience === 'group' ? input.groupId : undefined,
+        selectedMemberIds: scope === 'members' ? recipients.map((recipient) => recipient.userId) : undefined,
         subject,
         recipientCount: recipients.length,
       },
@@ -244,10 +396,12 @@ export async function markAllMessagesRead(userId: string) {
 }
 
 export async function getSentMessages(orgId: string, limit = 10) {
-  return db
-    .select()
+  const rows = await db
+    .select({ message: orgMessages, groupName: volunteerGroups.name })
     .from(orgMessages)
+    .leftJoin(volunteerGroups, eq(orgMessages.groupId, volunteerGroups.id))
     .where(eq(orgMessages.orgId, orgId))
     .orderBy(desc(orgMessages.createdAt))
     .limit(limit)
+  return rows.map(({ message, groupName }) => ({ ...message, groupName }))
 }

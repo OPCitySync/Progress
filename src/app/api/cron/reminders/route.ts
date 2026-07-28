@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { processDueReminders } from '@/lib/services/notifications'
+import { flushAllCityLedgerOutbox } from '@/lib/ledger/city-outbox'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,8 +18,8 @@ async function handle(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }
-  const res = await processDueReminders()
-  return NextResponse.json({ ok: true, ...res })
+  const [res, cityLedger] = await Promise.all([processDueReminders(), flushAllCityLedgerOutbox()])
+  return NextResponse.json({ ok: true, ...res, cityLedger })
 }
 
 export const GET = handle

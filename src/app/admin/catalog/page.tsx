@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { features } from '@/lib/config'
 import { listSubmittedEntries, listTypes } from '@/lib/services/catalog'
+import { getActiveCity } from '@/lib/services/city-networks'
 import { reviewCatalogEntryAction } from '@/app/actions'
 import { Card, PageHeader, EmptyState, Flash, Input, Label, Button } from '@/components/ui'
 
@@ -15,15 +16,16 @@ export default async function AdminCatalogPage({
 }: {
   searchParams: { error?: string; ok?: string }
 }) {
-  await requireRole('admin')
+  const session = await requireRole('admin')
   if (!features().catalogApproval) notFound()
-  const [queue, types] = await Promise.all([listSubmittedEntries(), listTypes()])
+  const city = await getActiveCity(session)
+  const [queue, types] = await Promise.all([listSubmittedEntries(city?.id), listTypes()])
 
   return (
     <>
       <PageHeader
         title="Catalog review"
-        subtitle="Approve organization opportunity templates before they can distribute civic credits — confirm each genuinely benefits the public."
+        subtitle={city ? `Review templates submitted by organizations in ${city.name}.` : 'Choose a city network to review its templates.'}
       />
       <Flash searchParams={searchParams} />
 

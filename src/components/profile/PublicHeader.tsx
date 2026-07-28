@@ -9,7 +9,7 @@ import { getSession, homeFor } from '@/lib/auth/session'
 export async function PublicHeader() {
   const session = await getSession()
   return (
-    <header className="bg-brand-900">
+    <header className="skeuo-public-header">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
         <Logo variant="light" size={26} href="/" />
         <nav className="flex items-center gap-3">

@@ -1,10 +1,13 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { users, orgs } from '@/lib/db/schema'
+import { cityMemberships, users, orgs } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { setUserStatusAction, resetPasswordAction, adjustCreditsAction } from '@/app/actions'
 import { Card, PageHeader, StatCard, EmptyState, Flash, Input, Button, Badge } from '@/components/ui'
 import { fmtDate } from '@/lib/format'
+import { getActiveCity } from '@/lib/services/city-networks'
+import { getCityWallet } from '@/lib/services/city-wallets'
+import { participantDisplayName } from '@/lib/participant-name'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,22 +24,41 @@ export default async function AdminUsersPage({
   searchParams: { error?: string; ok?: string; q?: string; role?: string }
 }) {
   const session = await requireRole('admin')
+  const city = await getActiveCity(session)
   const q = (searchParams.q ?? '').trim().toLowerCase()
   const roleFilter = searchParams.role ?? ''
 
-  const allUsers = await db.select().from(users).orderBy(desc(users.createdAt))
-  const allOrgs = await db.select({ id: orgs.id, name: orgs.name }).from(orgs)
+  const allUsers = city
+    ? (
+        await db
+          .select({ user: users })
+          .from(cityMemberships)
+          .innerJoin(users, eq(cityMemberships.memberId, users.id))
+          .where(and(eq(cityMemberships.cityId, city.id), eq(cityMemberships.memberKind, 'user')))
+          .orderBy(desc(users.createdAt))
+      ).map(({ user }) => user)
+    : []
+  const allOrgs = city
+    ? await db.select({ id: orgs.id, name: orgs.name }).from(orgs).where(eq(orgs.requestedCityId, city.id))
+    : []
   const orgName = new Map(allOrgs.map((o) => [o.id, o.name]))
 
   const filtered = allUsers.filter((u) => {
     if (roleFilter && u.role !== roleFilter) return false
-    if (q && ![u.name, u.email, u.role, u.status].join(' ').toLowerCase().includes(q)) return false
+    if (q && ![u.name, u.username ?? '', u.email, u.role, u.status].join(' ').toLowerCase().includes(q)) return false
     return true
   })
+  const walletByUser = new Map(
+    await Promise.all(
+      filtered
+        .filter((user) => user.role === 'participant')
+        .map(async (user) => [user.id, city ? await getCityWallet(city.id, user.id) : { creditBalance: 0, lifetimeEarned: 0 }] as const),
+    ),
+  )
 
   return (
     <>
-      <PageHeader title="Users" subtitle="Every account on the network. All actions here are ledgered." />
+      <PageHeader title="Users" subtitle={city ? `Accounts participating in ${city.name}. Credit adjustments apply only to this city.` : 'Choose a city network to view its accounts.'} />
       <Flash searchParams={searchParams} />
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -80,7 +102,7 @@ export default async function AdminUsersPage({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-ink-800">
-                    {u.name}{' '}
+                    {u.role === 'participant' ? participantDisplayName(u) : u.name}{' '}
                     <Badge tone={roleTone[u.role]}>{u.role}</Badge>{' '}
                     {u.status === 'disabled' ? <Badge tone="red">disabled</Badge> : null}
                   </p>
@@ -90,7 +112,8 @@ export default async function AdminUsersPage({
                   </p>
                   {u.role === 'participant' ? (
                     <p className="mt-1 text-xs text-ink-500">
-                      Balance {u.creditBalance} · lifetime {u.lifetimeEarned}
+                      Balance {walletByUser.get(u.id)?.creditBalance ?? 0} · lifetime {walletByUser.get(u.id)?.lifetimeEarned ?? 0}
+                      {city ? ` · ${city.name}` : ''}
                     </p>
                   ) : null}
                 </div>
@@ -119,7 +142,7 @@ export default async function AdminUsersPage({
               {u.role === 'participant' ? (
                 <details className="mt-3 border-t border-ink-100 pt-3">
                   <summary className="cursor-pointer text-xs font-medium text-ink-400 hover:text-ink-600">
-                    Adjust credits (ledgered, reason required)
+                    Adjust {city?.name ?? 'city'} credits (ledgered, reason required)
                   </summary>
                   <form action={adjustCreditsAction} className="mt-3 flex flex-wrap items-end gap-2">
                     <input type="hidden" name="userId" value={u.id} />

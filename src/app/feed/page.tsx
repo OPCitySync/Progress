@@ -129,7 +129,7 @@ export default async function FeedPage({
             </div>
             {leaderboard.length === 0 ? (
               <p className="px-6 py-4 text-sm text-ink-400">
-                No neighborhoods on the board yet. Volunteers set theirs on the My Interests page.
+                No neighborhoods are on the board yet.
               </p>
             ) : (
               <div className="mt-2 divide-y divide-ink-100">

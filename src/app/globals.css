@@ -3,5 +3,649 @@
 @tailwind utilities;
 
 body {
-  @apply bg-ink-50 text-ink-900 antialiased;
+  @apply text-ink-900 antialiased;
+  min-height: 100vh;
+  background-color: #e7e2d8;
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(255, 255, 255, 0.9), transparent 30rem),
+    radial-gradient(circle at 90% 100%, rgba(190, 160, 103, 0.18), transparent 34rem),
+    repeating-linear-gradient(0deg, rgba(55, 48, 37, 0.025) 0, rgba(55, 48, 37, 0.025) 1px, transparent 1px, transparent 4px);
+}
+
+@layer components {
+  .skeuo-app {
+    background-color: #e7e2d8;
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.75), transparent 38rem),
+      repeating-linear-gradient(0deg, rgba(70, 56, 35, 0.025) 0, rgba(70, 56, 35, 0.025) 1px, transparent 1px, transparent 5px);
+  }
+
+  .skeuo-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #c9b98d;
+    background: linear-gradient(145deg, #fffdf8 0%, #f5efe2 100%);
+    box-shadow:
+      0 16px 28px -20px rgba(48, 36, 17, 0.65),
+      0 3px 0 rgba(134, 111, 66, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.98),
+      inset 0 -2px 6px rgba(105, 83, 43, 0.12);
+  }
+
+  .skeuo-card::before {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    content: '';
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+  }
+
+  .skeuo-card.bg-brand-50 {
+    background: linear-gradient(145deg, #f9faff 0%, #e4e8f6 100%);
+  }
+
+  .skeuo-card.bg-red-50 {
+    background: linear-gradient(145deg, #fff9f8 0%, #f8dfdc 100%);
+  }
+
+  .skeuo-card.bg-ink-50 {
+    background: linear-gradient(145deg, #ffffff 0%, #e8e7e2 100%);
+  }
+
+  .skeuo-page-title {
+    letter-spacing: -0.025em;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .skeuo-button {
+    border-width: 1px;
+    border-style: solid;
+    box-shadow:
+      0 3px 0 rgba(33, 28, 18, 0.24),
+      0 7px 13px -7px rgba(23, 20, 16, 0.75),
+      inset 0 1px 0 rgba(255, 255, 255, 0.38),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.16);
+    transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+  }
+
+  .skeuo-button:hover { filter: brightness(1.06); }
+
+  .skeuo-button:active {
+    transform: translateY(2px);
+    box-shadow:
+      0 1px 0 rgba(33, 28, 18, 0.22),
+      inset 0 2px 5px rgba(0, 0, 0, 0.2);
+  }
+
+  .skeuo-button-primary {
+    border-color: #202b62;
+    background: linear-gradient(180deg, #536cbf 0%, #35488b 52%, #29386f 100%);
+  }
+
+  .skeuo-button-secondary {
+    border-color: #b9a773;
+    background: linear-gradient(180deg, #fffdf7 0%, #e9dfc7 100%);
+  }
+
+  .skeuo-button-danger {
+    border-color: #c87b70;
+    background: linear-gradient(180deg, #fffaf9 0%, #f2d8d3 100%);
+  }
+
+  .skeuo-button-ghost {
+    border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+
+  .skeuo-input {
+    border: 1px solid #b8ab8a;
+    background: linear-gradient(180deg, #e8e0cf 0%, #fffdf7 18%, #fffdf8 100%);
+    box-shadow:
+      inset 0 2px 5px rgba(84, 65, 33, 0.16),
+      0 1px 0 rgba(255, 255, 255, 0.88);
+  }
+
+  .skeuo-input:focus {
+    border-color: #a77b2c;
+    box-shadow:
+      inset 0 2px 5px rgba(84, 65, 33, 0.14),
+      0 0 0 3px rgba(221, 158, 51, 0.22);
+  }
+
+  .skeuo-badge {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 1px 1px rgba(45, 35, 18, 0.12);
+  }
+
+  .skeuo-filter-chip {
+    border: 1px solid #bdb08c;
+    background: linear-gradient(180deg, #fffdf8 0%, #e5dcc7 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96), 0 2px 0 rgba(95, 76, 39, 0.16);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
+    transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease;
+  }
+
+  .skeuo-filter-chip:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+  }
+
+  .skeuo-filter-chip-active {
+    border-color: #9f6c17;
+    background: linear-gradient(180deg, #ffe8a0 0%, #e5ad42 58%, #c88a20 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64), inset 0 -2px 0 rgba(91, 56, 6, 0.17), 0 2px 0 rgba(116, 75, 12, 0.3);
+    color: #31220d;
+    text-shadow: 0 1px 0 rgba(255, 250, 226, 0.65);
+  }
+
+  .skeuo-empty {
+    border-style: solid;
+    border-color: #c9b98d;
+    background: linear-gradient(145deg, #f9f5eb, #e6dcc5);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 -2px 5px rgba(88, 66, 27, 0.1);
+  }
+
+  .skeuo-sidebar {
+    border-right-color: rgba(211, 187, 126, 0.26);
+    background-color: #141824;
+    background-image:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.35)),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0, rgba(255, 255, 255, 0.018) 1px, transparent 1px, transparent 4px);
+    box-shadow: inset -1px 0 rgba(255, 255, 255, 0.07), 12px 0 28px rgba(13, 15, 24, 0.12);
+  }
+
+  .skeuo-city-rail {
+    background-color: #10131d;
+    background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.035), transparent 44%, rgba(0, 0, 0, 0.32));
+    box-shadow: inset -1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .skeuo-city-pull-tab {
+    border: 1px solid #9c762d;
+    border-left: 0;
+    background:
+      repeating-linear-gradient(0deg, rgba(91, 62, 16, 0.08) 0, rgba(91, 62, 16, 0.08) 1px, transparent 1px, transparent 3px),
+      linear-gradient(90deg, #b27d27 0%, #f6d678 48%, #c28b2f 100%);
+    box-shadow:
+      3px 3px 6px rgba(5, 8, 14, 0.28),
+      inset 1px 0 rgba(255, 250, 209, 0.65),
+      inset 0 1px rgba(255, 245, 188, 0.8),
+      inset 0 -2px rgba(82, 52, 9, 0.19);
+  }
+
+  .skeuo-header {
+    background: linear-gradient(180deg, #fffefb 0%, #e7decb 100%);
+    box-shadow: inset 0 1px 0 #ffffff, 0 5px 14px -12px rgba(56, 43, 19, 0.72);
+  }
+
+  /* The account/city header sits above a subtly deeper functional tab rail. */
+  .skeuo-workspace-tabs {
+    background: linear-gradient(180deg, #e9e0cf 0%, #d9cba9 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58), inset 0 -1px 0 rgba(114, 87, 37, 0.14);
+  }
+
+  .skeuo-tab {
+    margin: 0.3rem 0;
+    border: 1px solid transparent;
+    border-radius: 0.7rem;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.78);
+    transition: transform 150ms ease, background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .skeuo-tab:hover {
+    background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(225,214,190,0.72));
+  }
+
+  .skeuo-tab-active {
+    border-color: rgba(126, 99, 51, 0.16);
+    background: linear-gradient(145deg, rgba(151, 124, 73, 0.18), rgba(255, 255, 255, 0.22));
+    box-shadow: inset 1px 2px 4px rgba(91, 70, 35, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  }
+
+  .skeuo-nav-item {
+    border: 1px solid transparent;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+    transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  }
+
+  .skeuo-nav-item:hover {
+    transform: translateX(2px);
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.035));
+  }
+
+  .skeuo-nav-active {
+    border-color: rgba(235, 213, 158, 0.22);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.07));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.17), inset 0 -2px 5px rgba(0, 0, 0, 0.2), 0 4px 9px -7px rgba(0, 0, 0, 0.9);
+  }
+
+  .skeuo-public-header, .skeuo-hero, .skeuo-auth-shell {
+    background-color: #151a2b;
+    background-image:
+      radial-gradient(circle at 16% 0%, rgba(112, 137, 207, 0.34), transparent 28rem),
+      linear-gradient(145deg, #252c49 0%, #15151e 58%, #0f1119 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -14px 30px rgba(0, 0, 0, 0.2);
+  }
+
+  .skeuo-theme-toggle {
+    display: inline-flex;
+    height: 1.5rem;
+    width: 1.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.45rem;
+    color: rgba(255, 255, 255, 0.48);
+    transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  }
+
+  .skeuo-theme-toggle:hover,
+  .skeuo-theme-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.14);
+    outline: none;
+  }
+
+  .skeuo-account-menu-panel {
+    background: linear-gradient(160deg, #fffefb 0%, #e9e0cf 100%);
+    box-shadow: 0 14px 30px rgba(56, 43, 19, 0.23), inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  }
+
+  .skeuo-account-menu-item,
+  .skeuo-city-menu-item,
+  .skeuo-role-switcher {
+    display: flex;
+    min-height: 2.4rem;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    border-radius: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    color: #3b4659;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: background 150ms ease, color 150ms ease;
+  }
+
+  .skeuo-account-menu-item:hover,
+  .skeuo-city-menu-item:hover {
+    background: rgba(255, 255, 255, 0.58);
+    color: #1e2a42;
+  }
+
+  .skeuo-city-menu-item-active {
+    background: rgba(72, 99, 168, 0.12);
+  }
+
+  .skeuo-role-switcher {
+    border: 1px solid rgba(92, 106, 142, 0.18);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(222, 213, 193, 0.72));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 1px 0 rgba(88, 69, 34, 0.12);
+  }
+
+  .skeuo-role-switcher:hover {
+    background: linear-gradient(180deg, #ffffff, #e6dac2);
+  }
+
+  .skeuo-role-switcher-track {
+    display: inline-flex;
+    height: 1.35rem;
+    width: 2.35rem;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    border-radius: 999px;
+    padding: 0.16rem;
+    background: linear-gradient(180deg, #4d67ba, #314887);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.26), 0 1px 0 rgba(255, 255, 255, 0.76);
+  }
+
+  .skeuo-role-switcher-track span {
+    height: 1.03rem;
+    width: 1.03rem;
+    border-radius: 999px;
+    background: linear-gradient(145deg, #ffffff, #dce2f1);
+    box-shadow: 0 1px 2px rgba(18, 25, 49, 0.42), inset 0 1px rgba(255, 255, 255, 0.9);
+  }
+}
+
+button[class*='bg-brand-'], a[class*='bg-brand-'] {
+  border: 1px solid #202b62 !important;
+  background: linear-gradient(180deg, #536cbf 0%, #35488b 52%, #29386f 100%) !important;
+  box-shadow: 0 3px 0 rgba(33, 28, 18, 0.24), 0 7px 13px -7px rgba(23, 20, 16, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 -2px 0 rgba(0, 0, 0, 0.16) !important;
+}
+
+button[class*='bg-brand-']:active, a[class*='bg-brand-']:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(33, 28, 18, 0.22), inset 0 2px 5px rgba(0, 0, 0, 0.2) !important;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
+textarea,
+select {
+  border-color: #b8ab8a;
+  background-color: #fffdf8;
+  box-shadow: inset 0 2px 5px rgba(84, 65, 33, 0.13), 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='hidden']):focus,
+textarea:focus,
+select:focus {
+  border-color: #a77b2c !important;
+  box-shadow: inset 0 2px 5px rgba(84, 65, 33, 0.13), 0 0 0 3px rgba(221, 158, 51, 0.22) !important;
+}
+
+/* The signed-in dark theme keeps the tactile, layered City/Sync treatment
+   while shifting each surface to a low-glare midnight palette. */
+.skeuo-app.skeuo-dark {
+  color: #eef1f7;
+  background-color: #111520;
+  background-image:
+    radial-gradient(circle at 22% 0%, rgba(102, 126, 190, 0.2), transparent 38rem),
+    radial-gradient(circle at 96% 100%, rgba(190, 146, 64, 0.1), transparent 34rem),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0, rgba(255, 255, 255, 0.018) 1px, transparent 1px, transparent 5px);
+}
+
+.skeuo-app.skeuo-dark .skeuo-card {
+  border-color: #55617c;
+  background: linear-gradient(145deg, #2b3243 0%, #1d2330 100%);
+  box-shadow:
+    0 18px 30px -21px rgba(0, 0, 0, 0.88),
+    0 3px 0 rgba(7, 9, 14, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    inset 0 -2px 7px rgba(0, 0, 0, 0.32);
+}
+
+.skeuo-app.skeuo-dark .skeuo-card::before {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+}
+
+.skeuo-app.skeuo-dark .skeuo-card.bg-brand-50,
+.skeuo-app.skeuo-dark .bg-brand-50,
+.skeuo-app.skeuo-dark .bg-brand-100 {
+  background: linear-gradient(145deg, #293550 0%, #1c253a 100%);
+}
+
+.skeuo-app.skeuo-dark .skeuo-card.bg-red-50,
+.skeuo-app.skeuo-dark .bg-red-50 {
+  background: linear-gradient(145deg, #432d35 0%, #2c2028 100%);
+}
+
+.skeuo-app.skeuo-dark .skeuo-card.bg-ink-50,
+.skeuo-app.skeuo-dark .bg-ink-50,
+.skeuo-app.skeuo-dark .bg-ink-100,
+.skeuo-app.skeuo-dark .bg-white {
+  background: linear-gradient(145deg, #2b3140 0%, #202632 100%);
+}
+
+.skeuo-app.skeuo-dark .bg-gold-50,
+.skeuo-app.skeuo-dark .bg-gold-100 {
+  background-color: #3b321f;
+}
+
+.skeuo-app.skeuo-dark .bg-emerald-50,
+.skeuo-app.skeuo-dark .bg-emerald-100 {
+  background-color: #1c362f;
+}
+
+/* Opacity variants are separate Tailwind utilities, so give them the same
+   dark surfaces rather than letting their light-mode fills bleed through. */
+.skeuo-app.skeuo-dark .bg-brand-50\/40,
+.skeuo-app.skeuo-dark .bg-brand-50\/50 {
+  background-color: rgba(38, 50, 77, 0.92);
+}
+
+.skeuo-app.skeuo-dark .bg-gold-50\/70 {
+  background-color: rgba(59, 50, 31, 0.94);
+}
+
+.skeuo-app.skeuo-dark .bg-ink-50\/60 {
+  background-color: rgba(38, 45, 59, 0.94);
+}
+
+/* Volunteer grouping pickers use a translucent light utility in light mode.
+   Give that surface an explicit midnight fill so participant names and emails
+   remain readable when the picker is expanded in dark mode. */
+.skeuo-app.skeuo-dark .volunteer-member-picker {
+  border-color: #59657d;
+  background: linear-gradient(145deg, #202837 0%, #161d29 100%);
+}
+
+.skeuo-app.skeuo-dark .volunteer-member-option:hover {
+  background: linear-gradient(145deg, #3a465d 0%, #2a3345 100%);
+}
+
+/* Hover utilities compile as separate classes. Keep their interactive fills
+   in the dark palette instead of briefly restoring the light-mode surface. */
+.skeuo-app.skeuo-dark .hover\:bg-ink-50:hover,
+.skeuo-app.skeuo-dark .hover\:bg-ink-100:hover {
+  background: linear-gradient(145deg, #3a465d 0%, #2a3345 100%);
+}
+
+.skeuo-app.skeuo-dark .hover\:bg-gold-100:hover {
+  background-color: #4a3d22;
+}
+
+.skeuo-app.skeuo-dark .hover\:bg-emerald-100:hover {
+  background-color: #28503f;
+}
+
+/* Green status surfaces need high-contrast labels against the dark palette. */
+.skeuo-app.skeuo-dark .bg-emerald-50.text-emerald-700,
+.skeuo-app.skeuo-dark .bg-emerald-50.text-emerald-600,
+.skeuo-app.skeuo-dark .bg-emerald-100.text-emerald-700,
+.skeuo-app.skeuo-dark .bg-emerald-100.text-emerald-600 {
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.skeuo-app.skeuo-dark .skeuo-empty {
+  border-color: #4d5870;
+  background: linear-gradient(145deg, #292f3d, #202633);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 5px rgba(0, 0, 0, 0.28);
+}
+
+.skeuo-app.skeuo-dark .skeuo-header {
+  border-color: #505c76 !important;
+  background: linear-gradient(180deg, #2c3445 0%, #202735 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11), 0 5px 16px -12px rgba(0, 0, 0, 0.9);
+}
+
+.skeuo-app.skeuo-dark .skeuo-workspace-tabs {
+  border-color: #45516a;
+  background: linear-gradient(180deg, #252d3d 0%, #1b2230 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.skeuo-app.skeuo-dark .skeuo-tab {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.skeuo-app.skeuo-dark .skeuo-tab:hover {
+  background: linear-gradient(180deg, rgba(116, 133, 172, 0.35), rgba(53, 63, 84, 0.45));
+}
+
+.skeuo-app.skeuo-dark .skeuo-tab-active {
+  border-color: rgba(132, 151, 190, 0.16);
+  background: linear-gradient(145deg, rgba(8, 12, 20, 0.3), rgba(92, 111, 151, 0.12));
+  box-shadow: inset 1px 2px 5px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(177, 195, 231, 0.08);
+}
+
+.skeuo-app.skeuo-dark .skeuo-input,
+.skeuo-app.skeuo-dark input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
+.skeuo-app.skeuo-dark textarea,
+.skeuo-app.skeuo-dark select {
+  border-color: #59657d;
+  background: linear-gradient(180deg, #161c28 0%, #202735 100%);
+  color: #f3f4f8;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.skeuo-app.skeuo-dark .skeuo-input:focus,
+.skeuo-app.skeuo-dark input:not([type='checkbox']):not([type='radio']):not([type='hidden']):focus,
+.skeuo-app.skeuo-dark textarea:focus,
+.skeuo-app.skeuo-dark select:focus {
+  border-color: #dfad49 !important;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.32), 0 0 0 3px rgba(226, 174, 73, 0.25) !important;
+}
+
+.skeuo-app.skeuo-dark .skeuo-filter-chip {
+  border-color: #59647c;
+  background: linear-gradient(180deg, #384257 0%, #262e3d 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 0 rgba(0, 0, 0, 0.35);
+  color: #edf0f7;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+.skeuo-app.skeuo-dark .skeuo-filter-chip-active {
+  border-color: #d9a63c;
+  background: linear-gradient(180deg, #ffdd7f 0%, #d99b2e 58%, #a96c18 100%);
+  color: #23180a;
+  text-shadow: 0 1px 0 rgba(255, 248, 213, 0.65);
+}
+
+.skeuo-app.skeuo-dark .skeuo-sidebar {
+  border-right-color: rgba(139, 155, 199, 0.25);
+  background-color: #0e131e;
+  box-shadow: inset -1px 0 rgba(255, 255, 255, 0.07), 12px 0 28px rgba(0, 0, 0, 0.28);
+}
+
+.skeuo-app.skeuo-dark .skeuo-city-rail {
+  background-color: #090d15;
+}
+
+.skeuo-app.skeuo-dark .skeuo-account-menu-panel {
+  border-color: #516079;
+  background: linear-gradient(160deg, #2e3749 0%, #1c2432 100%);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.skeuo-app.skeuo-dark .skeuo-account-menu-item,
+.skeuo-app.skeuo-dark .skeuo-city-menu-item {
+  color: #d7deed;
+}
+
+.skeuo-app.skeuo-dark .skeuo-account-menu-item:hover,
+.skeuo-app.skeuo-dark .skeuo-city-menu-item:hover,
+.skeuo-app.skeuo-dark .skeuo-city-menu-item-active {
+  background: rgba(115, 136, 183, 0.2);
+  color: #fff;
+}
+
+.skeuo-app.skeuo-dark .skeuo-role-switcher {
+  border-color: rgba(142, 162, 206, 0.24);
+  background: linear-gradient(180deg, rgba(72, 85, 112, 0.86), rgba(38, 47, 64, 0.92));
+}
+
+.skeuo-app.skeuo-dark .skeuo-role-switcher:hover {
+  background: linear-gradient(180deg, rgba(87, 103, 136, 0.92), rgba(45, 55, 75, 0.95));
+}
+
+.skeuo-app.skeuo-dark .text-ink-900 { color: #f2f4f8; }
+.skeuo-app.skeuo-dark .text-ink-800 { color: #e4e7ef; }
+.skeuo-app.skeuo-dark .text-ink-700 { color: #d3d8e4; }
+.skeuo-app.skeuo-dark .text-ink-600 { color: #bbc3d3; }
+.skeuo-app.skeuo-dark .text-ink-500 { color: #a5aec0; }
+.skeuo-app.skeuo-dark .text-ink-400 { color: #8f9ab0; }
+.skeuo-app.skeuo-dark .text-brand-900 { color: #dce5ff; }
+.skeuo-app.skeuo-dark .text-brand-800 { color: #cad7ff; }
+.skeuo-app.skeuo-dark .text-brand-700 { color: #b9c8ff; }
+.skeuo-app.skeuo-dark .text-brand-600 { color: #c3d0ff; }
+.skeuo-app.skeuo-dark .text-brand-500 { color: #d0dcff; }
+.skeuo-app.skeuo-dark .text-gold-800 { color: #ffe2a0; }
+.skeuo-app.skeuo-dark .text-gold-700 { color: #ffdc87; }
+.skeuo-app.skeuo-dark .text-gold-700\/70 { color: rgba(255, 220, 135, 0.86); }
+.skeuo-app.skeuo-dark .text-gold-600 { color: #ffd375; }
+.skeuo-app.skeuo-dark .text-emerald-700 { color: #9ae7c0; }
+.skeuo-app.skeuo-dark .text-emerald-600 { color: #8de1b5; }
+.skeuo-app.skeuo-dark .text-emerald-500 { color: #a6edca; }
+.skeuo-app.skeuo-dark .text-red-700 { color: #ffb9bf; }
+.skeuo-app.skeuo-dark .text-red-600 { color: #ffabb3; }
+.skeuo-app.skeuo-dark .text-red-500 { color: #ffc0c5; }
+
+.skeuo-app.skeuo-dark .border-ink-100,
+.skeuo-app.skeuo-dark .border-ink-200,
+.skeuo-app.skeuo-dark .border-ink-300 {
+  border-color: #4a556d;
+}
+
+.skeuo-app.skeuo-dark .border-brand-100,
+.skeuo-app.skeuo-dark .border-brand-200,
+.skeuo-app.skeuo-dark .border-brand-300 {
+  border-color: #5f719d;
+}
+
+.skeuo-app.skeuo-dark .border-gold-200,
+.skeuo-app.skeuo-dark .border-gold-300 {
+  border-color: #9b7d3c;
+}
+
+.skeuo-app.skeuo-dark .border-emerald-200,
+.skeuo-app.skeuo-dark .border-emerald-300 {
+  border-color: #4f9b78;
+}
+
+.skeuo-app.skeuo-dark .border-red-200,
+.skeuo-app.skeuo-dark .border-red-300 {
+  border-color: #9d626c;
+}
+
+/* Light-mode secondary and danger controls are intentionally rebuilt here:
+   paired with the dark text palette, their old pale fills lost contrast. */
+.skeuo-app.skeuo-dark .skeuo-button-secondary {
+  border-color: #65718b;
+  background: linear-gradient(180deg, #4c5870 0%, #303a4d 100%);
+  color: #f3f5fa;
+  box-shadow:
+    0 3px 0 rgba(4, 7, 12, 0.58),
+    0 7px 13px -7px rgba(0, 0, 0, 0.88),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.24);
+}
+
+.skeuo-app.skeuo-dark .skeuo-button-danger {
+  border-color: #a55d68;
+  background: linear-gradient(180deg, #9e5965 0%, #6f3644 100%);
+  color: #fff5f6;
+  box-shadow:
+    0 3px 0 rgba(4, 7, 12, 0.58),
+    0 7px 13px -7px rgba(0, 0, 0, 0.88),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.skeuo-app.skeuo-dark .skeuo-button-danger.text-red-700,
+.skeuo-app.skeuo-dark .skeuo-button-secondary.text-ink-700 {
+  color: #fff5f6;
+}
+
+/* Semantic status fills need a neutral, high-contrast foreground. */
+.skeuo-app.skeuo-dark .bg-emerald-50.text-emerald-700,
+.skeuo-app.skeuo-dark .bg-emerald-50.text-emerald-600,
+.skeuo-app.skeuo-dark .bg-emerald-100.text-emerald-700,
+.skeuo-app.skeuo-dark .bg-emerald-100.text-emerald-600,
+.skeuo-app.skeuo-dark .bg-gold-50.text-gold-800,
+.skeuo-app.skeuo-dark .bg-gold-50.text-gold-700,
+.skeuo-app.skeuo-dark .bg-gold-100.text-gold-800,
+.skeuo-app.skeuo-dark .bg-gold-100.text-gold-700,
+.skeuo-app.skeuo-dark .bg-red-50.text-red-700,
+.skeuo-app.skeuo-dark .bg-red-50.text-red-600,
+.skeuo-app.skeuo-dark .bg-brand-50.text-brand-700,
+.skeuo-app.skeuo-dark .bg-brand-100.text-brand-700 {
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Gold is the one retained light accent. Keep its labels dark rather than
+   inheriting the otherwise light dark-mode brand text. */
+.skeuo-app.skeuo-dark .bg-gold-400.text-brand-900,
+.skeuo-app.skeuo-dark .bg-gold-500.text-brand-900,
+.skeuo-app.skeuo-dark .bg-gold-500\/70.text-brand-900,
+.skeuo-app.skeuo-dark .skeuo-city-pull-tab.text-brand-900 {
+  color: #2c200d;
+  text-shadow: 0 1px 0 rgba(255, 244, 193, 0.62);
+}
+
+.skeuo-app.skeuo-dark .skeuo-page-title {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }

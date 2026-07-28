@@ -1,8 +1,10 @@
 import { desc } from 'drizzle-orm'
-import { db } from '@/lib/db/client'
-import { events, anchors } from '@/lib/db/schema'
+import { getCityDb } from '@/lib/db/city-client'
+import { cityAnchors, cityEvents } from '@/lib/db/city-schema'
 import { requireRole } from '@/lib/auth/session'
-import { verifyChain } from '@/lib/ledger/ledger'
+import { verifyCityChain } from '@/lib/ledger/city-ledger'
+import { flushCityLedgerOutbox } from '@/lib/ledger/city-outbox'
+import { getActiveCity } from '@/lib/services/city-networks'
 import { createAnchorAction } from '@/app/actions'
 import { Card, PageHeader, StatCard, EmptyState, Flash, Button, Badge, Mono } from '@/components/ui'
 import { fmtDateTime, shortHash } from '@/lib/format'
@@ -14,17 +16,23 @@ export default async function LedgerPage({
 }: {
   searchParams: { error?: string; ok?: string }
 }) {
-  await requireRole('admin')
+  const session = await requireRole('admin')
+  const city = await getActiveCity(session)
+  if (!city) {
+    return <PageHeader title="Ledger & anchors" subtitle="Choose a city before managing its independent ledger." />
+  }
+  await flushCityLedgerOutbox(city.id)
+  const db = getCityDb(city.id)
 
-  const recentEvents = await db.select().from(events).orderBy(desc(events.seq)).limit(50)
-  const anchorList = await db.select().from(anchors).orderBy(desc(anchors.createdAt)).limit(20)
-  const brokenSeq = await verifyChain()
+  const recentEvents = await db.select().from(cityEvents).orderBy(desc(cityEvents.seq)).limit(50)
+  const anchorList = await db.select().from(cityAnchors).orderBy(desc(cityAnchors.createdAt)).limit(20)
+  const brokenSeq = await verifyCityChain(city.id)
 
   return (
     <>
       <PageHeader
-        title="Ledger & anchors"
-        subtitle="The append-only, hash-chained system of record. Anchors commit Merkle roots for public verifiability."
+        title={`${city.name} ledger & anchors`}
+        subtitle="This city’s append-only, hash-chained system of record. Anchors never cross city boundaries."
         action={
           <form action={createAnchorAction}>
             <input type="hidden" name="redirectTo" value="/admin/ledger" />

@@ -26,6 +26,17 @@ export const ALLOWED_IMAGE_TYPES: Record<string, string> = {
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB
 
+// Legal waiver attachments remain optional because organizations can still
+// publish their waiver as accessible text. When included, the same storage
+// port keeps the immutable file available alongside the versioned record.
+export const ALLOWED_WAIVER_DOCUMENT_TYPES: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+}
+
+export const MAX_WAIVER_DOCUMENT_BYTES = 10 * 1024 * 1024 // 10 MB
+
 class LocalStorageAdapter implements StorageAdapter {
   backend = 'local'
   async put({ key, bytes }: { key: string; bytes: Buffer; contentType: string }) {

@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { orgs, orgProfiles, tasks, shifts, claims } from '@/lib/db/schema'
+import { cityMemberships, orgs, orgProfiles, tasks, shifts, claims } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from '@/lib/services/identity'
+import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
 
 export type OrgProfile = {
   orgId: string
@@ -125,6 +126,8 @@ export async function saveProfile(input: {
   }
 
   const now = Date.now()
+  const location = normalizeOrganizationLocation(input.location)
+  if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
   const values = {
     orgId: input.orgId,
     tagline: input.tagline.trim(),
@@ -134,7 +137,7 @@ export async function saveProfile(input: {
     website: input.website.trim(),
     contactEmail: input.contactEmail.trim(),
     phone: input.phone.trim(),
-    location: input.location.trim(),
+    location,
     socials: JSON.stringify(input.socials ?? {}),
     causes: JSON.stringify(input.causes ?? []),
     onboardingTaskId,
@@ -154,6 +157,7 @@ export async function saveProfile(input: {
     } else {
       await tx.insert(orgProfiles).values(values)
     }
+    await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
     // Editorial audit event — no financial meaning, never replayed on-chain.
     await appendEvent(
       tx,
@@ -342,7 +346,7 @@ export type DirectoryEntry = {
 }
 
 /** Approved issuer orgs for the public directory, with open-opportunity counts. */
-export async function listPublicIssuers(opts: { search?: string; cause?: string } = {}): Promise<DirectoryEntry[]> {
+export async function listPublicIssuers(opts: { search?: string; cause?: string; cityId?: string } = {}): Promise<DirectoryEntry[]> {
   const search = opts.search?.trim()
   const conds = [eq(orgs.type, 'issuer'), eq(orgs.status, 'approved')]
   if (search) {
@@ -350,17 +354,32 @@ export async function listPublicIssuers(opts: { search?: string; cause?: string 
     conds.push(or(like(sql`lower(${orgs.name})`, q), like(sql`lower(${orgs.description})`, q))!)
   }
 
-  const rows = await db
-    .select({ org: orgs, profile: orgProfiles })
-    .from(orgs)
-    .leftJoin(orgProfiles, eq(orgProfiles.orgId, orgs.id))
-    .where(and(...conds))
-    .orderBy(desc(orgs.createdAt))
+  const rows = opts.cityId
+    ? await db
+        .select({ org: orgs, profile: orgProfiles })
+        .from(orgs)
+        .innerJoin(
+          cityMemberships,
+          and(
+            eq(cityMemberships.memberId, orgs.id),
+            eq(cityMemberships.memberKind, 'organization'),
+            eq(cityMemberships.cityId, opts.cityId),
+          ),
+        )
+        .leftJoin(orgProfiles, eq(orgProfiles.orgId, orgs.id))
+        .where(and(...conds))
+        .orderBy(desc(orgs.createdAt))
+    : await db
+        .select({ org: orgs, profile: orgProfiles })
+        .from(orgs)
+        .leftJoin(orgProfiles, eq(orgProfiles.orgId, orgs.id))
+        .where(and(...conds))
+        .orderBy(desc(orgs.createdAt))
 
   const openCounts = await db
     .select({ orgId: tasks.orgId, n: sql<number>`count(*)` })
     .from(tasks)
-    .where(eq(tasks.status, 'open'))
+    .where(and(eq(tasks.status, 'open'), ...(opts.cityId ? [eq(tasks.cityId, opts.cityId)] : [])))
     .groupBy(tasks.orgId)
   const openByOrg = new Map(openCounts.map((c) => [c.orgId, Number(c.n)]))
 

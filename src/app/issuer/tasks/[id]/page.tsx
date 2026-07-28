@@ -19,6 +19,7 @@ import { Card, PageHeader, EmptyState, Flash, Input, Label, Button, Mono, status
 import { CredentialPicker } from '@/components/CredentialPicker'
 import { parseCredentialList } from '@/lib/credentials'
 import { fmtDateTime } from '@/lib/format'
+import { participantDisplayName } from '@/lib/participant-name'
 
 export const dynamic = 'force-dynamic'
 
@@ -176,7 +177,7 @@ export default async function IssuerTaskDetail({
             <Card key={claim.id}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-ink-800">{participant.name}</p>
+                  <p className="text-sm font-semibold text-ink-800">{participantDisplayName(participant)}</p>
                   <p className="text-xs text-ink-400">
                     {participant.email}
                     {claim.shiftId && shiftLabelById.get(claim.shiftId)

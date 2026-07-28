@@ -1,5 +1,6 @@
 'use server'
 
+import { createHash, randomUUID } from 'crypto'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { eq } from 'drizzle-orm'
@@ -7,7 +8,8 @@ import { db } from '@/lib/db/client'
 import { users } from '@/lib/db/schema'
 import { verifyPassword } from '@/lib/auth/password'
 import { createSession, clearSession, getSession, homeFor, type Session } from '@/lib/auth/session'
-import { registerParticipant, registerOrg, setOrgStatus } from '@/lib/services/identity'
+import { participantCreditsEnabled } from '@/lib/config'
+import { registerParticipant, registerOrg, setOrgStatus, updateAccountIdentity } from '@/lib/services/identity'
 import {
   createTask,
   createShift,
@@ -36,7 +38,13 @@ import { parseCredentialList } from '@/lib/credentials'
 import { setInterests, setNeighborhood, notifyMatchingParticipants } from '@/lib/services/interests'
 import { setResumePublic } from '@/lib/services/resume'
 import { createWaiverVersion, acceptWaiver } from '@/lib/services/waivers'
+import {
+  ALLOWED_WAIVER_DOCUMENT_TYPES,
+  getStorageAdapter,
+  MAX_WAIVER_DOCUMENT_BYTES,
+} from '@/lib/storage/storage'
 import { saveProfile } from '@/lib/services/profile'
+import { createRecurringOnboardingSession } from '@/lib/services/onboarding-session'
 import { processDueReminders } from '@/lib/services/notifications'
 import {
   createOffering,
@@ -45,9 +53,29 @@ import {
   finalizeRedemption,
   cancelRedemption,
 } from '@/lib/services/redemption'
-import { createAnchor } from '@/lib/protocol/anchor'
+import { createCityAnchor } from '@/lib/protocol/city-anchor'
 import { createPost, toggleHeart } from '@/lib/services/feed'
-import { sendRosterMessage } from '@/lib/services/roster'
+import { createVolunteerGroup, sendRosterMessage, updateVolunteerGroupMembers } from '@/lib/services/roster'
+import { getActiveCity, joinCityNetwork, setActiveCity } from '@/lib/services/city-networks'
+import { participantDisplayName } from '@/lib/participant-name'
+import {
+  acceptOrganizationInvite,
+  createOrganizationRole,
+  createOrganizationInvite,
+  defaultSessionForUser,
+  hasOrganizationPermission,
+  revokeOrganizationDelegation,
+  sessionForIdentity,
+  updateOrganizationIdentity,
+  updateOrganizationRole,
+  validateActiveSession,
+  type OrganizationPermission,
+} from '@/lib/services/identity-access'
+import {
+  approveCityLaunchApplication,
+  claimCityLaunchOwnership,
+  submitCityLaunchApplication,
+} from '@/lib/services/city-launch'
 import {
   setUserStatus,
   resetUserPassword,
@@ -92,25 +120,40 @@ function safeNext(formData: FormData): string | null {
   return null
 }
 
-function back(formData: FormData, fallback: string, params?: Record<string, string>): never {
-  const target = str(formData, 'redirectTo') || fallback
+function back(
+  formData: FormData,
+  fallback: string,
+  params?: Record<string, string>,
+  honorRedirectTarget = true,
+): never {
+  const target = (honorRedirectTarget ? str(formData, 'redirectTo') : '') || fallback
   const url = new URL(target, 'http://local')
   for (const [k, v] of Object.entries(params ?? {})) url.searchParams.set(k, v)
   revalidatePath('/', 'layout')
   redirect(url.pathname + url.search)
 }
 
-async function requireActor(role?: Session['role']): Promise<Session> {
+async function requireActor(role?: Session['role'], permission?: OrganizationPermission): Promise<Session> {
   const session = await getSession()
   if (!session) redirect('/login')
-  if (role && session.role !== role) redirect(homeFor(session.role))
+  const activeSession = await validateActiveSession(session)
+  if (!activeSession) {
+    clearSession()
+    redirect('/login?error=' + encodeURIComponent('This identity is no longer authorized to act.'))
+  }
+  if (role && activeSession.role !== role) redirect(homeFor(activeSession.role))
+  if (permission && (activeSession.role === 'issuer' || activeSession.role === 'redeemer')) {
+    if (!(await hasOrganizationPermission(activeSession, permission))) {
+      redirect(`${homeFor(activeSession.role)}?error=${encodeURIComponent('Your organization role does not have permission for that action.')}`)
+    }
+  }
   // Disabled accounts keep a valid cookie but lose the ability to act.
-  const row = (await db.select({ status: users.status }).from(users).where(eq(users.id, session.sub)).limit(1))[0]
+  const row = (await db.select({ status: users.status }).from(users).where(eq(users.id, activeSession.sub)).limit(1))[0]
   if (!row || row.status === 'disabled') {
     clearSession()
     redirect('/login?error=' + encodeURIComponent('This account has been disabled.'))
   }
-  return session
+  return activeSession
 }
 
 // ---------------------------------------------------------------------------
@@ -129,14 +172,10 @@ export async function signInAction(formData: FormData) {
     back(formData, '/login', { error: 'This account has been disabled. Contact the network administrator.' })
   }
 
-  await createSession({
-    sub: user.id,
-    role: user.role,
-    orgId: user.orgId,
-    name: user.name,
-    email: user.email,
-  })
-  redirect(safeNext(formData) ?? homeFor(user.role))
+  const session = await defaultSessionForUser(user.id)
+  if (!session) back(formData, '/login', { error: 'Your account is missing an active identity. Contact support.' })
+  await createSession(session)
+  redirect(safeNext(formData) ?? homeFor(session.role))
 }
 
 export async function signUpAction(formData: FormData) {
@@ -146,15 +185,11 @@ export async function signUpAction(formData: FormData) {
   const password = str(formData, 'password')
 
   if (kind === 'participant') {
-    const result = await registerParticipant({ name, email, password })
+    const result = await registerParticipant({ name, email, password, homeCityId: str(formData, 'cityId') })
     if (!result.ok) back(formData, '/signup', { error: result.error })
-    await createSession({
-      sub: result.userId,
-      role: 'participant',
-      orgId: null,
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-    })
+    const session = await defaultSessionForUser(result.userId)
+    if (!session) back(formData, '/signup', { error: 'We could not provision your participant identity.' })
+    await createSession(session)
     redirect(safeNext(formData) ?? '/participant')
   }
 
@@ -163,19 +198,17 @@ export async function signUpAction(formData: FormData) {
       orgName: str(formData, 'orgName'),
       orgType: kind,
       description: str(formData, 'orgDescription'),
+      address: str(formData, 'orgAddress'),
       name,
       email,
       password,
+      cityId: str(formData, 'cityId'),
     })
     if (!result.ok) back(formData, '/signup', { error: result.error })
-    await createSession({
-      sub: result.userId,
-      role: kind,
-      orgId: result.orgId,
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-    })
-    redirect(kind === 'issuer' ? '/issuer' : '/redeemer')
+    const session = await sessionForIdentity(result.userId, result.authorityIdentityId)
+    if (!session) back(formData, '/signup', { error: 'We could not provision the organization authority.' })
+    await createSession(session)
+    redirect(session.role === 'issuer' ? '/issuer' : '/redeemer')
   }
 
   back(formData, '/signup', { error: 'Choose an account type.' })
@@ -186,17 +219,223 @@ export async function signOutAction() {
   redirect('/login')
 }
 
+/** Switch the active actor without creating another login or sharing access. */
+export async function switchIdentityAction(formData: FormData) {
+  const current = await getSession()
+  if (!current) redirect('/login')
+  const row = (await db.select({ status: users.status }).from(users).where(eq(users.id, current.sub)).limit(1))[0]
+  if (!row || row.status === 'disabled') {
+    clearSession()
+    redirect('/login?error=' + encodeURIComponent('This account has been disabled.'))
+  }
+  const next = await sessionForIdentity(current.sub, str(formData, 'identityId'))
+  if (!next) back(formData, homeFor(current.role), { error: 'That identity is not available to this account.' })
+  await createSession(next)
+  const destination = str(formData, 'redirectTo')
+  redirect(destination.startsWith('/') && !destination.startsWith('//') ? destination : homeFor(next.role))
+}
+
+export async function saveAccountSettingsAction(formData: FormData) {
+  const session = await requireActor()
+  const result = await updateAccountIdentity({
+    userId: session.sub,
+    name: str(formData, 'name'),
+    email: str(formData, 'email'),
+    username: str(formData, 'username'),
+    avatarUrl: str(formData, 'avatarUrl'),
+  })
+  if (!result.ok) back(formData, '/settings', { error: result.error })
+
+  await createSession({
+    sub: session.sub,
+    role: session.role,
+    orgId: session.orgId,
+    name: participantDisplayName({ name: result.name, username: result.username }),
+    email: result.email,
+    activeIdentityId: session.activeIdentityId,
+    authorityId: session.authorityId,
+  })
+  back(formData, '/settings', { ok: 'Account settings saved.' })
+}
+
+// ---------------------------------------------------------------------------
+// organization authorities and invitations
+// ---------------------------------------------------------------------------
+
+export async function saveOrganizationSettingsAction(formData: FormData) {
+  const session = await requireActor('issuer', 'profile.manage')
+  if (!session.orgId || !session.authorityId) redirect('/issuer')
+  const result = await updateOrganizationIdentity({
+    userId: session.sub,
+    orgId: session.orgId,
+    authorityId: session.authorityId,
+    name: str(formData, 'organizationName'),
+    logoUrl: str(formData, 'logoUrl'),
+    contactEmail: str(formData, 'contactEmail'),
+  })
+  back(formData, '/settings', result.ok ? { ok: 'Organization settings saved.' } : { error: result.error })
+}
+
+export async function createOrganizationRoleAction(formData: FormData) {
+  const session = await requireActor('issuer')
+  if (!session.orgId || !session.authorityId) redirect('/issuer')
+  const result = await createOrganizationRole({
+    userId: session.sub,
+    orgId: session.orgId,
+    authorityId: session.authorityId,
+    name: str(formData, 'roleName'),
+    permissions: strList(formData, 'permission'),
+  })
+  back(formData, '/settings', result.ok ? { ok: 'New organization role created.' } : { error: result.error })
+}
+
+export async function updateOrganizationRoleAction(formData: FormData) {
+  const session = await requireActor('issuer')
+  if (!session.orgId || !session.authorityId) redirect('/issuer')
+  const result = await updateOrganizationRole({
+    userId: session.sub,
+    orgId: session.orgId,
+    authorityId: session.authorityId,
+    roleId: str(formData, 'roleId'),
+    name: str(formData, 'roleName'),
+    permissions: strList(formData, 'permission'),
+  })
+  back(formData, '/settings', result.ok ? { ok: 'Organization role saved.' } : { error: result.error })
+}
+
+export async function createOrganizationInviteAction(formData: FormData) {
+  const session = await requireActor('issuer')
+  if (!session.orgId || !session.authorityId) redirect('/issuer')
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/settings', { error: 'Select an organization city before creating an invite.' })
+  const result = await createOrganizationInvite({
+    userId: session.sub,
+    orgId: session.orgId,
+    authorityId: session.authorityId,
+    roleId: str(formData, 'roleId'),
+    cityId: city.id,
+    expiresInDays: int(formData, 'expiresInDays') || 7,
+  })
+  back(
+    formData,
+    '/settings',
+    result.ok
+      ? { invite: result.code, inviteRole: str(formData, 'roleId'), ok: 'Invite created. Share it only with the intended teammate.' }
+      : { error: result.error },
+  )
+}
+
+export async function acceptOrganizationInviteAction(formData: FormData) {
+  const session = await requireActor()
+  const result = await acceptOrganizationInvite({ userId: session.sub, code: str(formData, 'code') })
+  if (!result.ok) back(formData, '/invite', { error: result.error })
+  const next = await sessionForIdentity(session.sub, result.identityId)
+  if (!next) back(formData, '/invite', { error: 'The authority was created, but could not be activated.' })
+  await createSession(next)
+  redirect(next.role === 'issuer' ? '/issuer' : '/redeemer')
+}
+
+export async function revokeOrganizationDelegationAction(formData: FormData) {
+  const session = await requireActor('issuer')
+  if (!session.orgId || !session.authorityId) redirect('/issuer')
+  const result = await revokeOrganizationDelegation({
+    userId: session.sub,
+    orgId: session.orgId,
+    authorityId: session.authorityId,
+    delegationId: str(formData, 'delegationId'),
+  })
+  back(formData, '/settings', result.ok ? { ok: 'Organization authority revoked.' } : { error: result.error })
+}
+
+// ---------------------------------------------------------------------------
+// city launch applications
+// ---------------------------------------------------------------------------
+
+export async function createCityLaunchApplicationAction(formData: FormData) {
+  const session = await requireActor('issuer', 'organization.settings')
+  if (!session.orgId || !session.authorityId) redirect('/issuer')
+  const result = await submitCityLaunchApplication({
+    sponsorOrgId: session.orgId,
+    bootstrapUserId: session.sub,
+    authorityId: session.authorityId,
+    cityName: str(formData, 'cityName'),
+    cityDescription: str(formData, 'cityDescription'),
+    proposedOwnerName: str(formData, 'proposedOwnerName'),
+    proposedOwnerEmail: str(formData, 'proposedOwnerEmail'),
+  })
+  back(
+    formData,
+    '/settings?tab=locations',
+    result.ok
+      ? { ok: `${result.cityName} was submitted for City/Sync review.` }
+      : { error: result.error },
+  )
+}
+
+export async function approveCityLaunchApplicationAction(formData: FormData) {
+  const session = await requireActor('admin')
+  const result = await approveCityLaunchApplication({ applicationId: str(formData, 'applicationId'), adminUserId: session.sub })
+  back(
+    formData,
+    '/admin',
+    result.ok
+      ? { ok: `${result.cityName} was provisioned. The local-owner claim is ready.` }
+      : { error: result.error },
+  )
+}
+
+export async function claimCityLaunchOwnershipAction(formData: FormData) {
+  const session = await requireActor()
+  const code = str(formData, 'code')
+  const fallback = `/city-launch/claim?code=${encodeURIComponent(code)}`
+  const result = await claimCityLaunchOwnership({ userId: session.sub, code })
+  if (!result.ok) back(formData, fallback, { error: result.error })
+  const next = await sessionForIdentity(session.sub, result.identityId)
+  if (!next) back(formData, fallback, { error: 'Ownership was recorded, but the organization identity could not be activated.' })
+  await createSession(next)
+  redirect('/issuer?ok=' + encodeURIComponent(`You now control ${result.orgName} in ${result.cityName}.`))
+}
+
+// ---------------------------------------------------------------------------
+// city networks
+// ---------------------------------------------------------------------------
+
+export async function joinCityNetworkAction(formData: FormData) {
+  const session = await requireActor()
+  const result = await joinCityNetwork({
+    cityId: str(formData, 'cityId'),
+    session,
+  })
+
+  if (!result.ok) back(formData, '/cities', { error: result.error })
+  back(formData, '/cities', {
+    ok: result.alreadyMember
+      ? `${result.cityName} is already in your city networks.`
+      : `You added ${result.cityName}. Complete an onboarding task there to become an Active Participant.`,
+  })
+}
+
+export async function switchCityAction(formData: FormData) {
+  const session = await requireActor()
+  const switched = await setActiveCity(session, str(formData, 'cityId'))
+  const fallback = homeFor(session.role)
+  back(formData, fallback, switched ? { ok: 'City network switched.' } : { error: 'You do not belong to that city network.' })
+}
+
 // ---------------------------------------------------------------------------
 // issuer
 // ---------------------------------------------------------------------------
 
 export async function createTaskAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/issuer/tasks/new', { error: 'Your organization must be onboarded into a city before it can publish opportunities.' })
   const capacity = int(formData, 'capacity')
   const label = str(formData, 'shiftLabel')
   const task = await createTask({
     orgId: session.orgId,
+    cityId: city.id,
     actorId: session.sub,
     title: str(formData, 'title'),
     description: str(formData, 'description'),
@@ -225,7 +464,7 @@ export async function createTaskAction(formData: FormData) {
 }
 
 export async function createShiftAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await createShift({
     taskId: str(formData, 'taskId'),
@@ -239,22 +478,44 @@ export async function createShiftAction(formData: FormData) {
   back(formData, '/issuer', result.ok ? { ok: 'Shift added.' } : { error: result.error })
 }
 
+export async function createOnboardingSessionAction(formData: FormData) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) redirect('/issuer')
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/issuer/catalog', { error: 'Your organization must be onboarded into a city before it can create an onboarding session.' })
+
+  const result = await createRecurringOnboardingSession({
+    orgId: session.orgId,
+    cityId: city.id,
+    actorId: session.sub,
+    title: str(formData, 'title'),
+    description: str(formData, 'description'),
+    location: str(formData, 'location'),
+    credits: int(formData, 'credits'),
+    firstStartsAt: parseDateTime(formData, 'firstStartsAt'),
+    durationMinutes: int(formData, 'durationMinutes'),
+    weeklyCapacity: int(formData, 'weeklyCapacity'),
+  })
+  if (result.ok) await notifyMatchingParticipants(result.taskId)
+  back(formData, '/issuer/catalog', result.ok ? { ok: 'Public recurring onboarding session created.' } : { error: result.error })
+}
+
 export async function closeShiftAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await closeShift(str(formData, 'shiftId'), session.orgId, session.sub)
   back(formData, '/issuer', result.ok ? { ok: 'Shift closed.' } : { error: result.error })
 }
 
 export async function closeTaskAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await closeTask(str(formData, 'taskId'), session.orgId, session.sub)
   back(formData, '/issuer', result.ok ? { ok: 'Opportunity closed.' } : { error: result.error })
 }
 
 export async function reopenTaskAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await reopenTask(str(formData, 'taskId'), session.orgId, session.sub)
   back(formData, '/issuer', result.ok ? { ok: 'Opportunity reactivated.' } : { error: result.error })
@@ -265,7 +526,7 @@ export async function reopenTaskAction(formData: FormData) {
 // ---------------------------------------------------------------------------
 
 export async function createCatalogEntryAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await createEntry({
     orgId: session.orgId,
@@ -281,7 +542,7 @@ export async function createCatalogEntryAction(formData: FormData) {
 }
 
 export async function updateCatalogEntryAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const entryId = str(formData, 'entryId')
   const result = await updateEntry(entryId, session.orgId, {
@@ -295,11 +556,12 @@ export async function updateCatalogEntryAction(formData: FormData) {
 }
 
 export async function submitCatalogEntryAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const entryId = str(formData, 'entryId')
   const result = await submitEntry(entryId, session.orgId, session.sub)
-  back(formData, `/issuer/catalog/${entryId}`, result.ok ? { ok: 'Submitted for approval.' } : { error: result.error })
+  if (!result.ok) back(formData, `/issuer/catalog/${entryId}`, { error: result.error })
+  back(formData, '/issuer/catalog', { ok: 'Submitted for approval.' }, false)
 }
 
 export async function reviewCatalogEntryAction(formData: FormData) {
@@ -319,8 +581,10 @@ export async function reviewCatalogEntryAction(formData: FormData) {
 }
 
 export async function scheduleFromCatalogAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/issuer/catalog', { error: 'Your organization must be onboarded into a city before it can schedule opportunities.' })
   const entryId = str(formData, 'entryId')
   const entry = await getUsableEntry(entryId, session.orgId)
   if (!entry) back(formData, `/issuer/catalog/${entryId}`, { error: 'This template can’t be scheduled yet.' })
@@ -329,6 +593,7 @@ export async function scheduleFromCatalogAction(formData: FormData) {
   const label = str(formData, 'shiftLabel')
   const task = await createTask({
     orgId: session.orgId,
+    cityId: city.id,
     actorId: session.sub,
     title: entry!.title,
     description: entry!.description,
@@ -357,7 +622,7 @@ export async function scheduleFromCatalogAction(formData: FormData) {
 }
 
 export async function setTaskCredentialsAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await setTaskCredentials(str(formData, 'taskId'), session.orgId, strList(formData, 'cred'))
   back(formData, '/issuer', result.ok ? { ok: 'Requirements updated.' } : { error: result.error })
@@ -369,6 +634,9 @@ export async function grantCredentialAction(formData: FormData) {
   const session = await requireActor()
   if (session.role !== 'admin' && session.role !== 'issuer') {
     back(formData, homeFor(session.role), { error: 'Not authorized.' })
+  }
+  if (session.role === 'issuer' && !(await hasOrganizationPermission(session, 'participants.manage'))) {
+    back(formData, '/issuer/volunteers', { error: 'Your organization role cannot manage participant credentials.' })
   }
   const orgId = session.role === 'issuer' ? session.orgId : null
   const result = await grantCredential({
@@ -386,6 +654,9 @@ export async function revokeCredentialAction(formData: FormData) {
   if (session.role !== 'admin' && session.role !== 'issuer') {
     back(formData, homeFor(session.role), { error: 'Not authorized.' })
   }
+  if (session.role === 'issuer' && !(await hasOrganizationPermission(session, 'participants.manage'))) {
+    back(formData, '/issuer/volunteers', { error: 'Your organization role cannot manage participant credentials.' })
+  }
   const result = await revokeCredential({
     userId: str(formData, 'userId'),
     type: str(formData, 'type'),
@@ -395,34 +666,72 @@ export async function revokeCredentialAction(formData: FormData) {
 }
 
 export async function verifyClaimAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'participants.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await verifyCompletion(str(formData, 'claimId'), session.orgId, session.sub)
   back(formData, '/issuer', result.ok ? { ok: 'Completion verified — credits minted.' } : { error: result.error })
 }
 
 export async function rejectClaimAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'participants.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await rejectCompletion(str(formData, 'claimId'), session.orgId, session.sub)
   back(formData, '/issuer', result.ok ? { ok: 'Completion rejected.' } : { error: result.error })
 }
 
 export async function createWaiverAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'waiver.manage')
   if (!session.orgId) redirect('/issuer')
+  const title = str(formData, 'title')
+  const body = str(formData, 'body')
+  if (!title.trim() || !body.trim()) {
+    back(formData, '/issuer/waiver', { error: 'Waiver title and text are required.' })
+  }
+
+  let document:
+    | { url: string; name: string; mimeType: string; sha256: string }
+    | undefined
+  const file = formData.get('document')
+  if (file instanceof File && file.size > 0) {
+    const ext = ALLOWED_WAIVER_DOCUMENT_TYPES[file.type]
+    if (!ext) {
+      back(formData, '/issuer/waiver', { error: 'Upload a PDF, DOC, or DOCX waiver document.' })
+    }
+    if (file.size > MAX_WAIVER_DOCUMENT_BYTES) {
+      back(formData, '/issuer/waiver', { error: 'Waiver documents must be 10 MB or smaller.' })
+    }
+    try {
+      const bytes = Buffer.from(await file.arrayBuffer())
+      const stored = await getStorageAdapter().put({
+        key: `waivers/${session.orgId}/${randomUUID()}.${ext}`,
+        bytes,
+        contentType: file.type,
+      })
+      document = {
+        url: stored.url,
+        name: file.name,
+        mimeType: file.type,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      }
+    } catch (error) {
+      console.error('waiver upload failed', error)
+      back(formData, '/issuer/waiver', { error: 'Could not upload the waiver document. Please try again.' })
+    }
+  }
+
   const result = await createWaiverVersion({
     orgId: session.orgId,
     actorId: session.sub,
-    title: str(formData, 'title'),
-    body: str(formData, 'body'),
+    title,
+    body,
+    document,
   })
   if (!result.ok) back(formData, '/issuer/waiver', { error: result.error })
   back(formData, '/issuer/waiver', { ok: `Waiver v${result.version} is now active.` })
 }
 
 export async function saveProfileAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'profile.manage')
   if (!session.orgId) redirect('/issuer')
 
   let data: Record<string, unknown> = {}
@@ -474,14 +783,17 @@ export async function saveProfileAction(formData: FormData) {
 }
 
 export async function sendRosterMessageAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'participants.manage')
   if (!session.orgId) redirect('/issuer')
-  const audience = str(formData, 'audience') // 'roster' or a taskId
+  const audience = str(formData, 'audience')
+  const groupId = audience.startsWith('group:') ? audience.slice('group:'.length) : ''
   const result = await sendRosterMessage({
     orgId: session.orgId,
     actorId: session.sub,
-    scope: audience === 'roster' ? 'roster' : 'task',
-    taskId: audience === 'roster' ? undefined : audience,
+    audience: groupId ? 'group' : 'roster',
+    groupId: groupId || undefined,
+    allRecipients: str(formData, 'recipientMode') === 'all',
+    memberIds: strList(formData, 'memberId'),
     subject: str(formData, 'subject'),
     body: str(formData, 'body'),
   })
@@ -491,6 +803,38 @@ export async function sendRosterMessageAction(formData: FormData) {
     result.ok
       ? { ok: `Message sent to ${result.recipientCount} volunteer${result.recipientCount === 1 ? '' : 's'}.` }
       : { error: result.error },
+  )
+}
+
+export async function createVolunteerGroupAction(formData: FormData) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) redirect('/issuer')
+  const result = await createVolunteerGroup({
+    orgId: session.orgId,
+    actorId: session.sub,
+    name: str(formData, 'name'),
+    memberIds: strList(formData, 'memberId'),
+  })
+  back(
+    formData,
+    '/issuer/volunteers',
+    result.ok ? { ok: 'Volunteer grouping created.' } : { error: result.error },
+  )
+}
+
+export async function updateVolunteerGroupMembersAction(formData: FormData) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) redirect('/issuer')
+  const result = await updateVolunteerGroupMembers({
+    orgId: session.orgId,
+    actorId: session.sub,
+    groupId: str(formData, 'groupId'),
+    memberIds: strList(formData, 'memberId'),
+  })
+  back(
+    formData,
+    '/issuer/volunteers',
+    result.ok ? { ok: 'Volunteer grouping updated.' } : { error: result.error },
   )
 }
 
@@ -530,7 +874,7 @@ export async function selfCheckInAction(formData: FormData) {
 }
 
 export async function issuerCheckInAction(formData: FormData) {
-  const session = await requireActor('issuer')
+  const session = await requireActor('issuer', 'participants.manage')
   if (!session.orgId) redirect('/issuer')
   const result = await issuerCheckIn(str(formData, 'claimId'), session.orgId, session.sub)
   back(formData, '/issuer', result.ok ? { ok: 'Volunteer checked in.' } : { error: result.error })
@@ -560,28 +904,38 @@ export async function saveInterestsAction(formData: FormData) {
     .filter(Boolean)
   await setInterests(session.sub, interests)
   await setNeighborhood(session.sub, str(formData, 'neighborhood'))
-  back(formData, '/participant/interests', { ok: 'Saved.' })
+  back(formData, '/participant/opportunities', { ok: 'Saved.' })
 }
 
 export async function setResumePublicAction(formData: FormData) {
   const session = await requireActor('participant')
   const makePublic = str(formData, 'public') === 'true'
   await setResumePublic(session.sub, makePublic)
-  back(formData, '/participant/resume', {
+  back(formData, '/participant', {
     ok: makePublic ? 'Your résumé is now shareable.' : 'Your résumé is now private.',
   })
 }
 
 export async function requestRedemptionAction(formData: FormData) {
   const session = await requireActor('participant')
-  const result = await requestRedemption(str(formData, 'offeringId'), session.sub)
+  if (!participantCreditsEnabled()) {
+    back(formData, '/participant', { error: 'Civic credit redemptions are not available in this version.' })
+  }
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/participant/redeem', { error: 'Choose a city before redeeming credits.' })
+  const result = await requestRedemption(str(formData, 'offeringId'), session.sub, city.id)
   if (!result.ok) back(formData, '/participant/redeem', { error: result.error })
   back(formData, '/participant/redeem', { code: result.code })
 }
 
 export async function cancelRedemptionAction(formData: FormData) {
   const session = await requireActor('participant')
-  const result = await cancelRedemption(str(formData, 'redemptionId'), session.sub)
+  if (!participantCreditsEnabled()) {
+    back(formData, '/participant', { error: 'Civic credit redemptions are not available in this version.' })
+  }
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/participant/redeem', { error: 'Choose a city before cancelling a redemption.' })
+  const result = await cancelRedemption(str(formData, 'redemptionId'), session.sub, city.id)
   back(formData, '/participant/redeem', result.ok ? { ok: 'Redemption cancelled.' } : { error: result.error })
 }
 
@@ -590,10 +944,13 @@ export async function cancelRedemptionAction(formData: FormData) {
 // ---------------------------------------------------------------------------
 
 export async function createOfferingAction(formData: FormData) {
-  const session = await requireActor('redeemer')
+  const session = await requireActor('redeemer', 'offerings.manage')
   if (!session.orgId) redirect('/redeemer')
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/redeemer', { error: 'Your organization must be onboarded into a city before it can publish offerings.' })
   const result = await createOffering({
     orgId: session.orgId,
+    cityId: city.id,
     actorId: session.sub,
     title: str(formData, 'title'),
     description: str(formData, 'description'),
@@ -603,11 +960,14 @@ export async function createOfferingAction(formData: FormData) {
 }
 
 export async function toggleOfferingAction(formData: FormData) {
-  const session = await requireActor('redeemer')
+  const session = await requireActor('redeemer', 'offerings.manage')
   if (!session.orgId) redirect('/redeemer')
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/redeemer', { error: 'Choose an organization city first.' })
   const result = await setOfferingActive(
     str(formData, 'offeringId'),
     session.orgId,
+    city.id,
     str(formData, 'active') === 'true',
     session.sub,
   )
@@ -615,9 +975,11 @@ export async function toggleOfferingAction(formData: FormData) {
 }
 
 export async function finalizeRedemptionAction(formData: FormData) {
-  const session = await requireActor('redeemer')
+  const session = await requireActor('redeemer', 'offerings.manage')
   if (!session.orgId) redirect('/redeemer')
-  const result = await finalizeRedemption(str(formData, 'code'), session.orgId, session.sub)
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/redeemer', { error: 'Choose an organization city first.' })
+  const result = await finalizeRedemption(str(formData, 'code'), session.orgId, city.id, session.sub)
   back(
     formData,
     '/redeemer',
@@ -633,6 +995,9 @@ export async function createPostAction(formData: FormData) {
   const session = await requireActor()
   if ((session.role !== 'issuer' && session.role !== 'redeemer') || !session.orgId) {
     back(formData, '/feed', { error: 'Only issuer and redeemer organizations can post.' })
+  }
+  if (!(await hasOrganizationPermission(session, 'feed.manage'))) {
+    back(formData, '/feed', { error: 'Your organization role cannot publish to MyCity Feed.' })
   }
   const result = await createPost({
     orgId: session.orgId!,
@@ -655,7 +1020,7 @@ export async function toggleHeartAction(formData: FormData) {
 
 export async function approveOrgAction(formData: FormData) {
   const session = await requireActor('admin')
-  const result = await setOrgStatus(str(formData, 'orgId'), 'approved', session.sub)
+  const result = await setOrgStatus(str(formData, 'orgId'), 'approved', session.sub, str(formData, 'cityId') || undefined)
   back(formData, '/admin', result.ok ? { ok: 'Organization approved.' } : { error: result.error })
 }
 
@@ -690,11 +1055,14 @@ export async function resetPasswordAction(formData: FormData) {
 
 export async function adjustCreditsAction(formData: FormData) {
   const session = await requireActor('admin')
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/admin/users', { error: 'Choose a city before adjusting city credits.' })
   const result = await adjustCredits(
     str(formData, 'userId'),
     int(formData, 'amount'),
     str(formData, 'reason'),
     session.sub,
+    city.id,
   )
   back(formData, '/admin/users', result.ok ? { ok: 'Credits adjusted (ledgered).' } : { error: result.error })
 }
@@ -721,13 +1089,15 @@ export async function runRemindersAction(formData: FormData) {
   await requireActor('admin')
   const res = await processDueReminders()
   back(formData, '/admin/oversight', {
-    ok: `Reminders processed — ${res.sent} delivered${res.failed ? `, ${res.failed} failed (will retry)` : ''}.`,
+    ok: `Reminders processed — ${res.sent} delivered${res.failed ? `, ${res.failed} failed (will retry)` : ''}${res.noShows ? `; ${res.noShows} no-show${res.noShows === 1 ? '' : 's'} recorded` : ''}${res.barred ? `; ${res.barred} city restriction${res.barred === 1 ? '' : 's'} applied` : ''}.`,
   })
 }
 
 export async function createAnchorAction(formData: FormData) {
   const session = await requireActor('admin')
-  const result = await createAnchor(session.sub)
+  const city = await getActiveCity(session)
+  if (!city) back(formData, '/admin/ledger', { error: 'Choose a city before creating its anchor.' })
+  const result = await createCityAnchor(city.id, session.sub)
   back(
     formData,
     '/admin/ledger',

@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { users, orgs, tasks, shifts, claims } from '@/lib/db/schema'
+import { participantDisplayName } from '@/lib/participant-name'
 
 export type ResumeContribution = {
   org: string
@@ -66,7 +67,7 @@ async function buildResume(u: UserRow): Promise<ResumeData> {
   })
 
   return {
-    name: u.name,
+    name: participantDisplayName(u),
     joinedAt: u.createdAt,
     totals: {
       contributions: rows.length,

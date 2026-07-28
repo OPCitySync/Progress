@@ -5,6 +5,7 @@ import { offerings, redemptions, orgs, users } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from './identity'
+import { burnCityCredits, getCityWallet } from './city-wallets'
 
 /**
  * Redemption module. Mirrors the two-step Redemption contract flow:
@@ -22,6 +23,7 @@ function redemptionCode(): string {
 
 export async function createOffering(input: {
   orgId: string
+  cityId: string
   actorId: string
   title: string
   description: string
@@ -41,6 +43,7 @@ export async function createOffering(input: {
     await tx.insert(offerings).values({
       id,
       orgId: input.orgId,
+      cityId: input.cityId,
       title: input.title.trim(),
       description: input.description.trim(),
       cost: input.cost,
@@ -50,7 +53,7 @@ export async function createOffering(input: {
     await appendEvent(
       tx,
       EventTypes.OFFERING_CREATED,
-      { offeringId: id, orgId: input.orgId, cost: input.cost, title: input.title.trim() },
+      { offeringId: id, orgId: input.orgId, cityId: input.cityId, cost: input.cost, title: input.title.trim() },
       input.actorId,
     )
   })
@@ -60,15 +63,16 @@ export async function createOffering(input: {
 export async function setOfferingActive(
   offeringId: string,
   orgId: string,
+  cityId: string,
   active: boolean,
   actorId: string,
 ): Promise<Result> {
   const offering = (await db.select().from(offerings).where(eq(offerings.id, offeringId)).limit(1))[0]
-  if (!offering || offering.orgId !== orgId) return { ok: false, error: 'Offering not found.' }
+  if (!offering || offering.orgId !== orgId || offering.cityId !== cityId) return { ok: false, error: 'Offering not found.' }
 
   await db.transaction(async (tx) => {
     await tx.update(offerings).set({ active: active ? 1 : 0 }).where(eq(offerings.id, offeringId))
-    await appendEvent(tx, EventTypes.OFFERING_UPDATED, { offeringId, active }, actorId)
+    await appendEvent(tx, EventTypes.OFFERING_UPDATED, { offeringId, cityId, active }, actorId)
   })
   return { ok: true }
 }
@@ -76,17 +80,19 @@ export async function setOfferingActive(
 export async function requestRedemption(
   offeringId: string,
   userId: string,
+  cityId: string,
 ): Promise<Result<{ code: string }>> {
   const offering = (await db.select().from(offerings).where(eq(offerings.id, offeringId)).limit(1))[0]
-  if (!offering || !offering.active) return { ok: false, error: 'Offering not available.' }
+  if (!offering || offering.cityId !== cityId || !offering.active) return { ok: false, error: 'Offering not available in this city.' }
 
   const org = (await db.select().from(orgs).where(eq(orgs.id, offering.orgId)).limit(1))[0]
   if (!org || org.status !== 'approved') return { ok: false, error: 'The redeemer organization is not active.' }
 
   const user = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0]
   if (!user) return { ok: false, error: 'User not found.' }
-  if (user.creditBalance < offering.cost) {
-    return { ok: false, error: `You need ${offering.cost} credits but have ${user.creditBalance}.` }
+  const wallet = await getCityWallet(cityId, userId)
+  if (wallet.creditBalance < offering.cost) {
+    return { ok: false, error: `You need ${offering.cost} credits in this city but have ${wallet.creditBalance}.` }
   }
 
   const id = randomUUID()
@@ -98,6 +104,7 @@ export async function requestRedemption(
       offeringId: offering.id,
       orgId: offering.orgId,
       userId,
+      cityId,
       cost: offering.cost,
       code,
       status: 'pending',
@@ -106,7 +113,7 @@ export async function requestRedemption(
     await appendEvent(
       tx,
       EventTypes.REDEMPTION_REQUESTED,
-      { redemptionId: id, offeringId: offering.id, orgId: offering.orgId, cost: offering.cost },
+      { redemptionId: id, offeringId: offering.id, orgId: offering.orgId, cityId, cost: offering.cost },
       userId,
     )
   })
@@ -114,7 +121,7 @@ export async function requestRedemption(
 }
 
 /** Redeemer enters the participant's code; credits burn at this moment. */
-export async function finalizeRedemption(code: string, orgId: string, actorId: string): Promise<Result> {
+export async function finalizeRedemption(code: string, orgId: string, cityId: string, actorId: string): Promise<Result> {
   const normalized = code.trim().toUpperCase()
   if (!normalized) return { ok: false, error: 'Enter a redemption code.' }
 
@@ -122,50 +129,46 @@ export async function finalizeRedemption(code: string, orgId: string, actorId: s
     await db.select().from(redemptions).where(eq(redemptions.code, normalized)).limit(1)
   )[0]
   if (!redemption) return { ok: false, error: 'No redemption found for that code.' }
-  if (redemption.orgId !== orgId) return { ok: false, error: 'That code belongs to a different organization.' }
+  if (redemption.orgId !== orgId || redemption.cityId !== cityId) return { ok: false, error: 'That code belongs to a different city or organization.' }
   if (redemption.status !== 'pending') return { ok: false, error: `This redemption is already ${redemption.status}.` }
 
   const user = (await db.select().from(users).where(eq(users.id, redemption.userId)).limit(1))[0]
   if (!user) return { ok: false, error: 'Participant not found.' }
-  if (user.creditBalance < redemption.cost) {
-    return { ok: false, error: 'The participant no longer has enough credits.' }
-  }
+  const burn = await burnCityCredits({
+    cityId,
+    userId: user.id,
+    amount: redemption.cost,
+    refId: `redemption:${redemption.id}`,
+    reason: 'redemption',
+    actorId,
+  })
+  if (!burn.ok) return burn
 
   await db.transaction(async (tx) => {
     await tx
       .update(redemptions)
       .set({ status: 'finalized', finalizedAt: Date.now() })
       .where(eq(redemptions.id, redemption.id))
-    await tx
-      .update(users)
-      .set({ creditBalance: user.creditBalance - redemption.cost })
-      .where(eq(users.id, user.id))
-    await appendEvent(
-      tx,
-      EventTypes.CREDITS_BURNED,
-      { userId: user.id, amount: redemption.cost, reason: 'redemption', refId: redemption.id },
-      actorId,
-    )
     await appendEvent(
       tx,
       EventTypes.REDEMPTION_FINALIZED,
-      { redemptionId: redemption.id, offeringId: redemption.offeringId, cost: redemption.cost },
+      { redemptionId: redemption.id, offeringId: redemption.offeringId, cityId, cost: redemption.cost },
       actorId,
     )
   })
   return { ok: true }
 }
 
-export async function cancelRedemption(redemptionId: string, userId: string): Promise<Result> {
+export async function cancelRedemption(redemptionId: string, userId: string, cityId: string): Promise<Result> {
   const redemption = (
     await db.select().from(redemptions).where(eq(redemptions.id, redemptionId)).limit(1)
   )[0]
-  if (!redemption || redemption.userId !== userId) return { ok: false, error: 'Redemption not found.' }
+  if (!redemption || redemption.userId !== userId || redemption.cityId !== cityId) return { ok: false, error: 'Redemption not found.' }
   if (redemption.status !== 'pending') return { ok: false, error: `This redemption is already ${redemption.status}.` }
 
   await db.transaction(async (tx) => {
     await tx.update(redemptions).set({ status: 'cancelled' }).where(eq(redemptions.id, redemptionId))
-    await appendEvent(tx, EventTypes.REDEMPTION_CANCELLED, { redemptionId }, userId)
+    await appendEvent(tx, EventTypes.REDEMPTION_CANCELLED, { redemptionId, cityId }, userId)
   })
   return { ok: true }
 }

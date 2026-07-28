@@ -48,3 +48,12 @@ export function features(): Features {
 export function featureEnabled(name: keyof Features): boolean {
   return features()[name]
 }
+
+/**
+ * Participant redemptions are deliberately withheld during the volunteer MVP.
+ * The ledger continues retaining credit data so the experience can be enabled
+ * later without losing the history that participants have already earned.
+ */
+export function participantCreditsEnabled(): boolean {
+  return flag('FEATURE_PARTICIPANT_CREDITS', false)
+}

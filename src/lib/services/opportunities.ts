@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { tasks, shifts, claims, orgs, users } from '@/lib/db/schema'
+import { tasks, shifts, claims, orgs, orgProfiles, users } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { getActiveWaiver, hasAcceptedWaiver } from './waivers'
@@ -14,6 +14,13 @@ import {
 import { missingCredentials } from './credentials'
 import { parseCredentialList, credentialLabel, isCredentialKey } from '@/lib/credentials'
 import type { Result } from './identity'
+import {
+  activateCityParticipationForCheckIn,
+  checkCityParticipationGate,
+  processOverdueNoShows,
+} from './city-participation'
+import { mintCityCredits } from './city-wallets'
+import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
 
 /**
  * Opportunity module. An opportunity (task) is a template; volunteers claim a
@@ -45,6 +52,7 @@ export function checkInOpen(shift: ShiftRow, now = Date.now()): boolean {
 
 export async function createTask(input: {
   orgId: string
+  cityId: string
   actorId: string
   title: string
   description: string
@@ -56,6 +64,8 @@ export async function createTask(input: {
   catalogEntryId?: string | null
 }): Promise<Result<{ id: string }>> {
   if (!input.title.trim()) return { ok: false, error: 'Title is required.' }
+  const location = normalizeOrganizationLocation(input.location)
+  if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
   if (!Number.isInteger(input.credits) || input.credits < 1 || input.credits > 100000) {
     return { ok: false, error: 'Credits must be a whole number between 1 and 100,000.' }
   }
@@ -73,9 +83,10 @@ export async function createTask(input: {
     await tx.insert(tasks).values({
       id,
       orgId: input.orgId,
+      cityId: input.cityId,
       title: input.title.trim(),
       description: input.description.trim(),
-      location: input.location.trim(),
+      location,
       credits: input.credits,
       slots: input.slots,
       startsAt: input.startsAt.trim(),
@@ -85,10 +96,11 @@ export async function createTask(input: {
       createdBy: input.actorId,
       createdAt: Date.now(),
     })
+    await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
     await appendEvent(
       tx,
       EventTypes.TASK_CREATED,
-      { taskId: id, orgId: input.orgId, credits: input.credits, title: input.title.trim() },
+      { taskId: id, orgId: input.orgId, cityId: input.cityId, credits: input.credits, title: input.title.trim() },
       input.actorId,
     )
   })
@@ -127,7 +139,7 @@ export async function createShift(input: {
     await appendEvent(
       tx,
       EventTypes.SHIFT_CREATED,
-      { shiftId: id, taskId: input.taskId, capacity: input.capacity, startsAt: input.startsAt },
+      { shiftId: id, taskId: input.taskId, cityId: task.cityId, capacity: input.capacity, startsAt: input.startsAt },
       input.actorId,
     )
   })
@@ -151,10 +163,12 @@ export async function setTaskCredentials(
 export async function closeShift(shiftId: string, orgId: string, actorId: string): Promise<Result> {
   const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
   if (!shift || shift.orgId !== orgId) return { ok: false, error: 'Shift not found.' }
+  const task = (await db.select({ cityId: tasks.cityId }).from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
+  if (!task) return { ok: false, error: 'Opportunity not found.' }
   if (shift.status === 'closed') return { ok: true }
   await db.transaction(async (tx) => {
     await tx.update(shifts).set({ status: 'closed' }).where(eq(shifts.id, shiftId))
-    await appendEvent(tx, EventTypes.SHIFT_CLOSED, { shiftId, taskId: shift.taskId }, actorId)
+    await appendEvent(tx, EventTypes.SHIFT_CLOSED, { shiftId, taskId: shift.taskId, cityId: task.cityId }, actorId)
   })
   await cancelRemindersForShift(shiftId)
   return { ok: true }
@@ -169,7 +183,7 @@ export async function closeTask(taskId: string, orgId: string, actorId: string):
     await tx.update(tasks).set({ status: 'closed' }).where(eq(tasks.id, taskId))
     // Closing an opportunity closes its still-open shifts.
     await tx.update(shifts).set({ status: 'closed' }).where(and(eq(shifts.taskId, taskId), eq(shifts.status, 'open')))
-    await appendEvent(tx, EventTypes.TASK_CLOSED, { taskId }, actorId)
+    await appendEvent(tx, EventTypes.TASK_CLOSED, { taskId, cityId: task.cityId }, actorId)
   })
   await cancelRemindersForTask(taskId)
   return { ok: true }
@@ -194,7 +208,7 @@ export async function reopenTask(taskId: string, orgId: string, actorId: string)
           sql`(${shifts.startsAt} is null or ${shifts.startsAt} >= ${now})`,
         ),
       )
-    await appendEvent(tx, EventTypes.TASK_REOPENED, { taskId }, actorId)
+    await appendEvent(tx, EventTypes.TASK_REOPENED, { taskId, cityId: task.cityId }, actorId)
   })
   return { ok: true }
 }
@@ -249,6 +263,9 @@ export async function checkClaimGate(shiftId: string, userId: string): Promise<C
     return { ok: false, reason: 'error', error: 'The issuing organization is not active.' }
   }
 
+  const cityGate = await checkCityParticipationGate({ userId, taskId: task.id, cityId: task.cityId })
+  if (!cityGate.ok) return { ok: false, reason: 'error', error: cityGate.error }
+
   const existing = (
     await db.select().from(claims).where(and(eq(claims.shiftId, shiftId), eq(claims.userId, userId))).limit(1)
   )[0]
@@ -275,6 +292,10 @@ export async function checkClaimGate(shiftId: string, userId: string): Promise<C
 }
 
 export async function claimShift(shiftId: string, userId: string): Promise<Result> {
+  // The scheduled job does this continuously in production. Running a sweep
+  // here as well prevents an overdue claim from bypassing the reservation rule
+  // between cron runs.
+  await processOverdueNoShows()
   const gate = await checkClaimGate(shiftId, userId)
   if (!gate.ok) {
     let error: string
@@ -290,6 +311,8 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
 
   const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
   if (!shift) return { ok: false, error: 'Shift not found.' }
+  const task = (await db.select({ cityId: tasks.cityId }).from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
+  if (!task) return { ok: false, error: 'Opportunity not found.' }
 
   const existing = (
     await db.select().from(claims).where(and(eq(claims.shiftId, shiftId), eq(claims.userId, userId))).limit(1)
@@ -310,7 +333,7 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
         updatedAt: now,
       })
     }
-    await appendEvent(tx, EventTypes.TASK_CLAIMED, { taskId: shift.taskId, shiftId }, userId)
+    await appendEvent(tx, EventTypes.TASK_CLAIMED, { taskId: shift.taskId, shiftId, cityId: task.cityId }, userId)
   })
   // Confirmation + pre-shift reminder (best-effort, outside the ledger).
   await notifyShiftClaimed(userId, shiftId)
@@ -324,12 +347,21 @@ export async function unclaimClaim(claimId: string, userId: string): Promise<Res
   if (!existing || existing.status !== 'claimed') {
     return { ok: false, error: 'No active sign-up to withdraw.' }
   }
+  const task = (await db.select({ cityId: tasks.cityId }).from(tasks).where(eq(tasks.id, existing.taskId)).limit(1))[0]
+  if (!task) return { ok: false, error: 'Opportunity not found.' }
+  if (existing.shiftId) {
+    const shift = (await db.select().from(shifts).where(eq(shifts.id, existing.shiftId)).limit(1))[0]
+    const cancellationDeadline = shift?.startsAt ? shift.startsAt - 24 * 60 * 60 * 1000 : null
+    if (cancellationDeadline && Date.now() > cancellationDeadline) {
+      return { ok: false, error: 'The 24-hour cancellation window has closed. Please contact the organization if you need help.' }
+    }
+  }
   await db.transaction(async (tx) => {
     await tx.update(claims).set({ status: 'unclaimed', updatedAt: Date.now() }).where(eq(claims.id, existing.id))
     await appendEvent(
       tx,
       EventTypes.CLAIM_UNCLAIMED,
-      { taskId: existing.taskId, shiftId: existing.shiftId, claimId: existing.id },
+      { taskId: existing.taskId, shiftId: existing.shiftId, claimId: existing.id, cityId: task.cityId },
       userId,
     )
   })
@@ -344,6 +376,8 @@ export async function submitCompletion(claimId: string, userId: string, note: st
   if (!existing || existing.status !== 'claimed') {
     return { ok: false, error: 'You need an active sign-up before submitting completion.' }
   }
+  const task = (await db.select({ cityId: tasks.cityId }).from(tasks).where(eq(tasks.id, existing.taskId)).limit(1))[0]
+  if (!task) return { ok: false, error: 'Opportunity not found.' }
   await db.transaction(async (tx) => {
     await tx
       .update(claims)
@@ -352,7 +386,7 @@ export async function submitCompletion(claimId: string, userId: string, note: st
     await appendEvent(
       tx,
       EventTypes.COMPLETION_SUBMITTED,
-      { taskId: existing.taskId, shiftId: existing.shiftId, claimId: existing.id },
+      { taskId: existing.taskId, shiftId: existing.shiftId, claimId: existing.id, cityId: task.cityId },
       userId,
     )
   })
@@ -368,29 +402,34 @@ export async function verifyCompletion(claimId: string, orgId: string, actorId: 
   }
   const task = (await db.select().from(tasks).where(eq(tasks.id, claim.taskId)).limit(1))[0]
   if (!task || task.orgId !== orgId) return { ok: false, error: 'This claim does not belong to your organization.' }
+  const onboardingProfile = (
+    await db.select({ id: orgProfiles.orgId }).from(orgProfiles).where(eq(orgProfiles.onboardingTaskId, task.id)).limit(1)
+  )[0]
+  if (onboardingProfile && !claim.checkedInAt) {
+    return { ok: false, error: 'Check the participant in before verifying an onboarding task.' }
+  }
 
   const participant = (await db.select().from(users).where(eq(users.id, claim.userId)).limit(1))[0]
   if (!participant) return { ok: false, error: 'Participant not found.' }
 
+  // The wallet and credit journal are authoritative in the task's city
+  // database. The reference makes this safe to retry if the control-plane
+  // claim update needs to be replayed after a transient failure.
+  await mintCityCredits({
+    cityId: task.cityId,
+    userId: participant.id,
+    amount: task.credits,
+    refId: `claim:${claimId}`,
+    reason: 'task_completion',
+    actorId,
+  })
+
   await db.transaction(async (tx) => {
     await tx.update(claims).set({ status: 'verified', updatedAt: Date.now() }).where(eq(claims.id, claimId))
-    await tx
-      .update(users)
-      .set({
-        creditBalance: participant.creditBalance + task.credits,
-        lifetimeEarned: participant.lifetimeEarned + task.credits,
-      })
-      .where(eq(users.id, participant.id))
     await appendEvent(
       tx,
       EventTypes.COMPLETION_VERIFIED,
-      { claimId, taskId: task.id, shiftId: claim.shiftId, participantId: participant.id, credits: task.credits },
-      actorId,
-    )
-    await appendEvent(
-      tx,
-      EventTypes.CREDITS_MINTED,
-      { userId: participant.id, amount: task.credits, reason: 'task_completion', refId: claimId },
+      { claimId, taskId: task.id, shiftId: claim.shiftId, participantId: participant.id, cityId: task.cityId, credits: task.credits },
       actorId,
     )
   })
@@ -416,6 +455,8 @@ export async function selfCheckIn(shiftId: string, userId: string, code: string)
   if (claim.status !== 'claimed' && claim.status !== 'submitted') {
     return { ok: false, error: `This sign-up is already ${claim.status}.` }
   }
+  const task = (await db.select({ cityId: tasks.cityId }).from(tasks).where(eq(tasks.id, claim.taskId)).limit(1))[0]
+  if (!task) return { ok: false, error: 'Opportunity not found.' }
 
   const now = Date.now()
   await db.transaction(async (tx) => {
@@ -423,11 +464,12 @@ export async function selfCheckIn(shiftId: string, userId: string, code: string)
     await appendEvent(
       tx,
       EventTypes.CLAIM_CHECKED_IN,
-      { taskId: claim.taskId, shiftId, claimId: claim.id, method: 'self' },
+      { taskId: claim.taskId, shiftId, claimId: claim.id, cityId: task.cityId, method: 'self' },
       userId,
     )
   })
   await cancelRemindersForClaim(userId, shiftId)
+  await activateCityParticipationForCheckIn(claim.taskId, claim.userId)
   return { ok: true }
 }
 
@@ -448,11 +490,12 @@ export async function issuerCheckIn(claimId: string, orgId: string, actorId: str
     await appendEvent(
       tx,
       EventTypes.CLAIM_CHECKED_IN,
-      { taskId: claim.taskId, shiftId: claim.shiftId, claimId: claim.id, method: 'issuer' },
+      { taskId: claim.taskId, shiftId: claim.shiftId, claimId: claim.id, cityId: task.cityId, method: 'issuer' },
       actorId,
     )
   })
   if (claim.shiftId) await cancelRemindersForClaim(claim.userId, claim.shiftId)
+  await activateCityParticipationForCheckIn(claim.taskId, claim.userId)
   return { ok: true }
 }
 
@@ -470,7 +513,7 @@ export async function rejectCompletion(claimId: string, orgId: string, actorId: 
     await appendEvent(
       tx,
       EventTypes.COMPLETION_REJECTED,
-      { claimId, taskId: task.id, shiftId: claim.shiftId, participantId: claim.userId },
+      { claimId, taskId: task.id, shiftId: claim.shiftId, participantId: claim.userId, cityId: task.cityId },
       actorId,
     )
   })

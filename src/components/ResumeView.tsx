@@ -10,23 +10,36 @@ function whenText(c: ResumeContribution): string {
 }
 
 /** Shared render of a volunteer's verified contribution record. */
-export function ResumeView({ data }: { data: ResumeData }) {
+export function ResumeView({
+  data,
+  embedded = false,
+  showCredits = true,
+}: {
+  data: ResumeData
+  /** Use a subordinate heading when the résumé is part of the participant Home page. */
+  embedded?: boolean
+  /** Credits remain stored, but are intentionally hidden in the participant MVP dashboard. */
+  showCredits?: boolean
+}) {
+  const Heading = embedded ? 'h2' : 'h1'
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-3xl font-semibold text-ink-900">{data.name}</h1>
-          <p className="mt-1 text-sm text-ink-500">Civic contributor since {fmtDate(data.joinedAt)}</p>
+      <Card>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <Heading className={`font-display font-semibold text-ink-900 ${embedded ? 'text-xl' : 'text-3xl'}`}>{embedded ? 'My service resume' : data.name}</Heading>
+            <p className="mt-1 text-sm text-ink-500">Civic contributor since {fmtDate(data.joinedAt)}</p>
+          </div>
+          <Badge tone="green">Ledger-verified</Badge>
         </div>
-        <Badge tone="green">Ledger-verified</Badge>
-      </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Verified contributions" value={data.totals.contributions} />
-        <StatCard label="Volunteer hours" value={data.totals.hours} />
-        <StatCard label="Organizations" value={data.totals.organizations} />
-        <StatCard label="Civic credits earned" value={data.totals.credits} />
-      </div>
+        <div className={`mt-6 grid gap-4 sm:grid-cols-2 ${showCredits ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+          <StatCard label="Verified contributions" value={data.totals.contributions} />
+          <StatCard label="Volunteer hours" value={data.totals.hours} />
+          <StatCard label="Organizations" value={data.totals.organizations} />
+          {showCredits ? <StatCard label="Civic credits earned" value={data.totals.credits} /> : null}
+        </div>
+      </Card>
 
       <h2 className="mb-3 mt-9 text-sm font-semibold uppercase tracking-wider text-ink-400">Contribution history</h2>
       {data.contributions.length === 0 ? (
@@ -49,7 +62,7 @@ export function ResumeView({ data }: { data: ResumeData }) {
                   {c.hours != null ? ` · ${c.hours}h` : ''}
                 </p>
               </div>
-              <span className="text-sm font-semibold text-emerald-600">+{c.credits}</span>
+              {showCredits ? <span className="text-sm font-semibold text-emerald-600">+{c.credits}</span> : null}
             </div>
           ))}
         </Card>
