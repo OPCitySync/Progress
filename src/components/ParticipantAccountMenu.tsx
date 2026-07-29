@@ -60,15 +60,17 @@ export function ParticipantAccountMenu({
           <button
             type="button"
             onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="skeuo-theme-toggle shrink-0"
+            aria-label={theme === 'dark' ? 'Dark mode. Switch to light mode' : 'Light mode. Switch to dark mode'}
+            aria-pressed={theme === 'dark'}
+            title={theme === 'dark' ? 'Dark mode — switch to light mode' : 'Light mode — switch to dark mode'}
+            className="skeuo-account-header-theme-toggle"
             data-theme={theme}
           >
-            <Sun size={14} strokeWidth={2.5} className="skeuo-theme-toggle-icon skeuo-theme-toggle-icon--sun" />
-            <span className="skeuo-theme-toggle-track">
-              <span className="skeuo-theme-toggle-thumb" />
+            <Sun size={14} className="skeuo-account-header-theme-icon skeuo-account-header-theme-icon--sun" aria-hidden="true" />
+            <span className="skeuo-account-header-theme-track" aria-hidden="true">
+              <span className="skeuo-account-header-theme-thumb" />
             </span>
-            <Moon size={14} strokeWidth={2.5} className="skeuo-theme-toggle-icon skeuo-theme-toggle-icon--moon" />
+            <Moon size={14} className="skeuo-account-header-theme-icon skeuo-account-header-theme-icon--moon" aria-hidden="true" />
           </button>
         </div>
 
@@ -83,6 +85,25 @@ export function ParticipantAccountMenu({
           </a>
 
         </div>
+
+        {authorities.length > 0 ? (
+          <div className="border-t border-ink-100 py-2">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-400">Switch role</p>
+            <div className="space-y-1 px-1">
+              {authorities.map((authority) => (
+                <form action={switchIdentityAction} key={authority.identityId}>
+                  <input type="hidden" name="identityId" value={authority.identityId} />
+                  <input type="hidden" name="redirectTo" value={homeForRole(authority.role)} />
+                  <button type="submit" className="skeuo-role-switcher">
+                    <span className="skeuo-role-switcher-track" aria-hidden="true"><span /></span>
+                    <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-ink-800">{authority.label}</span>
+                    <span className="text-xs font-medium text-ink-400">Switch</span>
+                  </button>
+                </form>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <details className="border-t border-ink-100 py-1">
           <summary className="skeuo-account-menu-item cursor-pointer list-none [&::-webkit-details-marker]:hidden">
@@ -119,25 +140,6 @@ export function ParticipantAccountMenu({
             </Link>
           </div>
         </details>
-
-        {authorities.length > 0 ? (
-          <div className="border-t border-ink-100 py-2">
-            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-400">Switch role</p>
-            <div className="space-y-1 px-1">
-              {authorities.map((authority) => (
-                <form action={switchIdentityAction} key={authority.identityId}>
-                  <input type="hidden" name="identityId" value={authority.identityId} />
-                  <input type="hidden" name="redirectTo" value={homeForRole(authority.role)} />
-                  <button type="submit" className="skeuo-role-switcher">
-                    <span className="skeuo-role-switcher-track" aria-hidden="true"><span /></span>
-                    <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-ink-800">{authority.label}</span>
-                    <span className="text-xs font-medium text-ink-400">Switch</span>
-                  </button>
-                </form>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         <div className="border-t border-ink-100 pt-1">
           <form action={signOutAction}>
