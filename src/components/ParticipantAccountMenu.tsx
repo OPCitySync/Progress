@@ -52,9 +52,24 @@ export function ParticipantAccountMenu({
       </summary>
 
       <div className="skeuo-account-menu-panel absolute right-0 top-[calc(100%+0.45rem)] z-50 w-[19rem] rounded-2xl border border-ink-200 p-2 shadow-xl">
-        <div className="border-b border-ink-100 px-3 py-2.5">
-          <p className="truncate text-sm font-semibold text-ink-900">{session.name}</p>
-          <p className="mt-0.5 truncate text-xs text-ink-500">{session.email}</p>
+        <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink-900">{session.name}</p>
+            <p className="mt-0.5 truncate text-xs text-ink-500">{session.email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="skeuo-theme-toggle shrink-0"
+            data-theme={theme}
+          >
+            <Sun size={14} strokeWidth={2.5} className="skeuo-theme-toggle-icon skeuo-theme-toggle-icon--sun" />
+            <span className="skeuo-theme-toggle-track">
+              <span className="skeuo-theme-toggle-thumb" />
+            </span>
+            <Moon size={14} strokeWidth={2.5} className="skeuo-theme-toggle-icon skeuo-theme-toggle-icon--moon" />
+          </button>
         </div>
 
         <div className="py-1">
@@ -66,11 +81,7 @@ export function ParticipantAccountMenu({
             <HelpCircle size={16} />
             Help &amp; support
           </a>
-          <button type="button" onClick={toggleTheme} className="skeuo-account-menu-item w-full">
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            <span>Appearance</span>
-            <span className="ml-auto text-xs font-medium text-ink-400">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
-          </button>
+
         </div>
 
         <details className="border-t border-ink-100 py-1">
