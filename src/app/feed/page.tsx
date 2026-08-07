@@ -1,15 +1,14 @@
-import { Heart, Trophy } from 'lucide-react'
+import { Heart } from 'lucide-react'
 import { clsx } from 'clsx'
 import { requireSession } from '@/lib/auth/session'
 import { getFeed } from '@/lib/services/feed'
-import { getCityImpact, getNeighborhoodLeaderboard } from '@/lib/services/leaderboard'
+import { getCityImpact } from '@/lib/services/leaderboard'
+import { getActiveCity } from '@/lib/services/city-networks'
 import { createPostAction, toggleHeartAction } from '@/app/actions'
 import { Card, PageHeader, EmptyState, Flash, Textarea, Button, Badge } from '@/components/ui'
 import { fmtDateTime } from '@/lib/format'
 
 export const dynamic = 'force-dynamic'
-
-const medal = ['🥇', '🥈', '🥉']
 
 export default async function FeedPage({
   searchParams,
@@ -17,10 +16,10 @@ export default async function FeedPage({
   searchParams: { error?: string; ok?: string }
 }) {
   const session = await requireSession()
-  const [feed, impact, leaderboard] = await Promise.all([
+  const city = await getActiveCity(session)
+  const [feed, impact] = await Promise.all([
     getFeed(session.sub),
-    getCityImpact(),
-    getNeighborhoodLeaderboard(8),
+    getCityImpact(city?.id),
   ])
   const canPost = (session.role === 'issuer' || session.role === 'redeemer') && session.orgId
 
@@ -104,7 +103,7 @@ export default async function FeedPage({
           )}
         </div>
 
-        <aside className="space-y-6">
+        <aside>
           <Card>
             <p className="text-sm font-semibold text-ink-800">Community impact</p>
             <div className="mt-3 grid grid-cols-2 gap-3">
@@ -112,6 +111,7 @@ export default async function FeedPage({
                 ['Volunteers', impact.volunteers],
                 ['Contributions', impact.contributions],
                 ['Volunteer hours', impact.hours],
+                ['Organizations', impact.organizations],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-xl bg-ink-50 p-3">
                   <p className="text-xs text-ink-400">{label}</p>
@@ -119,32 +119,6 @@ export default async function FeedPage({
                 </div>
               ))}
             </div>
-          </Card>
-
-          <Card className="p-0">
-            <div className="flex items-center gap-2 px-6 pt-5">
-              <Trophy size={16} className="text-gold-500" />
-              <p className="text-sm font-semibold text-ink-800">Neighborhood leaderboard</p>
-            </div>
-            {leaderboard.length === 0 ? (
-              <p className="px-6 py-4 text-sm text-ink-400">
-                No neighborhoods are on the board yet.
-              </p>
-            ) : (
-              <div className="mt-2 divide-y divide-ink-100">
-                {leaderboard.map((n, i) => (
-                  <div key={n.neighborhood} className="flex items-center justify-between gap-3 px-6 py-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="w-5 text-sm">{medal[i] ?? `${i + 1}.`}</span>
-                      <span className="truncate text-sm font-medium text-ink-800">{n.neighborhood}</span>
-                    </div>
-                    <span className="shrink-0 text-xs text-ink-400">
-                      {n.hours}h · {n.volunteers} vol
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </Card>
         </aside>
       </div>
