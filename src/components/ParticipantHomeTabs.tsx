@@ -4,23 +4,23 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const tabs = [
-  { href: '/participant/opportunities', label: 'My Opportunities' },
+  { href: '/participant', label: 'Home' },
   { href: '/participant/resume', label: 'Service History' },
 ]
 
-/** The focused top rail shared by the participant opportunity and service-history views. */
-export function ParticipantOpportunitiesTabs() {
+/** The focused top rail shared by the participant Home and Service History views. */
+export function ParticipantHomeTabs() {
   const pathname = usePathname()
-  const isOpportunitiesSection = pathname === '/participant/opportunities' || pathname.startsWith('/participant/opportunities/')
+  const isHomeSection = pathname === '/participant'
   const isServiceHistorySection = pathname === '/participant/resume'
 
-  if (!isOpportunitiesSection && !isServiceHistorySection) return null
+  if (!isHomeSection && !isServiceHistorySection) return null
 
   return (
     <div className="skeuo-workspace-tabs border-t border-ink-100">
-      <nav aria-label="Opportunities" className="flex flex-nowrap gap-1 overflow-x-auto px-5 md:px-8">
+      <nav aria-label="Home" className="flex flex-nowrap gap-1 overflow-x-auto px-5 md:px-8">
         {tabs.map((tab) => {
-          const active = tab.href === '/participant/opportunities' ? isOpportunitiesSection : isServiceHistorySection
+          const active = tab.href === '/participant' ? isHomeSection : isServiceHistorySection
           return (
             <Link
               key={tab.href}

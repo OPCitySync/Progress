@@ -46,7 +46,7 @@ export default async function ParticipantResumePage() {
         </div>
       </Card>
 
-      <ResumeView data={resume} embedded showCredits={false} />
+      <ResumeView data={resume} embedded showCredits={false} showSummary={false} />
     </>
   )
 }

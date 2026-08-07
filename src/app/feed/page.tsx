@@ -112,7 +112,6 @@ export default async function FeedPage({
                 ['Volunteers', impact.volunteers],
                 ['Contributions', impact.contributions],
                 ['Volunteer hours', impact.hours],
-                ['Credits issued', impact.credits],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-xl bg-ink-50 p-3">
                   <p className="text-xs text-ink-400">{label}</p>

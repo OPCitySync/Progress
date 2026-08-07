@@ -73,10 +73,11 @@ export default async function ParticipantDashboard({
             </Link>
           ) : null}
         </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Active commitments" value={active.length} />
           <StatCard label="Verified contributions" value={verifiedCount} />
           <StatCard label="Organizations" value={resume?.totals.organizations ?? 0} />
+          <StatCard label="Volunteer hours" value={resume?.totals.hours ?? 0} />
         </div>
       </Card>
       <Flash searchParams={searchParams} />
