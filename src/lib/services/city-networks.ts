@@ -27,6 +27,17 @@ export type CityNetwork = {
   isHomeCity: boolean
 }
 
+const launchCityLocations: Record<string, string> = {
+  berkeley: 'Berkeley, California, United States',
+  'mexico-city': 'Mexico City, Mexico',
+}
+
+/** Full geographic context for the signed-in header. */
+export function cityLocationLabel(city: Pick<CityNetwork, 'id' | 'name'> | null | undefined): string {
+  if (!city) return 'Choose a city'
+  return launchCityLocations[city.id] ?? city.name
+}
+
 function parseCityScope(value: string | null | undefined): string[] {
   try {
     const parsed: unknown = JSON.parse(value ?? '[]')

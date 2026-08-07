@@ -14,6 +14,14 @@ function homeForRole(role: ActorContext['role']) {
   return '/participant'
 }
 
+function cityClassification(city: CityNetwork | undefined) {
+  if (!city) return 'No city network selected'
+  if (city.participation?.status === 'active') return `City Member · ${city.name}`
+  if (city.participation?.status === 'barred') return `Participation restricted · ${city.name}`
+  if (city.participation?.status === 'new') return `New Participant · ${city.name}`
+  return `City Network · ${city.name}`
+}
+
 /**
  * Participant-only account controls. Keeping these in one menu lets the
  * workspace focus on volunteering while still making city, role, and account
@@ -35,6 +43,7 @@ export function ParticipantAccountMenu({
   const { theme, toggleTheme } = useWorkspaceTheme()
   const authorities = contexts.filter((context) => context.kind === 'authority')
   const activeCity = cities.find((city) => city.id === activeCityId)
+  const classification = cityClassification(activeCity)
 
   return (
     <details className="skeuo-account-menu group relative shrink-0">
@@ -56,6 +65,10 @@ export function ParticipantAccountMenu({
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-ink-900">{session.name}</p>
             <p className="mt-0.5 truncate text-xs text-ink-500">{session.email}</p>
+            <p className="mt-2 flex items-center gap-1.5 truncate text-[11px] font-semibold text-brand-700">
+              <MapPinned size={13} aria-hidden="true" />
+              {classification}
+            </p>
           </div>
           <button
             type="button"
@@ -83,7 +96,6 @@ export function ParticipantAccountMenu({
             <HelpCircle size={16} />
             Help &amp; support
           </a>
-
         </div>
 
         {authorities.length > 0 ? (

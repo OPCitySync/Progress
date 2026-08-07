@@ -8,7 +8,7 @@ import { getAvailableCities, getCityNetworks } from '@/lib/services/city-network
 export const dynamic = 'force-dynamic'
 
 function participationLabel(status: 'new' | 'active' | 'barred') {
-  if (status === 'active') return 'Active Participant'
+  if (status === 'active') return 'City Member'
   if (status === 'barred') return 'Temporarily barred'
   return 'New Participant'
 }

@@ -3,14 +3,12 @@ import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { claims, tasks, shifts, orgs } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
-import { getMessagesForUser, markAllMessagesRead } from '@/lib/services/roster'
-import { getNotifications, markNotificationsRead } from '@/lib/services/notifications'
-import { setResumePublicAction, submitCompletionAction, unclaimClaimAction } from '@/app/actions'
-import { Card, StatCard, statusBadge, EmptyState, Flash, Button, Textarea, Badge, Mono } from '@/components/ui'
+import { submitCompletionAction, unclaimClaimAction } from '@/app/actions'
+import { Card, StatCard, statusBadge, EmptyState, Flash, Button, Textarea } from '@/components/ui'
 import { fmtDate, fmtDateTime } from '@/lib/format'
 import { getActiveCity } from '@/lib/services/city-networks'
 import { getMyResume } from '@/lib/services/resume'
-import { ResumeView } from '@/components/ResumeView'
+import { CommitmentCalendar } from '@/components/participant/CommitmentCalendar'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +28,7 @@ function whenLabel(shift: { startsAt: number | null; endsAt: number | null; labe
 export default async function ParticipantDashboard({
   searchParams,
 }: {
-  searchParams: { error?: string; ok?: string }
+  searchParams: { error?: string; ok?: string; commitmentView?: string; week?: string }
 }) {
   const session = await requireRole('participant')
   const [city, resume] = await Promise.all([getActiveCity(session), getMyResume(session.sub)])
@@ -44,23 +42,10 @@ export default async function ParticipantDashboard({
     .orderBy(desc(claims.updatedAt))
 
   const active = myClaims.filter((c) => c.claim.status === 'claimed' || c.claim.status === 'submitted')
-  const past = myClaims.filter((c) => c.claim.status === 'verified' || c.claim.status === 'rejected' || c.claim.status === 'no_show')
-  const verifiedCount = past.filter((c) => c.claim.status === 'verified').length
-
-  // Inbox: messages from organizations whose roster you're on.
-  const messages = await getMessagesForUser(session.sub, 10)
-  const hasUnread = messages.some((m) => m.unread)
-  if (hasUnread) {
-    // Rendering the dashboard counts as reading — mark after fetch so the
-    // unread highlight still shows on this load.
-    await markAllMessagesRead(session.sub)
-  }
-
-  // Reminders / notifications (shift confirmations, pre-shift reminders).
-  const notifications = await getNotifications(session.sub, 12)
-  if (notifications.some((n) => !n.readAt)) {
-    await markNotificationsRead(session.sub)
-  }
+  const verified = myClaims.filter((c) => c.claim.status === 'verified')
+  const verifiedCount = verified.length
+  const participation = city?.participation?.status
+  const commitmentView = searchParams.commitmentView === 'calendar' ? 'calendar' : 'list'
 
   return (
     <>
@@ -69,15 +54,24 @@ export default async function ParticipantDashboard({
           <div>
             <h1 className="skeuo-page-title font-display text-2xl font-semibold text-ink-900">Home</h1>
             <p className="mt-1 text-sm text-ink-500">
-              {city ? `Welcome back, ${session.name.split(' ')[0]}. Your civic contributions in ${city.name}.` : `Welcome back, ${session.name.split(' ')[0]}. Add a city to begin participating.`}
+              {city
+                ? `Welcome back, ${session.name.split(' ')[0]}. ${participation === 'new' ? `Your next step in ${city.name} is local onboarding.` : `Your local service in ${city.name}.`}`
+                : `Welcome back, ${session.name.split(' ')[0]}. Choose a city network to begin participating.`}
             </p>
           </div>
-          <Link
-            href="/participant/opportunities"
-            className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
-          >
-            Browse opportunities
-          </Link>
+          {!city ? (
+            <Link href="/workspace/cities" className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">
+              Choose a city
+            </Link>
+          ) : participation === 'new' ? (
+            <Link href="/participant/opportunities" className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">
+              Find onboarding
+            </Link>
+          ) : participation === 'active' ? (
+            <Link href={active[0] ? `/participant/opportunities/${active[0].task.id}` : '/participant/opportunities'} className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">
+              {active[0] ? 'View next commitment' : 'Browse opportunities'}
+            </Link>
+          ) : null}
         </div>
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <StatCard label="Active commitments" value={active.length} />
@@ -91,7 +85,7 @@ export default async function ParticipantDashboard({
         <Card className="mb-6 border-brand-200 bg-brand-50">
           <p className="text-sm font-semibold text-ink-800">
             {city.participation.status === 'active'
-              ? `Active Participant · ${city.name}`
+              ? `City Member · ${city.name}`
               : city.participation.status === 'barred'
                 ? `Participation restricted · ${city.name}`
                 : `New Participant · ${city.name}`}
@@ -101,72 +95,66 @@ export default async function ParticipantDashboard({
               ? 'Your on-site onboarding attendance has been verified. You can reserve open opportunities in this city.'
               : city.participation.status === 'barred'
                 ? `You can join this city again after ${city.participation.barredUntil ? fmtDate(city.participation.barredUntil) : 'the restriction period'}.`
-                : `Complete one onboarding task with a verified on-site check-in to activate this city. ${3 - city.participation.noShowCount} onboarding attempt${3 - city.participation.noShowCount === 1 ? '' : 's'} remain.`}
+                : `Complete one onboarding task with a verified on-site check-in to become a City Member. ${3 - city.participation.noShowCount} onboarding attempt${3 - city.participation.noShowCount === 1 ? '' : 's'} remain.`}
+          </p>
+          {city.participation.status === 'new' ? (
+            <Link href="/participant/opportunities" className="mt-4 inline-block text-sm font-semibold text-brand-700 hover:text-brand-600">
+              Find an onboarding session →
+            </Link>
+          ) : null}
+        </Card>
+      ) : !city ? (
+        <Card className="mb-6 border-brand-200 bg-brand-50">
+          <p className="text-sm font-semibold text-ink-800">Choose a city network to get started</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-600">
+            City membership and opportunities are local. You can add another city whenever you are able to participate there.
           </p>
         </Card>
       ) : null}
 
-      {notifications.length > 0 ? (
-        <>
-          <h2 className="mb-3 mt-9 text-sm font-semibold uppercase tracking-wider text-ink-400">Notifications</h2>
-          <Card className="divide-y divide-ink-100 p-0">
-            {notifications.map((n) => (
-              <Link
-                key={n.id}
-                href={n.link || '/participant'}
-                className={`block px-6 py-4 hover:bg-ink-50 ${n.readAt ? '' : 'bg-brand-50/50'}`}
-              >
-                <p className="text-sm font-semibold text-ink-800">
-                  {n.title}
-                  {n.readAt ? null : <Badge tone="blue">new</Badge>}
-                </p>
-                {n.body ? <p className="mt-0.5 text-sm text-ink-500">{n.body}</p> : null}
-                <p className="mt-1 text-xs text-ink-400">{fmtDateTime(n.createdAt)}</p>
-              </Link>
-            ))}
-          </Card>
-        </>
-      ) : null}
-
-      {messages.length > 0 ? (
-        <>
-          <h2 className="mb-3 mt-9 text-sm font-semibold uppercase tracking-wider text-ink-400">
-            Messages from your organizations
-          </h2>
-          <Card className="divide-y divide-ink-100 p-0">
-            {messages.map((m) => (
-              <details key={m.id} className={m.unread ? 'bg-brand-50/50' : ''}>
-                <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-6 py-4">
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-ink-800">
-                      {m.subject}
-                      {m.unread ? (
-                        <Badge tone="blue">
-                          <span className="ml-0">new</span>
-                        </Badge>
-                      ) : null}
-                    </span>
-                    <span className="block text-xs text-ink-400">
-                      {m.orgName} · {fmtDateTime(m.createdAt)}
-                    </span>
-                  </span>
-                </summary>
-                <p className="whitespace-pre-line border-t border-ink-100 px-6 py-4 text-sm leading-relaxed text-ink-600">
-                  {m.body}
-                </p>
-              </details>
-            ))}
-          </Card>
-        </>
-      ) : null}
-
-      <h2 className="mb-3 mt-9 text-sm font-semibold uppercase tracking-wider text-ink-400">
-        Active commitments
-      </h2>
-      {active.length === 0 ? (
+      <div className="mb-3 mt-9 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-400">Your commitments</h2>
+        <nav aria-label="Commitment view" className="inline-flex rounded-xl border border-ink-200 bg-ink-50 p-1 shadow-inner">
+          <Link
+            href="/participant"
+            className={
+              commitmentView === 'list'
+                ? 'rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 shadow-sm'
+                : 'rounded-lg px-3 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-800'
+            }
+          >
+            List View
+          </Link>
+          <Link
+            href="/participant?commitmentView=calendar"
+            className={
+              commitmentView === 'calendar'
+                ? 'rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 shadow-sm'
+                : 'rounded-lg px-3 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-800'
+            }
+          >
+            Calendar View
+          </Link>
+        </nav>
+      </div>
+      {commitmentView === 'calendar' ? (
+        <CommitmentCalendar
+          week={searchParams.week}
+          commitments={active.map(({ claim, task, org, shift }) => ({
+            id: claim.id,
+            taskId: task.id,
+            taskTitle: task.title,
+            organizationName: org.name,
+            startsAt: shift?.startsAt ?? null,
+            endsAt: shift?.endsAt ?? null,
+            label: shift?.label ?? '',
+            status: claim.status === 'submitted' ? 'submitted' : 'claimed',
+          }))}
+        />
+      ) : active.length === 0 ? (
         <EmptyState
-          title="No active commitments"
-          body="Claim an opportunity to start making a difference."
+          title={participation === 'new' ? 'Start with local onboarding' : 'No active commitments'}
+          body={participation === 'new' ? 'Reserve one onboarding session to become a City Member and unlock local opportunities.' : 'Reserve an opportunity when you are ready to get involved.'}
         />
       ) : (
         <div className="space-y-4">
@@ -188,18 +176,29 @@ export default async function ParticipantDashboard({
               </div>
               {claim.status === 'claimed' ? (
                 <div className="mt-4 border-t border-ink-100 pt-4">
-                  <form action={submitCompletionAction} className="space-y-3">
-                    <input type="hidden" name="claimId" value={claim.id} />
-                    <input type="hidden" name="redirectTo" value="/participant" />
-                    <Textarea
-                      name="note"
-                      rows={2}
-                      placeholder="Optional note for the verifier (what you did, when, with whom)…"
-                    />
-                    <div className="flex items-center gap-3">
-                      <Button type="submit">Submit for verification</Button>
-                    </div>
-                  </form>
+                  {shift ? (
+                    <>
+                      <p className="text-sm leading-relaxed text-ink-600">
+                        Your spot is reserved. Check in on site when your shift begins.
+                      </p>
+                      <Link href={`/participant/opportunities/${task.id}`} className="mt-3 inline-block text-sm font-semibold text-brand-700 hover:text-brand-600">
+                        View commitment details →
+                      </Link>
+                    </>
+                  ) : (
+                    <form action={submitCompletionAction} className="space-y-3">
+                      <input type="hidden" name="claimId" value={claim.id} />
+                      <input type="hidden" name="redirectTo" value="/participant" />
+                      <Textarea
+                        name="note"
+                        rows={2}
+                        placeholder="Optional note for the organization (what you did, when, with whom)…"
+                      />
+                      <div className="flex items-center gap-3">
+                        <Button type="submit">Request completion verification</Button>
+                      </div>
+                    </form>
+                  )}
                   <form action={unclaimClaimAction} className="mt-2">
                     <input type="hidden" name="claimId" value={claim.id} />
                     <input type="hidden" name="redirectTo" value="/participant" />
@@ -218,12 +217,11 @@ export default async function ParticipantDashboard({
         </div>
       )}
 
-      <h2 className="mb-3 mt-9 text-sm font-semibold uppercase tracking-wider text-ink-400">History</h2>
-      {past.length === 0 ? (
-        <EmptyState title="No completed contributions yet" />
-      ) : (
+      {verified.length > 0 ? (
+        <section>
+          <h2 className="mb-3 mt-9 text-sm font-semibold uppercase tracking-wider text-ink-400">Recent service</h2>
         <Card className="divide-y divide-ink-100 p-0">
-          {past.map(({ claim, task, org }) => (
+          {verified.slice(0, 5).map(({ claim, task, org }) => (
             <div key={claim.id} className="flex items-center justify-between gap-3 px-6 py-4">
               <div>
                 <p className="text-sm font-medium text-ink-800">{task.title}</p>
@@ -237,37 +235,6 @@ export default async function ParticipantDashboard({
             </div>
           ))}
         </Card>
-      )}
-
-      {resume ? (
-        <section className="mt-10">
-          <Card className="mb-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-ink-800">Share link</p>
-                  <Badge tone={resume.isPublic ? 'green' : 'gray'}>{resume.isPublic ? 'Public' : 'Private'}</Badge>
-                </div>
-                {resume.isPublic && resume.token ? (
-                  <p className="mt-1 text-sm">
-                    <a href={`/resume/${resume.token}`} target="_blank" className="text-brand-600 hover:text-brand-500">
-                      <Mono>{`${process.env.APP_URL ?? ''}/resume/${resume.token}` || `/resume/${resume.token}`}</Mono>
-                    </a>
-                  </p>
-                ) : (
-                  <p className="mt-1 text-sm text-ink-500">Your résumé is private. Make it public to get a share link.</p>
-                )}
-              </div>
-              <form action={setResumePublicAction}>
-                <input type="hidden" name="public" value={resume.isPublic ? 'false' : 'true'} />
-                <input type="hidden" name="redirectTo" value="/participant" />
-                <Button type="submit" variant={resume.isPublic ? 'secondary' : 'primary'}>
-                  {resume.isPublic ? 'Make private' : 'Make shareable'}
-                </Button>
-              </form>
-            </div>
-          </Card>
-          <ResumeView data={resume} embedded showCredits={false} />
         </section>
       ) : null}
     </>

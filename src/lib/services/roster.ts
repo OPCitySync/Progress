@@ -388,6 +388,21 @@ export async function getMessagesForUser(userId: string, limit = 20) {
   }))
 }
 
+export async function getUnreadMessageCount(userId: string): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(messageRecipients)
+    .where(and(eq(messageRecipients.userId, userId), isNull(messageRecipients.readAt)))
+  return Number(rows[0]?.count ?? 0)
+}
+
+export async function markMessageRead(messageId: string, userId: string) {
+  await db
+    .update(messageRecipients)
+    .set({ readAt: Date.now() })
+    .where(and(eq(messageRecipients.messageId, messageId), eq(messageRecipients.userId, userId), isNull(messageRecipients.readAt)))
+}
+
 export async function markAllMessagesRead(userId: string) {
   await db
     .update(messageRecipients)

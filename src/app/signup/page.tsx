@@ -104,7 +104,7 @@ export default async function SignupPage({
             <p className="mt-2 text-xs leading-relaxed text-ink-400">
               {isOrg
                 ? 'A City Admin onboards organizations into their selected city before they can publish there.'
-                : 'You can add another city later. Your first on-site onboarding check-in activates your home city.'}
+                : 'You can add another city later. Your first verified on-site onboarding check-in makes you a City Member in your home city.'}
             </p>
           </fieldset>
 

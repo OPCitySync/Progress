@@ -122,10 +122,9 @@ export function OrgProfileBody({
 
         <section className="mb-10">
           <h2 className="mb-4 font-display text-2xl font-semibold text-ink-900">Our impact</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard label="Volunteers" value={impact.volunteers} />
             <StatCard label="Verified contributions" value={impact.verifiedCompletions} />
-            <StatCard label="Civic credits issued" value={impact.creditsMinted} />
             <StatCard label="Open opportunities" value={impact.openOpportunities} />
           </div>
         </section>
@@ -145,7 +144,6 @@ export function OrgProfileBody({
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-500">
                       <span>🗓 {shiftSummary(onboarding)}</span>
                       {onboarding.location ? <span>📍 {onboarding.location}</span> : null}
-                      <span>{onboarding.credits} credits</span>
                     </div>
                     {onboardingNote}
                   </div>
@@ -171,7 +169,6 @@ export function OrgProfileBody({
                         <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-500">{task.description}</p>
                       ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-400">
-                        <span className="font-medium text-gold-700">{task.credits} credits</span>
                         {task.location ? <span>📍 {task.location}</span> : null}
                         <span>🗓 {shiftSummary(task)}</span>
                         <span>

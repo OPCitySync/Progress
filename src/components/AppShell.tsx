@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { CirclePlus, HelpCircle, Settings2 } from 'lucide-react'
+import { Bell, HelpCircle, Settings2 } from 'lucide-react'
 import { eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { Logo } from '@/components/brand/Logo'
@@ -13,8 +13,9 @@ import { ParticipantAccountMenu } from '@/components/ParticipantAccountMenu'
 import { signOutAction } from '@/app/actions'
 import type { Session } from '@/lib/auth/session'
 import { features, type Features } from '@/lib/config'
-import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
-import { getActiveCity, getCityNetworks } from '@/lib/services/city-networks'
+import { cityLocationLabel, getActiveCity, getCityNetworks } from '@/lib/services/city-networks'
+import { getUnreadNotificationCount } from '@/lib/services/notifications'
+import { getUnreadMessageCount } from '@/lib/services/roster'
 import { db } from '@/lib/db/client'
 import { orgProfiles, orgs, users } from '@/lib/db/schema'
 import { getActorContexts } from '@/lib/services/identity-access'
@@ -28,13 +29,10 @@ const navigationByRole: Record<Session['role'], Navigation> = {
   participant: {
     sidebar: [
       { href: '/participant', label: 'Home', icon: 'dashboard' },
-      { href: '/workspace/orgs', label: 'Discover Orgs', icon: 'organizations' },
-      { href: '/feed', label: 'MyCity Feed', icon: 'feed' },
-      { href: '/workspace/ledger', label: 'Public Ledger', icon: 'ledger' },
-    ],
-    workspace: [
       { href: '/participant/opportunities', label: 'Opportunities', icon: 'opportunities' },
+      { href: '/feed', label: 'MyCity Feed', icon: 'feed' },
     ],
+    workspace: [],
   },
   issuer: {
     sidebar: [
@@ -97,8 +95,7 @@ export async function AppShell({
   const navigation = navigationByRole[session.role]
   const sidebarItems = navigation.sidebar.filter((n) => !n.feature || f[n.feature])
   const workspaceItems = navigation.workspace.filter((n) => !n.feature || f[n.feature])
-  const [organizations, cities, activeCity, organization, account, actorContexts] = await Promise.all([
-    session.role === 'participant' ? getParticipantOrganizations(session.sub) : Promise.resolve([]),
+  const [cities, activeCity, organization, account, actorContexts, unreadNotificationCount, unreadMessageCount] = await Promise.all([
     getCityNetworks(session),
     getActiveCity(session),
     session.orgId
@@ -111,11 +108,14 @@ export async function AppShell({
       : Promise.resolve([]),
     db.select({ avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, session.sub)).limit(1),
     session.role === 'admin' ? Promise.resolve([]) : getActorContexts(session.sub),
+    session.role === 'participant' ? getUnreadNotificationCount(session.sub) : Promise.resolve(0),
+    session.role === 'participant' ? getUnreadMessageCount(session.sub) : Promise.resolve(0),
   ])
   const homeHref = sidebarItems[0].href
   const isParticipant = session.role === 'participant'
   const workspaceTitle = isParticipant ? session.name : organization[0]?.name ?? roleLabels[session.role]
   const currentCityName = isParticipant || session.role === 'admin' ? activeCity?.name ?? 'Choose a city' : null
+  const participantLocation = cityLocationLabel(activeCity)
   const railMembershipKind = session.orgId && session.role !== 'participant' ? 'organization' : 'user'
   const railCities = cities.filter((city) => city.memberKinds.includes(railMembershipKind))
   const isIssuerOrganization = session.role === 'issuer' && Boolean(organization[0])
@@ -124,6 +124,7 @@ export async function AppShell({
   const railAvatarUrl = isIssuerOrganization ? organization[0]?.logoUrl ?? '' : account[0]?.avatarUrl ?? ''
   const initialCityRailCollapsed = cookies().get(CITY_RAIL_COOKIE)?.value === 'true'
   const initialTheme: WorkspaceTheme = cookies().get(THEME_COOKIE)?.value === 'dark' ? 'dark' : 'light'
+  const unreadUpdateCount = unreadNotificationCount + unreadMessageCount
 
   const sidebar = (
     <>
@@ -153,38 +154,6 @@ export async function AppShell({
             <SidebarNav items={sidebarItems} />
           </div>
         </div>
-
-        {session.role === 'participant' ? (
-          <div className="mt-7 px-1">
-            <div className="flex items-center justify-between px-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/40">Organizations</p>
-              <Link href="/workspace/orgs" title="Discover organizations" className="text-gold-300 hover:text-gold-200">
-                <CirclePlus size={16} />
-              </Link>
-            </div>
-            {organizations.length === 0 ? (
-              <div className="mt-2 rounded-xl border border-dashed border-white/10 px-3 py-3">
-                <p className="text-xs leading-relaxed text-white/45">Complete an organization’s onboarding task to add it here.</p>
-                <Link href="/workspace/orgs" className="mt-2 inline-block text-xs font-semibold text-gold-300 hover:text-gold-200">
-                  Discover organizations →
-                </Link>
-              </div>
-            ) : (
-              <div className="mt-2 space-y-1">
-                {organizations.map((org) => (
-                  <Link
-                    key={org.id}
-                    href={org.slug ? `/orgs/${org.slug}` : '/orgs'}
-                    className="block rounded-xl px-3 py-2.5 transition-colors hover:bg-white/5"
-                  >
-                    <p className="truncate text-sm font-semibold text-white/80">{org.name}</p>
-                    <p className="mt-0.5 truncate text-xs text-white/40">{org.onboardingTask}</p>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
 
         {!isParticipant ? (
           <div className="mt-auto border-t border-white/10 pt-4">
@@ -223,17 +192,33 @@ export async function AppShell({
     <>
           <div className="flex items-center justify-between gap-4 px-5 py-4 md:px-8">
             <p className="font-display text-xl font-semibold text-ink-900">
-              {workspaceTitle}
-              {currentCityName ? <span className="ml-2 text-sm font-medium text-ink-400">— {currentCityName}</span> : null}
+              {isParticipant ? <span className="text-sm font-medium text-ink-400">{participantLocation}</span> : workspaceTitle}
+              {!isParticipant && currentCityName ? <span className="ml-2 text-sm font-medium text-ink-400">— {currentCityName}</span> : null}
             </p>
             {isParticipant ? (
-              <ParticipantAccountMenu
-                session={session}
-                avatarUrl={account[0]?.avatarUrl ?? ''}
-                cities={railCities}
-                activeCityId={activeCity?.id}
-                contexts={actorContexts}
-              />
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href="/participant/notifications"
+                  title="Notifications"
+                  aria-label={unreadUpdateCount > 0 ? `${unreadUpdateCount} unread updates` : 'Notifications'}
+                  className="skeuo-notification-button relative flex h-10 items-center justify-center gap-2 rounded-xl px-3"
+                >
+                  <Bell size={18} aria-hidden="true" />
+                  <span className="hidden text-xs font-semibold sm:inline">Notifications</span>
+                  {unreadUpdateCount > 0 ? (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-700 px-1 text-[9px] font-bold text-white">
+                      {unreadUpdateCount > 9 ? '9+' : unreadUpdateCount}
+                    </span>
+                  ) : null}
+                </Link>
+                <ParticipantAccountMenu
+                  session={session}
+                  avatarUrl={account[0]?.avatarUrl ?? ''}
+                  cities={railCities}
+                  activeCityId={activeCity?.id}
+                  contexts={actorContexts}
+                />
+              </div>
             ) : null}
           </div>
           {workspaceItems.length > 0 ? (

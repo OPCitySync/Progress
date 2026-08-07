@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { and, desc, eq, isNull, lte } from 'drizzle-orm'
+import { and, desc, eq, isNull, lte, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { notifications, reminders, shifts, tasks, orgs, users } from '@/lib/db/schema'
 import { getEmailAdapter } from '@/lib/notify/email'
@@ -200,6 +200,25 @@ export async function getNotifications(userId: string, limit = 15): Promise<Noti
     .where(eq(notifications.userId, userId))
     .orderBy(desc(notifications.createdAt))
     .limit(limit)
+}
+
+/** The lightweight unread signal shown beside the participant account controls. */
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  const row = (
+    await db
+      .select({ count: sql<number>`count(*)` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)))
+  )[0]
+  return Number(row?.count ?? 0)
+}
+
+/** Mark one notification as read without allowing another participant to alter it. */
+export async function markNotificationRead(notificationId: string, userId: string): Promise<void> {
+  await db
+    .update(notifications)
+    .set({ readAt: Date.now() })
+    .where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId), isNull(notifications.readAt)))
 }
 
 export async function markNotificationsRead(userId: string): Promise<void> {

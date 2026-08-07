@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { tasks, orgs, claims } from '@/lib/db/schema'
+import { tasks, orgs, claims, orgProfiles } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { getActiveWaiver, hasAcceptedWaiver } from '@/lib/services/waivers'
 import { getShiftsWithCounts, checkInOpen, type ShiftRow } from '@/lib/services/opportunities'
@@ -48,6 +48,16 @@ export default async function OpportunityDetail({
   )[0]
   if (!row) notFound()
   const { task, org } = row
+  const profile = (
+    await db
+      .select({ onboardingTaskId: orgProfiles.onboardingTaskId, contactEmail: orgProfiles.contactEmail })
+      .from(orgProfiles)
+      .where(eq(orgProfiles.orgId, org.id))
+      .limit(1)
+  )[0]
+  const isOnboarding = profile?.onboardingTaskId === task.id
+  const needsCityOnboarding = city.participation?.status === 'new' && !isOnboarding
+  const participationRestricted = city.participation?.status === 'barred'
 
   const shiftRows = await getShiftsWithCounts(task.id)
   const myClaims = await db
@@ -75,13 +85,37 @@ export default async function OpportunityDetail({
 
       <Card>
         <div className="flex flex-wrap items-center gap-3">
-          <Badge tone="gold">{task.credits} credits per shift</Badge>
           {statusBadge(task.status)}
+          {isOnboarding ? <Badge tone="blue">Onboarding session</Badge> : null}
         </div>
         {task.description ? (
           <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-ink-600">{task.description}</p>
         ) : null}
       </Card>
+
+      {needsCityOnboarding ? (
+        <Card className="mt-4 border-brand-200 bg-brand-50">
+          <p className="text-sm font-semibold text-ink-800">Complete onboarding first</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-600">
+            Reserve and attend one local onboarding session with a verified check-in to become a City Member. Then you can reserve this opportunity.
+          </p>
+          <Link
+            href="/participant/opportunities"
+            className="mt-4 inline-flex rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+          >
+            Find an onboarding session
+          </Link>
+        </Card>
+      ) : null}
+
+      {participationRestricted ? (
+        <Card className="mt-4 border-red-200 bg-red-50">
+          <p className="text-sm font-semibold text-ink-800">Participation is temporarily restricted</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-600">
+            You can reserve opportunities in {city.name} again after the restriction period ends.
+          </p>
+        </Card>
+      ) : null}
 
       {required.length > 0 ? (
         <Card className="mt-4">
@@ -99,9 +133,19 @@ export default async function OpportunityDetail({
             })}
           </ul>
           {credBlocked ? (
-            <p className="mt-2 text-xs text-ink-400">
-              Contact {org.name} to get verified, then you can sign up for a shift.
-            </p>
+            <div className="mt-3 border-t border-ink-100 pt-3">
+              <p className="text-sm leading-relaxed text-ink-600">
+                This is a screened role. The organization must confirm these requirements before you can reserve a shift.
+              </p>
+              {profile?.contactEmail ? (
+                <a
+                  href={`mailto:${profile.contactEmail}?subject=${encodeURIComponent(`Requirements review: ${task.title}`)}`}
+                  className="mt-2 inline-block text-sm font-semibold text-brand-700 hover:text-brand-600"
+                >
+                  Request a requirements review →
+                </a>
+              ) : null}
+            </div>
           ) : null}
         </Card>
       ) : null}
@@ -125,7 +169,7 @@ export default async function OpportunityDetail({
           <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-line rounded-xl border border-ink-200 bg-ink-50 p-4 text-xs leading-relaxed text-ink-600">
             {waiver!.body}
           </div>
-          <p className="mt-2 text-xs text-ink-400">You’ll accept this when you sign up for your first shift below.</p>
+          <p className="mt-2 text-xs text-ink-400">You’ll accept this when you reserve your first shift below.</p>
         </Card>
       ) : null}
 
@@ -139,7 +183,13 @@ export default async function OpportunityDetail({
           {shiftRows.map(({ shift, slotsLeft }) => {
             const myClaim = claimByShift.get(shift.id)
             const claimable =
-              task.status === 'open' && shift.status === 'open' && slotsLeft > 0 && !myClaim && !credBlocked
+              task.status === 'open' &&
+              shift.status === 'open' &&
+              slotsLeft > 0 &&
+              !myClaim &&
+              !credBlocked &&
+              !needsCityOnboarding &&
+              !participationRestricted
             return (
               <Card key={shift.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -175,7 +225,11 @@ export default async function OpportunityDetail({
                       </div>
                     ) : !claimable ? (
                       <span className="text-sm text-ink-400">
-                        {credBlocked
+                        {needsCityOnboarding
+                          ? 'Complete onboarding first'
+                          : participationRestricted
+                            ? 'Participation restricted'
+                            : credBlocked
                           ? 'Requirements needed'
                           : task.status !== 'open' || shift.status !== 'open'
                             ? 'Closed'
@@ -195,7 +249,7 @@ export default async function OpportunityDetail({
                             </label>
                           </>
                         ) : null}
-                        <Button type="submit">Sign up</Button>
+                        <Button type="submit">{isOnboarding ? 'Reserve onboarding spot' : 'Reserve spot'}</Button>
                       </form>
                     )}
                   </div>

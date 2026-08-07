@@ -45,7 +45,7 @@ import {
 } from '@/lib/storage/storage'
 import { saveProfile } from '@/lib/services/profile'
 import { createRecurringOnboardingSession } from '@/lib/services/onboarding-session'
-import { processDueReminders } from '@/lib/services/notifications'
+import { markNotificationRead, markNotificationsRead, processDueReminders } from '@/lib/services/notifications'
 import {
   createOffering,
   setOfferingActive,
@@ -55,7 +55,13 @@ import {
 } from '@/lib/services/redemption'
 import { createCityAnchor } from '@/lib/protocol/city-anchor'
 import { createPost, toggleHeart } from '@/lib/services/feed'
-import { createVolunteerGroup, sendRosterMessage, updateVolunteerGroupMembers } from '@/lib/services/roster'
+import {
+  createVolunteerGroup,
+  markAllMessagesRead,
+  markMessageRead,
+  sendRosterMessage,
+  updateVolunteerGroupMembers,
+} from '@/lib/services/roster'
 import { getActiveCity, joinCityNetwork, setActiveCity } from '@/lib/services/city-networks'
 import { participantDisplayName } from '@/lib/participant-name'
 import {
@@ -411,7 +417,7 @@ export async function joinCityNetworkAction(formData: FormData) {
   back(formData, '/cities', {
     ok: result.alreadyMember
       ? `${result.cityName} is already in your city networks.`
-      : `You added ${result.cityName}. Complete an onboarding task there to become an Active Participant.`,
+      : `You added ${result.cityName}. Complete an onboarding task there to become a City Member.`,
   })
 }
 
@@ -871,6 +877,24 @@ export async function selfCheckInAction(formData: FormData) {
     `/participant/opportunities/${taskId}`,
     result.ok ? { ok: 'Checked in — submitted for verification.' } : { error: result.error },
   )
+}
+
+export async function markNotificationReadAction(formData: FormData) {
+  const session = await requireActor('participant')
+  await markNotificationRead(str(formData, 'notificationId'), session.sub)
+  back(formData, '/participant/notifications', { ok: 'Notification marked as read.' })
+}
+
+export async function markAllNotificationsReadAction(formData: FormData) {
+  const session = await requireActor('participant')
+  await Promise.all([markNotificationsRead(session.sub), markAllMessagesRead(session.sub)])
+  back(formData, '/participant/notifications', { ok: 'All updates marked as read.' })
+}
+
+export async function markOrganizationMessageReadAction(formData: FormData) {
+  const session = await requireActor('participant')
+  await markMessageRead(str(formData, 'messageId'), session.sub)
+  back(formData, '/participant/notifications', { ok: 'Message marked as read.' })
 }
 
 export async function issuerCheckInAction(formData: FormData) {
