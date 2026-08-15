@@ -1,3 +1,6 @@
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import {
   ArrowUpRight,
   Bookmark,
@@ -8,76 +11,131 @@ import {
   MapPin,
   Sparkles,
 } from 'lucide-react'
+import { claims, orgs, shifts, tasks } from '@/lib/db/schema'
+import { db } from '@/lib/db/client'
+import { requireSession } from '@/lib/auth/session'
+import { getFeed } from '@/lib/services/feed'
+import { getCityImpact } from '@/lib/services/leaderboard'
+import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
+import { getMyResume } from '@/lib/services/resume'
 import { LabHeader } from './LabHeader'
-import { MyCityFeedContent } from './MyCityFeedContent'
+import { MyCityFeedContent, type LabFeedPost, type LabCommitment } from './MyCityFeedContent'
+import { getLabWorkspace } from './lab-workspace'
 import styles from './prototype.module.css'
 
-const impactItems = [
-  { value: '04', label: 'Active shifts' },
-  { value: '18h', label: 'Service this month' },
-  { value: '07', label: 'Local organizations' },
-]
+export const dynamic = 'force-dynamic'
 
-const cityNotes = [
-  { label: 'Civic gardens', detail: '3 open shifts this week', color: 'sun' },
-  { label: 'Food access', detail: '2 organizations active today', color: 'blue' },
-  { label: 'Youth & learning', detail: 'Orientation Thursday', color: 'coral' },
-]
+function shortTime(timestamp: number | null) {
+  if (!timestamp) return 'Time TBD'
+  return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
 
-/**
- * A static, local-only visual study. It intentionally has no app data or
- * workflows behind it: this is for judging composition, hierarchy, and tone.
- */
-export default function AestheticLabPage() {
+/** The participant Home experience using the same session and records as the functional application. */
+export default async function AestheticLabPage() {
+  const session = await requireSession()
+  if (session.role === 'issuer') redirect('/aesthetic-lab/issuer')
+  if (session.role !== 'participant') redirect('/participant')
+
+  const { city, contexts } = await getLabWorkspace(session)
+  const [resume, joinedOrganizations, feed, impact, claimRows, cityEvents] = await Promise.all([
+    getMyResume(session.sub),
+    getParticipantOrganizations(session.sub),
+    getFeed(session.sub),
+    getCityImpact(city?.id),
+    city
+      ? db
+          .select({ claim: claims, task: tasks, org: orgs, shift: shifts })
+          .from(claims)
+          .innerJoin(tasks, eq(claims.taskId, tasks.id))
+          .innerJoin(orgs, eq(tasks.orgId, orgs.id))
+          .leftJoin(shifts, eq(claims.shiftId, shifts.id))
+          .where(and(eq(claims.userId, session.sub), eq(tasks.cityId, city.id)))
+          .orderBy(desc(claims.updatedAt))
+      : Promise.resolve([]),
+    city
+      ? db
+          .select({ task: tasks, org: orgs, shift: shifts })
+          .from(shifts)
+          .innerJoin(tasks, eq(shifts.taskId, tasks.id))
+          .innerJoin(orgs, eq(tasks.orgId, orgs.id))
+          .where(and(eq(tasks.cityId, city.id), eq(tasks.status, 'open'), eq(shifts.status, 'open')))
+          .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
+          .limit(3)
+      : Promise.resolve([]),
+  ])
+
+  const activeClaims = claimRows.filter((row) => row.claim.status === 'claimed' || row.claim.status === 'submitted')
+  const feedPosts: LabFeedPost[] = feed.map(({ post, org, hearts, heartedByMe }) => ({
+    id: post.id,
+    body: post.body,
+    createdAt: post.createdAt,
+    organization: org.name,
+    organizationType: org.type,
+    hearts,
+    heartedByMe,
+  }))
+  const commitments: LabCommitment[] = activeClaims.map(({ claim, task, org, shift }) => ({
+    id: claim.id,
+    title: task.title,
+    organization: org.name,
+    startsAt: shift?.startsAt ?? null,
+    location: task.location,
+    isOnboarding: false,
+  }))
+  const participation = city?.participation?.status
+  const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
+
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="feed" />
+      <LabHeader activeSection="feed" session={session} city={city} contexts={contexts} />
 
       <div className={styles.layout}>
         <aside className={styles.leftRail}>
           <section className={styles.cityCard}>
             <div className={styles.cityCardTop}>
               <span className={styles.cityOverline}>Your city network</span>
-              <button type="button" aria-label="Switch city"><ChevronDown size={16} /></button>
+              <Link href="/workspace/cities" aria-label="Switch city"><ChevronDown size={16} /></Link>
             </div>
-            <div className={styles.cityName}><MapPin size={17} /><span>Berkeley, CA</span></div>
-            <p>A shared place to show up, help out, and see local progress.</p>
-            <a href="#">Explore city network <ArrowUpRight size={14} /></a>
+            <div className={styles.cityName}><MapPin size={17} /><span>{cityLabel}</span></div>
+            <p>{city ? 'A shared place to show up, help out, and see local progress.' : 'Choose a City/Sync network to find local opportunities.'}</p>
+            <Link href="/workspace/cities">Explore city network <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.impactCard}>
             <p className={styles.eyebrow}>Your impact</p>
             <div className={styles.impactGrid}>
-              {impactItems.map((item) => <div key={item.label}><strong>{item.value}</strong><span>{item.label}</span></div>)}
+              <div><strong>{String(activeClaims.length).padStart(2, '0')}</strong><span>Active shifts</span></div>
+              <div><strong>{resume?.totals.hours ?? 0}h</strong><span>Service record</span></div>
+              <div><strong>{String(joinedOrganizations.length).padStart(2, '0')}</strong><span>Organizations</span></div>
             </div>
-            <a href="#"><Bookmark size={15} /> View service history</a>
+            <Link href="/aesthetic-lab/history"><Bookmark size={15} /> View service history</Link>
           </section>
 
           <section className={styles.quickLinks}>
-            <a href="#"><CalendarDays size={17} /> My commitments</a>
-            <a href="#"><Building2 size={17} /> My organizations</a>
-            <a href="#"><Heart size={17} /> Saved opportunities</a>
+            <Link href="/aesthetic-lab/opportunities"><CalendarDays size={17} /> My commitments</Link>
+            <Link href="/workspace/orgs"><Building2 size={17} /> Discover organizations</Link>
+            <Link href="/aesthetic-lab/opportunities"><Heart size={17} /> Saved opportunities</Link>
           </section>
         </aside>
 
         <section className={styles.feed} aria-label="MyCity Feed">
           <div className={styles.welcomeBand}>
-            <div><p className={styles.eyebrow}>Good morning, naynaysoo</p><h1>There are good things happening today.</h1></div>
+            <div><p className={styles.eyebrow}>Good morning, {session.name}</p><h1>There are good things happening today.</h1></div>
           </div>
-          <MyCityFeedContent />
+          <MyCityFeedContent posts={feedPosts} commitments={commitments} />
         </section>
 
         <aside className={styles.rightRail}>
           <section className={styles.profileCard}>
             <div className={styles.profileCover}><i /><i /><i /></div>
             <div className={styles.profileBody}>
-              <div className={styles.avatarLarge}>N</div>
-              <div className={styles.profileTitle}><p className={styles.eyebrow}>Civic participant</p><h2>naynaysoo</h2><p>Berkeley, California</p></div>
+              <div className={styles.avatarLarge}>{session.name.slice(0, 1).toUpperCase() || 'U'}</div>
+              <div className={styles.profileTitle}><p className={styles.eyebrow}>Civic participant</p><h2>{session.name}</h2><p>{cityLabel}</p></div>
               <div className={styles.membershipStatus}>
-                <span><Sparkles size={15} /> New participant</span>
-                <p>Complete one local onboarding session to become a City Member.</p>
+                <span><Sparkles size={15} /> {participation === 'active' ? 'City Member' : participation === 'barred' ? 'Participation restricted' : 'New participant'}</span>
+                <p>{participation === 'active' ? 'Your local participation is verified.' : participation === 'barred' ? 'Your participation is temporarily paused.' : 'Complete one local onboarding session to become a City Member.'}</p>
                 <div><i /><i /><i /></div>
-                <a href="#">Find onboarding <ArrowUpRight size={14} /></a>
+                <Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link>
               </div>
             </div>
           </section>
@@ -85,16 +143,20 @@ export default function AestheticLabPage() {
           <section className={styles.todayEventsCard}>
             <div className={styles.sectionHeading}><p className={styles.eyebrow}>Today&apos;s events</p><CalendarDays size={17} /></div>
             <div className={styles.todayEventList}>
-              <a href="#"><span>9:30<small>AM</small></span><div><b>Creek restoration check-in</b><p>North Berkeley</p></div><ArrowUpRight size={14} /></a>
-              <a href="#"><span>5:30<small>PM</small></span><div><b>Community tech support</b><p>South Berkeley Senior Center</p></div><ArrowUpRight size={14} /></a>
-              <a href="#"><span>6:00<small>PM</small></span><div><b>New participant onboarding</b><p>East Bay Food Collective</p></div><ArrowUpRight size={14} /></a>
+              {cityEvents.length === 0 ? <p className={styles.emptyCopy}>No upcoming public shifts are scheduled yet.</p> : cityEvents.map(({ task, org, shift }) => (
+                <Link href={`/participant/opportunities/${task.id}`} key={shift.id}><span>{shortTime(shift.startsAt)}</span><div><b>{task.title}</b><p>{task.location || org.name}</p></div><ArrowUpRight size={14} /></Link>
+              ))}
             </div>
-            <a className={styles.viewEventsLink} href="#">View city calendar <ArrowUpRight size={14} /></a>
+            <Link className={styles.viewEventsLink} href="/aesthetic-lab/opportunities">View city calendar <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.cityPulse}>
-            <div className={styles.sectionHeading}><p className={styles.eyebrow}>Berkeley pulse</p><span>Live</span></div>
-            {cityNotes.map((note) => <a key={note.label} href="#" className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span><ArrowUpRight size={15} /></a>)}
+            <div className={styles.sectionHeading}><p className={styles.eyebrow}>{city?.name ?? 'City'} pulse</p><span>Live</span></div>
+            {[
+              { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
+              { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
+              { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
+            ].map((note) => <Link key={note.label} href="/feed" className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span><ArrowUpRight size={15} /></Link>)}
           </section>
         </aside>
       </div>

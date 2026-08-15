@@ -19,16 +19,24 @@ const navigation = [
   { key: 'reports', href: '/aesthetic-lab/issuer/reports', label: 'Impact & reports', icon: FileBarChart2 },
 ] as const
 
-export function IssuerLabSidebar({ active }: { active: IssuerSidebarSection }) {
+export function IssuerLabSidebar({
+  active,
+  organizationName = 'Issuer organization',
+  cityName,
+}: {
+  active: IssuerSidebarSection
+  organizationName?: string
+  cityName?: string
+}) {
   return (
     <aside className={styles.leftRail}>
       <section className={styles.issuerIdentityCard}>
         <div className={styles.issuerCover}><span>EB</span><i /><i /><i /></div>
         <div className={styles.issuerIdentityBody}>
           <p className={styles.eyebrow}>Issuer organization</p>
-          <h1>East Bay Food Collective <BadgeCheck size={17} /></h1>
-          <p>Food access · Berkeley, CA</p>
-          <Link href="/aesthetic-lab/issuer/profile"><Pencil size={14} /> Edit public profile</Link>
+          <h1>{organizationName} <BadgeCheck size={17} /></h1>
+          <p>{cityName ? `Issuer Organization · ${cityName}` : 'Issuer Organization'}</p>
+          <Link href="/issuer/profile"><Pencil size={14} /> Edit public profile</Link>
         </div>
       </section>
 

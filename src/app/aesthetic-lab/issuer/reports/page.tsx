@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import {
   ArrowUpRight,
   CalendarRange,
@@ -8,38 +9,55 @@ import {
   HeartHandshake,
   UsersRound,
 } from 'lucide-react'
+import { eq } from 'drizzle-orm'
+import { requireRole } from '@/lib/auth/session'
+import { db } from '@/lib/db/client'
+import { orgs } from '@/lib/db/schema'
+import { listOrganizationActivity } from '@/lib/services/organization-activity'
+import { orgReportSummary } from '@/lib/services/reports'
 import { LabHeader } from '../../LabHeader'
+import { getLabWorkspace } from '../../lab-workspace'
 import { IssuerLabSidebar } from '../IssuerLabSidebar'
 import styles from '../../prototype.module.css'
 
-const impactRows = [
-  { label: 'Volunteer hours', value: '148', growth: '+18% from last month', width: 'seventy' },
-  { label: 'Food boxes packed', value: '486', growth: '+12% from last month', width: 'ninety' },
-  { label: 'Neighbors served', value: '312', growth: '+9% from last month', width: 'eighty' },
-]
+export const dynamic = 'force-dynamic'
 
-const activity = [
-  { date: 'Today', title: 'Pantry packing crew scheduled', detail: '12 volunteer spots published for Saturday' },
-  { date: 'Aug 10', title: '12 service records verified', detail: 'Hours added to individual participant histories' },
-  { date: 'Aug 08', title: 'Monthly impact snapshot ready', detail: 'Downloadable record prepared for your reporting file' },
-]
+function eventTitle(type: string) {
+  return type.toLowerCase().split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
 
-export default function IssuerReportsLabPage() {
+export default async function IssuerReportsLabPage() {
+  const session = await requireRole('issuer')
+  const { city, contexts } = await getLabWorkspace(session)
+  const orgId = session.orgId!
+  const [org, summary, activity] = await Promise.all([
+    db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
+    orgReportSummary(orgId),
+    listOrganizationActivity(orgId),
+  ])
+  const current = new Date()
+  const reportPeriod = `${current.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} · All time`
+  const impactRows = [
+    { label: 'Volunteer hours', value: summary.hours.toLocaleString(), growth: 'Verified time across completed shifts', width: 'seventy' },
+    { label: 'Verified contributions', value: summary.verifiedCompletions.toLocaleString(), growth: 'Completed records retained', width: 'ninety' },
+    { label: 'Volunteers served', value: summary.volunteers.toLocaleString(), growth: 'People with verified activity', width: 'eighty' },
+  ]
+
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="issuer-reports" workspace="issuer" />
+      <LabHeader activeSection="issuer-reports" workspace="issuer" session={session} city={city} contexts={contexts} />
       <div className={styles.issuerLayout}>
-        <IssuerLabSidebar active="reports" />
+        <IssuerLabSidebar active="reports" organizationName={org?.name} cityName={city?.name} />
 
         <section className={styles.issuerMain} aria-label="Organization reports">
           <section className={styles.issuerPageHero}>
-            <div><p className={styles.eyebrow}>Impact & reports</p><h1>Make your work easy to tell.</h1><p>City/Sync turns the volunteer work you have already coordinated into organized, exportable reporting context.</p></div>
-            <button type="button" className={styles.issuerPrimaryAction}><Download size={17} /> Export report</button>
+            <div><p className={styles.eyebrow}>Impact &amp; reports</p><h1>Make your work easy to tell.</h1><p>City/Sync turns the volunteer work you have already coordinated into organized, exportable reporting context.</p></div>
+            <Link href="/issuer/reports" className={styles.issuerPrimaryAction}><Download size={17} /> Export report</Link>
           </section>
 
           <section className={styles.reportPeriodCard}>
-            <div><p className={styles.eyebrow}>Reporting period</p><h2>August 1–12, 2026</h2><span>Berkeley, California</span></div>
-            <div className={styles.reportPeriodActions}><button type="button"><CalendarRange size={16} /> Change range</button><button type="button"><FileText size={16} /> Customize report</button></div>
+            <div><p className={styles.eyebrow}>Reporting period</p><h2>{reportPeriod}</h2><span>{city?.name ?? 'Your active city'}</span></div>
+            <div className={styles.reportPeriodActions}><Link href="/issuer/reports"><CalendarRange size={16} /> Change range</Link><Link href="/issuer/reports"><FileText size={16} /> Customize report</Link></div>
           </section>
 
           <section className={styles.reportImpactCard}>
@@ -50,13 +68,13 @@ export default function IssuerReportsLabPage() {
           </section>
 
           <section className={styles.reportStoryGrid}>
-            <section className={styles.reportNarrativeCard}><span><HeartHandshake size={22} /></span><div><p className={styles.eyebrow}>Your report, in plain language</p><h2>23 volunteers coordinated 148 hours of food-access work this month.</h2><p>They packed and delivered 486 food boxes to 312 Berkeley neighbors—with each shift and completion retained as a verifiable operational record.</p></div><button type="button">Copy summary <ArrowUpRight size={14} /></button></section>
-            <section className={styles.reportComplianceCard}><FileCheck2 size={21} /><p className={styles.eyebrow}>Reporting readiness</p><h2>Your record is up to date.</h2><ul><li>Opportunity history retained</li><li>Volunteer completions verified</li><li>Current waiver attached</li></ul><a href="#">Open reporting checklist <ArrowUpRight size={14} /></a></section>
+            <section className={styles.reportNarrativeCard}><span><HeartHandshake size={22} /></span><div><p className={styles.eyebrow}>Your report, in plain language</p><h2>{summary.volunteers} volunteer{summary.volunteers === 1 ? '' : 's'} completed {summary.verifiedCompletions} verified contribution{summary.verifiedCompletions === 1 ? '' : 's'}.</h2><p>{summary.hours} documented service hour{summary.hours === 1 ? '' : 's'} are retained with the related shift and opportunity records.</p></div><Link href="/issuer/reports">Open summary <ArrowUpRight size={14} /></Link></section>
+            <section className={styles.reportComplianceCard}><FileCheck2 size={21} /><p className={styles.eyebrow}>Reporting readiness</p><h2>Your record is up to date.</h2><ul><li>Opportunity history retained</li><li>Volunteer completions verified</li><li>Organization activity logged</li></ul><Link href="/issuer/reports">Open reporting checklist <ArrowUpRight size={14} /></Link></section>
           </section>
 
           <section className={styles.reportActivityCard}>
             <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Activity log</p><h2>A clear record of what happened</h2></div><UsersRound size={18} /></div>
-            <div className={styles.reportActivityList}>{activity.map((item) => <article key={item.title}><span>{item.date}</span><div><h3>{item.title}</h3><p>{item.detail}</p></div><ArrowUpRight size={16} /></article>)}</div>
+            <div className={styles.reportActivityList}>{activity.length === 0 ? <p className={styles.emptyCopy}>Actions taken for this organization will appear here.</p> : activity.slice(0, 6).map((item) => <article key={item.hash}><span>{new Date(item.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><div><h3>{eventTitle(item.type)}</h3><p>Recorded by {item.actorName}</p></div><ArrowUpRight size={16} /></article>)}</div>
           </section>
         </section>
       </div>

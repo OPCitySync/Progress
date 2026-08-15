@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import {
   ArrowUpRight,
   Building2,
@@ -10,37 +11,44 @@ import {
   Sparkles,
   UsersRound,
 } from 'lucide-react'
+import { requireRole } from '@/lib/auth/session'
+import { listPublicIssuers } from '@/lib/services/profile'
+import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
 import styles from '../prototype.module.css'
 
-const organizations = [
-  { name: 'East Bay Food Collective', cause: 'Food access', description: 'A neighborhood-powered pantry building dignified, reliable access to good food.', detail: '6 open opportunities', initials: 'EB', art: 'foodArt' },
-  { name: 'Berkeley Tool Library', cause: 'Circular economy', description: 'Sharing tools, skills, and repair knowledge so useful things stay in use longer.', detail: '3 open opportunities', initials: 'BT', art: 'toolArt' },
-  { name: 'Friends of Codornices Creek', cause: 'Environment', description: 'Restoring an urban watershed with hands-on care for the creek and its neighbors.', detail: '4 open opportunities', initials: 'FC', art: 'creekArt' },
-]
+export const dynamic = 'force-dynamic'
 
-export default function OrganizationsLabPage() {
+function initials(name: string) {
+  return name.split(/\s+/).map((word) => word[0]).join('').slice(0, 2).toUpperCase()
+}
+
+export default async function OrganizationsLabPage({ searchParams }: { searchParams: { q?: string; cause?: string } }) {
+  const session = await requireRole('participant')
+  const { city, contexts } = await getLabWorkspace(session)
+  const search = searchParams.q?.trim() ?? ''
+  const cause = searchParams.cause?.trim() ?? ''
+  const organizations = await listPublicIssuers({ cityId: city?.id, search, cause })
+  const causes = Array.from(new Set(organizations.flatMap((organization) => organization.causes))).slice(0, 5)
+
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="organizations" />
+      <LabHeader activeSection="organizations" session={session} city={city} contexts={contexts} />
 
       <div className={styles.detailLayout}>
         <aside className={styles.leftRail}>
           <section className={styles.cityCard}>
-            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Discover in</span><button type="button" aria-label="Change city"><ChevronDown size={16} /></button></div>
-            <div className={styles.cityName}><MapPin size={17} /><span>Berkeley, CA</span></div>
+            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Discover in</span><Link href="/workspace/cities" aria-label="Change city"><ChevronDown size={16} /></Link></div>
+            <div className={styles.cityName}><MapPin size={17} /><span>{city?.name ?? 'Choose a city'}</span></div>
             <p>Every organization here is part of the local City/Sync network.</p>
-            <a href="#">Explore city network <ArrowUpRight size={14} /></a>
+            <Link href="/workspace/cities">Explore city network <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.filterCard}>
             <div className={styles.sectionHeading}><p className={styles.eyebrow}>Causes nearby</p><Compass size={16} /></div>
             <div className={styles.filterStack}>
-              <button type="button" className={styles.filterSelected}>All organizations</button>
-              <button type="button">Food access</button>
-              <button type="button">Environment</button>
-              <button type="button">Youth &amp; learning</button>
-              <button type="button">Community care</button>
+              <Link className={!cause ? styles.filterSelected : undefined} href="/aesthetic-lab/organizations">All organizations</Link>
+              {causes.map((item) => <Link className={cause === item ? styles.filterSelected : undefined} href={`/aesthetic-lab/organizations?cause=${encodeURIComponent(item)}`} key={item}>{item}</Link>)}
             </div>
           </section>
         </aside>
@@ -52,21 +60,22 @@ export default function OrganizationsLabPage() {
             <p>Explore organizations close to home, learn what they are working on, and find a meaningful way to take part.</p>
           </div>
 
-          <label className={styles.organizationSearch}>
+          <form action="/aesthetic-lab/organizations" method="get" className={styles.organizationSearch}>
+            {cause ? <input type="hidden" name="cause" value={cause} /> : null}
             <Search size={18} aria-hidden="true" />
-            <input type="search" placeholder="Search Berkeley organizations" aria-label="Search Berkeley organizations" />
-          </label>
+            <input type="search" name="q" defaultValue={search} placeholder={`Search ${city?.name ?? ''} organizations`} aria-label="Search organizations" />
+          </form>
 
-          <div className={styles.listHeading}><div><p className={styles.eyebrow}>Organizations in Berkeley</p><h2>7 local partners</h2></div><button type="button">Featured first <ChevronDown size={15} /></button></div>
+          <div className={styles.listHeading}><div><p className={styles.eyebrow}>Organizations in {city?.name ?? 'your network'}</p><h2>{organizations.length} local partner{organizations.length === 1 ? '' : 's'}</h2></div><button type="button">Featured first <ChevronDown size={15} /></button></div>
           <div className={styles.organizationList}>
-            {organizations.map((organization) => (
-              <article className={styles.organizationCard} key={organization.name}>
-                <div className={`${styles.organizationArt} ${styles[organization.art]}`}><span>{organization.initials}</span><i /><i /><i /></div>
+            {organizations.length === 0 ? <section className={styles.calendarEmpty}><Building2 size={20} /><div><b>No organizations match this view.</b><p>Try another cause or check back as more local partners join your city network.</p></div></section> : organizations.map((organization, index) => (
+              <article className={styles.organizationCard} key={organization.org.id}>
+                <div className={`${styles.organizationArt} ${styles[index % 3 === 0 ? 'foodArt' : index % 3 === 1 ? 'toolArt' : 'creekArt']}`}><span>{initials(organization.org.name)}</span><i /><i /><i /></div>
                 <div className={styles.organizationDetails}>
-                  <p className={styles.organizationCause}>{organization.cause}</p>
-                  <h3>{organization.name} <CheckCircle2 size={15} /></h3>
-                  <p>{organization.description}</p>
-                  <div><span><UsersRound size={14} /> {organization.detail}</span><a href="#">Visit organization <ArrowUpRight size={14} /></a></div>
+                  <p className={styles.organizationCause}>{organization.causes[0] ?? 'Community organization'}</p>
+                  <h3>{organization.org.name} <CheckCircle2 size={15} /></h3>
+                  <p>{organization.tagline || organization.org.description || 'A City/Sync organization helping its local community.'}</p>
+                  <div><span><UsersRound size={14} /> {organization.openCount} open opportunit{organization.openCount === 1 ? 'y' : 'ies'}</span><Link href={`/orgs/${organization.org.slug}`}>Visit organization <ArrowUpRight size={14} /></Link></div>
                 </div>
               </article>
             ))}
@@ -79,10 +88,10 @@ export default function OrganizationsLabPage() {
             <p className={styles.eyebrow}>Start locally</p>
             <h2>One onboarding session opens a city.</h2>
             <p>Get to know an organization before you take on regular opportunities.</p>
-            <a href="#">Find onboarding <ArrowUpRight size={14} /></a>
+            <Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link>
           </section>
           <section className={styles.savedCard}>
-            <Heart size={19} fill="currentColor" /><div><p className={styles.eyebrow}>Saved organizations</p><strong>2 local partners</strong><span>Keep track of places you care about.</span></div><ArrowUpRight size={16} />
+            <Heart size={19} fill="currentColor" /><div><p className={styles.eyebrow}>Saved organizations</p><strong>Keep track of local partners</strong><span>Return when you&apos;re ready to help.</span></div><ArrowUpRight size={16} />
           </section>
           <section className={styles.organizationNote}><Building2 size={18} /><p><b>Organizations set their own opportunities.</b><br />You can browse first and sign up when a shift is right for you.</p></section>
         </aside>

@@ -2,19 +2,28 @@
 
 import { useState } from 'react'
 import { Bookmark, Heart, Link2 } from 'lucide-react'
+import { toggleHeartAction } from '@/app/actions'
 import styles from './prototype.module.css'
 
-export function PostActions({ isOpportunity, postId }: { isOpportunity: boolean; postId: string }) {
+export function PostActions({
+  isOpportunity = false,
+  postId,
+  initialLiked = false,
+  redirectTo = '/aesthetic-lab',
+}: {
+  isOpportunity?: boolean
+  postId?: string
+  initialLiked?: boolean
+  redirectTo?: string
+}) {
   const [isSaved, setIsSaved] = useState(false)
-  const [isLiked, setIsLiked] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
 
   const copyLink = async () => {
-    const link = `https://city-sync.org/feed/${postId}`
     try {
-      await navigator.clipboard.writeText(link)
+      await navigator.clipboard.writeText(window.location.href)
     } catch {
-      // The prototype still communicates the one permitted sharing action.
+      // Copying is a convenience action only; the feed remains usable if it is blocked.
     }
     setIsCopied(true)
     window.setTimeout(() => setIsCopied(false), 1800)
@@ -30,9 +39,17 @@ export function PostActions({ isOpportunity, postId }: { isOpportunity: boolean;
       <button type="button" onClick={copyLink}>
         <Link2 size={18} /> {isCopied ? 'Link copied' : 'Share'}
       </button>
-      <button type="button" className={isLiked ? styles.actionSelected : undefined} onClick={() => setIsLiked((liked) => !liked)}>
-        <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} /> {isLiked ? 'Liked' : 'Like'}
-      </button>
+      {postId ? (
+        <form action={toggleHeartAction}>
+          <input type="hidden" name="postId" value={postId} />
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <button type="submit" className={initialLiked ? styles.actionSelected : undefined}>
+            <Heart size={18} fill={initialLiked ? 'currentColor' : 'none'} /> {initialLiked ? 'Liked' : 'Like'}
+          </button>
+        </form>
+      ) : (
+        <button type="button"><Heart size={18} /> Like</button>
+      )}
     </div>
   )
 }

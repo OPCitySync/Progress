@@ -10,17 +10,37 @@ import {
   LogOut,
   MapPinned,
   Settings2,
-  Sun,
 } from 'lucide-react'
+import { signOutAction, switchCityAction, switchIdentityAction } from '@/app/actions'
+import type { Session } from '@/lib/auth/session'
+import type { CityNetwork } from '@/lib/services/city-networks'
+import type { ActorContext } from '@/lib/services/identity-access'
 import styles from './prototype.module.css'
 
-export function UserMenu({ workspace = 'participant' }: { workspace?: 'participant' | 'issuer' }) {
+function labDestination(role: ActorContext['role']) {
+  return role === 'issuer' ? '/aesthetic-lab/issuer' : '/aesthetic-lab'
+}
+
+export function UserMenu({
+  workspace = 'participant',
+  session,
+  city,
+  contexts = [],
+}: {
+  workspace?: 'participant' | 'issuer'
+  session?: Session
+  city?: CityNetwork | null
+  contexts?: ActorContext[]
+}) {
   const [isOpen, setIsOpen] = useState(false)
   const isIssuer = workspace === 'issuer'
-  const identityName = isIssuer ? 'East Bay Food Collective' : 'naynaysoo'
-  const identityDescription = isIssuer ? 'Issuer Organization · Berkeley, CA' : 'Civic Participant · Berkeley, CA'
-  const destination = isIssuer ? '/aesthetic-lab' : '/aesthetic-lab/issuer'
-  const destinationName = isIssuer ? 'naynaysoo' : 'East Bay Food Collective'
+  const activeContext = contexts.find((context) => context.identityId === session?.activeIdentityId)
+  const identityName = isIssuer ? activeContext?.label ?? 'Issuer organization' : session?.name ?? 'Civic participant'
+  const identityDescription = isIssuer
+    ? `Issuer Organization${city ? ` · ${city.name}` : ''}`
+    : `Civic Participant${city ? ` · ${city.name}` : ''}`
+  const switchTargets = session ? contexts.filter((context) => context.identityId !== session.activeIdentityId) : []
+  const currentPath = isIssuer ? '/aesthetic-lab/issuer' : '/aesthetic-lab'
 
   return (
     <div className={styles.userMenu}>
@@ -32,39 +52,59 @@ export function UserMenu({ workspace = 'participant' }: { workspace?: 'participa
         aria-controls="account-menu"
         onClick={() => setIsOpen((open) => !open)}
       >
-        <span className={styles.avatarSmall}>N</span>
+        <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : ''}`}>
+          {isIssuer ? identityName.slice(0, 2).toUpperCase() : identityName.slice(0, 1).toUpperCase() || 'U'}
+        </span>
         <ChevronDown className={isOpen ? styles.profileChevronOpen : undefined} size={15} />
       </button>
 
       {isOpen && (
         <section className={styles.userPopover} id="account-menu" aria-label="Account menu">
           <div className={styles.userIdentity}>
-            <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : ''}`}>{isIssuer ? 'EB' : 'N'}</span>
+            <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : ''}`}>
+              {isIssuer ? identityName.slice(0, 2).toUpperCase() : identityName.slice(0, 1).toUpperCase() || 'U'}
+            </span>
             <div><strong>{identityName}</strong><span>{identityDescription}</span></div>
           </div>
 
-          <div className={styles.userMenuSection}>
+          {switchTargets.length > 0 ? <div className={styles.userMenuSection}>
             <p className={styles.eyebrow}>Workspace</p>
-            <Link className={styles.workspaceSwitch} href={destination} onClick={() => setIsOpen(false)}>
-              <ArrowLeftRight size={17} />
-              <span><small>Switch to</small>{destinationName}</span>
-            </Link>
-          </div>
+            {switchTargets.map((target) => (
+              <form action={switchIdentityAction} key={target.identityId}>
+                <input type="hidden" name="identityId" value={target.identityId} />
+                <input type="hidden" name="redirectTo" value={labDestination(target.role)} />
+                <button className={styles.workspaceSwitch} type="submit">
+                  <ArrowLeftRight size={17} />
+                  <span><small>Switch to</small>{target.kind === 'authority' ? target.label : target.label || session?.name}</span>
+                </button>
+              </form>
+            ))}
+          </div> : null}
 
           <div className={styles.userMenuSection}>
             <p className={styles.eyebrow}>Account</p>
-            <button type="button"><MapPinned size={17} /><span>My Cities<small>Berkeley, CA</small></span></button>
-            <button type="button"><Settings2 size={17} /><span>Profile &amp; settings</span></button>
-            <button type="button"><Bell size={17} /><span>Notifications<small>2 unread</small></span></button>
+            <Link href="/workspace/cities" onClick={() => setIsOpen(false)}><MapPinned size={17} /><span>My Cities<small>{city?.name ?? 'Choose a city'}</small></span></Link>
+            <Link href="/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Profile &amp; settings</span></Link>
+            <Link href="/participant/notifications" onClick={() => setIsOpen(false)}><Bell size={17} /><span>Notifications</span></Link>
           </div>
 
           <div className={styles.userMenuSection}>
             <p className={styles.eyebrow}>Preferences</p>
-            <button type="button"><Sun size={17} /><span>Appearance<small>Light theme</small></span></button>
-            <button type="button"><CircleHelp size={17} /><span>Help &amp; support</span></button>
+            <a href="mailto:support@city-sync.org?subject=City%2FSync%20help"><CircleHelp size={17} /><span>Help &amp; support</span></a>
           </div>
 
-          <button className={styles.signOutButton} type="button"><LogOut size={17} /> Sign out</button>
+          {city ? <div className={styles.userMenuSection}>
+            <p className={styles.eyebrow}>Current city</p>
+            <form action={switchCityAction}>
+              <input type="hidden" name="cityId" value={city.id} />
+              <input type="hidden" name="redirectTo" value={currentPath} />
+              <button type="submit"><MapPinned size={17} /><span>{city.name}<small>Selected city network</small></span></button>
+            </form>
+          </div> : null}
+
+          <form action={signOutAction}>
+            <button className={styles.signOutButton} type="submit"><LogOut size={17} /> Sign out</button>
+          </form>
         </section>
       )}
     </div>

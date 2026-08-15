@@ -12,6 +12,9 @@ import { NotificationsControl } from './NotificationsControl'
 import { UserMenu } from './UserMenu'
 import { WeatherWidget } from './WeatherWidget'
 import styles from './prototype.module.css'
+import type { Session } from '@/lib/auth/session'
+import type { CityNetwork } from '@/lib/services/city-networks'
+import type { ActorContext } from '@/lib/services/identity-access'
 
 export type LabSection =
   | 'feed'
@@ -41,7 +44,19 @@ const issuerSections = [
   { key: 'issuer-profile', label: 'Public Profile', href: '/aesthetic-lab/issuer/profile', icon: Building2 },
 ] as const
 
-export function LabHeader({ activeSection, workspace = 'participant' }: { activeSection: LabSection; workspace?: LabWorkspace }) {
+export function LabHeader({
+  activeSection,
+  workspace = 'participant',
+  session,
+  city,
+  contexts,
+}: {
+  activeSection: LabSection
+  workspace?: LabWorkspace
+  session?: Session
+  city?: CityNetwork | null
+  contexts?: ActorContext[]
+}) {
   const isIssuer = workspace === 'issuer'
   const sections = isIssuer ? issuerSections : participantSections
 
@@ -74,7 +89,7 @@ export function LabHeader({ activeSection, workspace = 'participant' }: { active
 
         <NotificationsControl />
 
-        <UserMenu workspace={workspace} />
+        <UserMenu workspace={workspace} session={session} city={city} contexts={contexts} />
       </div>
     </header>
   )
