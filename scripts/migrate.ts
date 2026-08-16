@@ -174,6 +174,15 @@ const statements = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS post_hearts_post_user ON post_hearts (post_id, user_id)`,
+  `CREATE TABLE IF NOT EXISTS saved_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS saved_items_user_kind_item ON saved_items (user_id, kind, item_id)`,
+  `CREATE INDEX IF NOT EXISTS saved_items_user ON saved_items (user_id, kind, created_at)`,
   `CREATE TABLE IF NOT EXISTS events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,

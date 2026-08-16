@@ -18,6 +18,7 @@ import { getFeed } from '@/lib/services/feed'
 import { getCityImpact } from '@/lib/services/leaderboard'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
 import { getMyResume } from '@/lib/services/resume'
+import { savedItemIds } from '@/lib/services/saved-items'
 import { LabHeader } from './LabHeader'
 import { MyCityFeedContent, type LabFeedPost, type LabCommitment } from './MyCityFeedContent'
 import { getLabWorkspace } from './lab-workspace'
@@ -36,7 +37,7 @@ export default async function AestheticLabPage() {
   if (session.role === 'issuer') redirect('/aesthetic-lab/issuer')
   if (session.role !== 'participant') redirect('/participant')
 
-  const { city, contexts } = await getLabWorkspace(session)
+  const { city, cities, contexts } = await getLabWorkspace(session)
   const [resume, joinedOrganizations, feed, impact, claimRows, cityEvents] = await Promise.all([
     getMyResume(session.sub),
     getParticipantOrganizations(session.sub),
@@ -63,6 +64,7 @@ export default async function AestheticLabPage() {
           .limit(3)
       : Promise.resolve([]),
   ])
+  const savedPostIds = await savedItemIds(session.sub, 'post', feed.map(({ post }) => post.id))
 
   const activeClaims = claimRows.filter((row) => row.claim.status === 'claimed' || row.claim.status === 'submitted')
   const feedPosts: LabFeedPost[] = feed.map(({ post, org, hearts, heartedByMe }) => ({
@@ -73,6 +75,7 @@ export default async function AestheticLabPage() {
     organizationType: org.type,
     hearts,
     heartedByMe,
+    savedByMe: savedPostIds.has(post.id),
   }))
   const commitments: LabCommitment[] = activeClaims.map(({ claim, task, org, shift }) => ({
     id: claim.id,
@@ -87,18 +90,18 @@ export default async function AestheticLabPage() {
 
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="feed" session={session} city={city} contexts={contexts} />
+      <LabHeader activeSection="feed" session={session} city={city} cities={cities} contexts={contexts} />
 
       <div className={styles.layout}>
         <aside className={styles.leftRail}>
           <section className={styles.cityCard}>
             <div className={styles.cityCardTop}>
               <span className={styles.cityOverline}>Your city network</span>
-              <Link href="/workspace/cities" aria-label="Switch city"><ChevronDown size={16} /></Link>
+              <Link href="/aesthetic-lab/cities" aria-label="Switch city"><ChevronDown size={16} /></Link>
             </div>
             <div className={styles.cityName}><MapPin size={17} /><span>{cityLabel}</span></div>
             <p>{city ? 'A shared place to show up, help out, and see local progress.' : 'Choose a City/Sync network to find local opportunities.'}</p>
-            <Link href="/workspace/cities">Explore city network <ArrowUpRight size={14} /></Link>
+            <Link href="/aesthetic-lab/cities">Explore city network <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.impactCard}>
@@ -113,8 +116,8 @@ export default async function AestheticLabPage() {
 
           <section className={styles.quickLinks}>
             <Link href="/aesthetic-lab/opportunities"><CalendarDays size={17} /> My commitments</Link>
-            <Link href="/workspace/orgs"><Building2 size={17} /> Discover organizations</Link>
-            <Link href="/aesthetic-lab/opportunities"><Heart size={17} /> Saved opportunities</Link>
+            <Link href="/aesthetic-lab/organizations"><Building2 size={17} /> Discover organizations</Link>
+            <Link href="/aesthetic-lab/opportunities?saved=1"><Heart size={17} /> Saved opportunities</Link>
           </section>
         </aside>
 
@@ -144,7 +147,7 @@ export default async function AestheticLabPage() {
             <div className={styles.sectionHeading}><p className={styles.eyebrow}>Today&apos;s events</p><CalendarDays size={17} /></div>
             <div className={styles.todayEventList}>
               {cityEvents.length === 0 ? <p className={styles.emptyCopy}>No upcoming public shifts are scheduled yet.</p> : cityEvents.map(({ task, org, shift }) => (
-                <Link href={`/participant/opportunities/${task.id}`} key={shift.id}><span>{shortTime(shift.startsAt)}</span><div><b>{task.title}</b><p>{task.location || org.name}</p></div><ArrowUpRight size={14} /></Link>
+                <Link href={`/aesthetic-lab/opportunities/${task.id}`} key={shift.id}><span>{shortTime(shift.startsAt)}</span><div><b>{task.title}</b><p>{task.location || org.name}</p></div><ArrowUpRight size={14} /></Link>
               ))}
             </div>
             <Link className={styles.viewEventsLink} href="/aesthetic-lab/opportunities">View city calendar <ArrowUpRight size={14} /></Link>
@@ -156,7 +159,7 @@ export default async function AestheticLabPage() {
               { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
               { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
               { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
-            ].map((note) => <Link key={note.label} href="/feed" className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span><ArrowUpRight size={15} /></Link>)}
+            ].map((note) => <Link key={note.label} href="/aesthetic-lab" className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span><ArrowUpRight size={15} /></Link>)}
           </section>
         </aside>
       </div>

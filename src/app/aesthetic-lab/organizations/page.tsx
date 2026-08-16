@@ -25,7 +25,7 @@ function initials(name: string) {
 
 export default async function OrganizationsLabPage({ searchParams }: { searchParams: { q?: string; cause?: string } }) {
   const session = await requireRole('participant')
-  const { city, contexts } = await getLabWorkspace(session)
+  const { city, cities, contexts } = await getLabWorkspace(session)
   const search = searchParams.q?.trim() ?? ''
   const cause = searchParams.cause?.trim() ?? ''
   const organizations = await listPublicIssuers({ cityId: city?.id, search, cause })
@@ -33,15 +33,15 @@ export default async function OrganizationsLabPage({ searchParams }: { searchPar
 
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="organizations" session={session} city={city} contexts={contexts} />
+      <LabHeader activeSection="organizations" session={session} city={city} cities={cities} contexts={contexts} />
 
       <div className={styles.detailLayout}>
         <aside className={styles.leftRail}>
           <section className={styles.cityCard}>
-            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Discover in</span><Link href="/workspace/cities" aria-label="Change city"><ChevronDown size={16} /></Link></div>
+            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Discover in</span><Link href="/aesthetic-lab/cities" aria-label="Change city"><ChevronDown size={16} /></Link></div>
             <div className={styles.cityName}><MapPin size={17} /><span>{city?.name ?? 'Choose a city'}</span></div>
             <p>Every organization here is part of the local City/Sync network.</p>
-            <Link href="/workspace/cities">Explore city network <ArrowUpRight size={14} /></Link>
+            <Link href="/aesthetic-lab/cities">Explore city network <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.filterCard}>
@@ -66,7 +66,7 @@ export default async function OrganizationsLabPage({ searchParams }: { searchPar
             <input type="search" name="q" defaultValue={search} placeholder={`Search ${city?.name ?? ''} organizations`} aria-label="Search organizations" />
           </form>
 
-          <div className={styles.listHeading}><div><p className={styles.eyebrow}>Organizations in {city?.name ?? 'your network'}</p><h2>{organizations.length} local partner{organizations.length === 1 ? '' : 's'}</h2></div><button type="button">Featured first <ChevronDown size={15} /></button></div>
+          <div className={styles.listHeading}><div><p className={styles.eyebrow}>Organizations in {city?.name ?? 'your network'}</p><h2>{organizations.length} local partner{organizations.length === 1 ? '' : 's'}</h2></div><span>Featured first</span></div>
           <div className={styles.organizationList}>
             {organizations.length === 0 ? <section className={styles.calendarEmpty}><Building2 size={20} /><div><b>No organizations match this view.</b><p>Try another cause or check back as more local partners join your city network.</p></div></section> : organizations.map((organization, index) => (
               <article className={styles.organizationCard} key={organization.org.id}>
@@ -75,7 +75,7 @@ export default async function OrganizationsLabPage({ searchParams }: { searchPar
                   <p className={styles.organizationCause}>{organization.causes[0] ?? 'Community organization'}</p>
                   <h3>{organization.org.name} <CheckCircle2 size={15} /></h3>
                   <p>{organization.tagline || organization.org.description || 'A City/Sync organization helping its local community.'}</p>
-                  <div><span><UsersRound size={14} /> {organization.openCount} open opportunit{organization.openCount === 1 ? 'y' : 'ies'}</span><Link href={`/orgs/${organization.org.slug}`}>Visit organization <ArrowUpRight size={14} /></Link></div>
+                  <div><span><UsersRound size={14} /> {organization.openCount} open opportunit{organization.openCount === 1 ? 'y' : 'ies'}</span><Link href={`/aesthetic-lab/organizations/${organization.org.slug}`}>Visit organization <ArrowUpRight size={14} /></Link></div>
                 </div>
               </article>
             ))}
@@ -89,9 +89,6 @@ export default async function OrganizationsLabPage({ searchParams }: { searchPar
             <h2>One onboarding session opens a city.</h2>
             <p>Get to know an organization before you take on regular opportunities.</p>
             <Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link>
-          </section>
-          <section className={styles.savedCard}>
-            <Heart size={19} fill="currentColor" /><div><p className={styles.eyebrow}>Saved organizations</p><strong>Keep track of local partners</strong><span>Return when you&apos;re ready to help.</span></div><ArrowUpRight size={16} />
           </section>
           <section className={styles.organizationNote}><Building2 size={18} /><p><b>Organizations set their own opportunities.</b><br />You can browse first and sign up when a shift is right for you.</p></section>
         </aside>

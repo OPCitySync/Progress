@@ -55,6 +55,7 @@ import {
 } from '@/lib/services/redemption'
 import { createCityAnchor } from '@/lib/protocol/city-anchor'
 import { createPost, toggleHeart } from '@/lib/services/feed'
+import { toggleSavedItem, type SavedItemKind } from '@/lib/services/saved-items'
 import {
   createVolunteerGroup,
   markAllMessagesRead,
@@ -1036,6 +1037,16 @@ export async function toggleHeartAction(formData: FormData) {
   const result = await toggleHeart(str(formData, 'postId'), session.sub)
   if (!result.ok) back(formData, '/feed', { error: result.error })
   back(formData, '/feed')
+}
+
+export async function toggleSavedItemAction(formData: FormData) {
+  const session = await requireActor('participant')
+  const kind = str(formData, 'kind')
+  if (kind !== 'post' && kind !== 'task') back(formData, '/aesthetic-lab', { error: 'That item cannot be saved.' })
+  const itemId = str(formData, 'itemId')
+  if (!itemId) back(formData, '/aesthetic-lab', { error: 'That item could not be saved.' })
+  await toggleSavedItem(session.sub, kind as SavedItemKind, itemId)
+  back(formData, '/aesthetic-lab')
 }
 
 // ---------------------------------------------------------------------------

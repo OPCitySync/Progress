@@ -15,6 +15,8 @@ import styles from './prototype.module.css'
 import type { Session } from '@/lib/auth/session'
 import type { CityNetwork } from '@/lib/services/city-networks'
 import type { ActorContext } from '@/lib/services/identity-access'
+import { getUnreadNotificationCount } from '@/lib/services/notifications'
+import { getUnreadMessageCount } from '@/lib/services/roster'
 
 export type LabSection =
   | 'feed'
@@ -44,21 +46,26 @@ const issuerSections = [
   { key: 'issuer-profile', label: 'Public Profile', href: '/aesthetic-lab/issuer/profile', icon: Building2 },
 ] as const
 
-export function LabHeader({
+export async function LabHeader({
   activeSection,
   workspace = 'participant',
   session,
   city,
+  cities,
   contexts,
 }: {
   activeSection: LabSection
   workspace?: LabWorkspace
   session?: Session
   city?: CityNetwork | null
+  cities?: CityNetwork[]
   contexts?: ActorContext[]
 }) {
   const isIssuer = workspace === 'issuer'
   const sections = isIssuer ? issuerSections : participantSections
+  const notificationCount = session?.role === 'participant'
+    ? await Promise.all([getUnreadNotificationCount(session.sub), getUnreadMessageCount(session.sub)]).then(([updates, messages]) => updates + messages)
+    : 0
 
   return (
     <header className={styles.topbar}>
@@ -87,9 +94,9 @@ export function LabHeader({
 
         <WeatherWidget />
 
-        <NotificationsControl />
+        {!isIssuer ? <NotificationsControl count={notificationCount} /> : null}
 
-        <UserMenu workspace={workspace} session={session} city={city} contexts={contexts} />
+        <UserMenu workspace={workspace} session={session} city={city} cities={cities} contexts={contexts} />
       </div>
     </header>
   )

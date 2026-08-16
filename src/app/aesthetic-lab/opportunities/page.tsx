@@ -17,13 +17,15 @@ import { db } from '@/lib/db/client'
 import { orgProfiles, orgs, tasks } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { aggregateOpportunities, type PublicOpportunity } from '@/lib/services/profile'
+import { savedItemIds } from '@/lib/services/saved-items'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
+import { SaveTaskButton } from '../SaveTaskButton'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-type OpportunityRow = { card: PublicOpportunity; orgName: string; isOnboarding: boolean }
+type OpportunityRow = { card: PublicOpportunity; orgName: string; isOnboarding: boolean; savedByMe: boolean }
 
 function opportunityDate(card: PublicOpportunity) {
   if (!card.nextShiftAt) return { day: 'TBD', date: '—' }
@@ -36,7 +38,7 @@ function opportunityTime(card: PublicOpportunity) {
   return new Date(card.nextShiftAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
-function OpportunityCard({ row, tone }: { row: OpportunityRow; tone: 'mint' | 'blue' | 'coral' }) {
+function OpportunityCard({ row, tone, redirectTo }: { row: OpportunityRow; tone: 'mint' | 'blue' | 'coral'; redirectTo: string }) {
   const date = opportunityDate(row.card)
   return (
     <article className={styles.opportunityCard}>
@@ -47,14 +49,14 @@ function OpportunityCard({ row, tone }: { row: OpportunityRow; tone: 'mint' | 'b
         <p className={styles.opportunityMeta}><Clock3 size={14} /> {opportunityTime(row.card)} <i /> <MapPin size={14} /> {row.card.location || 'Location to be confirmed'}</p>
         <p className={styles.capacityLine}><UsersRound size={14} /> {row.card.totalOpenSlots} spot{row.card.totalOpenSlots === 1 ? '' : 's'} open</p>
       </div>
-      <Link href={`/participant/opportunities/${row.card.id}`} className={styles.cardArrow} aria-label={`View ${row.card.title}`}><ArrowUpRight size={19} /></Link>
+      <div className={styles.labFormActions}><SaveTaskButton taskId={row.card.id} saved={row.savedByMe} redirectTo={redirectTo} /><Link href={`/aesthetic-lab/opportunities/${row.card.id}`} className={styles.cardArrow} aria-label={`View ${row.card.title}`}><ArrowUpRight size={19} /></Link></div>
     </article>
   )
 }
 
-export default async function OpportunitiesLabPage() {
+export default async function OpportunitiesLabPage({ searchParams }: { searchParams: { saved?: string } }) {
   const session = await requireRole('participant')
-  const { city, contexts } = await getLabWorkspace(session)
+  const { city, cities, contexts } = await getLabWorkspace(session)
   const [rows, onboardingRows] = city
     ? await Promise.all([
         db
@@ -68,35 +70,35 @@ export default async function OpportunitiesLabPage() {
     : [[], []]
   const onboardingTaskIds = new Set(onboardingRows.flatMap((row) => row.taskId ? [row.taskId] : []))
   const aggregate = await aggregateOpportunities(rows.map((row) => row.task))
+  const savedTaskIds = await savedItemIds(session.sub, 'task', rows.map((row) => row.task.id))
   const cards: OpportunityRow[] = rows
-    .map((row) => ({ card: aggregate.get(row.task.id), orgName: row.org.name, isOnboarding: onboardingTaskIds.has(row.task.id) }))
+    .map((row) => ({ card: aggregate.get(row.task.id), orgName: row.org.name, isOnboarding: onboardingTaskIds.has(row.task.id), savedByMe: savedTaskIds.has(row.task.id) }))
     .filter((row): row is OpportunityRow => !!row.card && row.card.openShiftCount > 0 && row.card.totalOpenSlots > 0)
     .sort((a, b) => (a.card.nextShiftAt ?? Number.MAX_SAFE_INTEGER) - (b.card.nextShiftAt ?? Number.MAX_SAFE_INTEGER))
   const onboarding = cards.filter((row) => row.isOnboarding)
   const open = cards.filter((row) => !row.isOnboarding)
+  const savedOnly = searchParams.saved === '1'
+  const redirectTo = savedOnly ? '/aesthetic-lab/opportunities?saved=1' : '/aesthetic-lab/opportunities'
+  const visibleOnboarding = savedOnly ? onboarding.filter((row) => row.savedByMe) : onboarding
+  const visibleOpen = savedOnly ? open.filter((row) => row.savedByMe) : open
   const isNewParticipant = city?.participation?.status === 'new'
 
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="opportunities" session={session} city={city} contexts={contexts} />
+      <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
 
       <div className={styles.detailLayout}>
         <aside className={styles.leftRail}>
           <section className={styles.cityCard}>
-            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Showing opportunities in</span><Link href="/workspace/cities" aria-label="Change city"><ChevronDown size={16} /></Link></div>
+            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Showing opportunities in</span><Link href="/aesthetic-lab/cities" aria-label="Change city"><ChevronDown size={16} /></Link></div>
             <div className={styles.cityName}><MapPin size={17} /><span>{city?.name ?? 'Choose a city'}</span></div>
             <p>Browse ways to help close to where you live, work, and spend time.</p>
-            <Link href="/workspace/cities">Explore city network <ArrowUpRight size={14} /></Link>
+            <Link href="/aesthetic-lab/cities">Explore city network <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.filterCard}>
             <div className={styles.sectionHeading}><p className={styles.eyebrow}>Refine your view</p><SlidersHorizontal size={16} /></div>
-            <div className={styles.filterStack}>
-              <button type="button" className={styles.filterSelected}>Open this week</button>
-              <button type="button">Food access</button>
-              <button type="button">Environment</button>
-              <button type="button">Youth &amp; learning</button>
-            </div>
+            <div className={styles.filterStack}><Link className={!savedOnly ? styles.filterSelected : undefined} href="/aesthetic-lab/opportunities">All available</Link><Link className={savedOnly ? styles.filterSelected : undefined} href="/aesthetic-lab/opportunities?saved=1">Saved opportunities</Link></div>
           </section>
         </aside>
 
@@ -113,25 +115,22 @@ export default async function OpportunitiesLabPage() {
             <a href="#onboarding">See sessions <ArrowUpRight size={17} /></a>
           </section>
 
-          <div className={styles.listHeading} id="onboarding"><div><p className={styles.eyebrow}>Onboarding opportunities</p><h2>{onboarding.length} session{onboarding.length === 1 ? '' : 's'} available</h2></div><button type="button">Soonest first <ChevronDown size={15} /></button></div>
+          <div className={styles.listHeading} id="onboarding"><div><p className={styles.eyebrow}>Onboarding opportunities</p><h2>{visibleOnboarding.length} session{visibleOnboarding.length === 1 ? '' : 's'} available</h2></div><span>Soonest first</span></div>
           <div className={styles.opportunityList}>
-            {onboarding.length > 0 ? onboarding.map((row, index) => <OpportunityCard key={row.card.id} row={row} tone={index % 2 === 0 ? 'mint' : 'blue'} />) : <p className={styles.emptyCopy}>No onboarding sessions are open right now. Check back soon or explore local organizations.</p>}
+            {visibleOnboarding.length > 0 ? visibleOnboarding.map((row, index) => <OpportunityCard key={row.card.id} row={row} redirectTo={redirectTo} tone={index % 2 === 0 ? 'mint' : 'blue'} />) : <p className={styles.emptyCopy}>{savedOnly ? 'No saved onboarding sessions yet.' : 'No onboarding sessions are open right now. Check back soon or explore local organizations.'}</p>}
           </div>
 
-          <div className={styles.listHeading}><div><p className={styles.eyebrow}>Open opportunities</p><h2>{open.length} ways to help</h2></div><button type="button">Soonest first <ChevronDown size={15} /></button></div>
-          {isNewParticipant ? <section className={styles.calendarEmpty}><Sparkles size={20} /><div><b>Complete onboarding to unlock these opportunities.</b><p>Once an organization verifies your local onboarding attendance, you can reserve any open shift in {city?.name ?? 'your city'}.</p></div></section> : <div className={styles.opportunityList}>{open.length > 0 ? open.map((row, index) => <OpportunityCard key={row.card.id} row={row} tone={index % 3 === 0 ? 'coral' : index % 3 === 1 ? 'blue' : 'mint'} />) : <p className={styles.emptyCopy}>No open opportunities are scheduled right now.</p>}</div>}
+          <div className={styles.listHeading}><div><p className={styles.eyebrow}>Open opportunities</p><h2>{visibleOpen.length} ways to help</h2></div><span>Soonest first</span></div>
+          {isNewParticipant && !savedOnly ? <section className={styles.calendarEmpty}><Sparkles size={20} /><div><b>Complete onboarding to unlock these opportunities.</b><p>Once an organization verifies your local onboarding attendance, you can reserve any open shift in {city?.name ?? 'your city'}.</p></div></section> : <div className={styles.opportunityList}>{visibleOpen.length > 0 ? visibleOpen.map((row, index) => <OpportunityCard key={row.card.id} row={row} redirectTo={redirectTo} tone={index % 3 === 0 ? 'coral' : index % 3 === 1 ? 'blue' : 'mint'} />) : <p className={styles.emptyCopy}>{savedOnly ? 'No saved opportunities yet.' : 'No open opportunities are scheduled right now.'}</p>}</div>}
         </section>
 
         <aside className={styles.rightRail}>
           <section className={styles.commitmentCard}>
             <div className={styles.sectionHeading}><p className={styles.eyebrow}>Your commitments</p><CalendarDays size={17} /></div>
             <div className={styles.commitmentEmpty}><span>+ </span><p><b>Your calendar is ready.</b><br />A commitment will appear here once you sign up.</p></div>
-            <Link href="/participant?commitmentView=calendar">View calendar <ArrowUpRight size={14} /></Link>
+            <Link href="/aesthetic-lab">View calendar <ArrowUpRight size={14} /></Link>
           </section>
 
-          <section className={styles.savedCard}>
-            <Heart size={19} fill="currentColor" /><div><p className={styles.eyebrow}>Saved for later</p><strong>Opportunity bookmarks</strong><span>Save a shift and return when you&apos;re ready.</span></div><ArrowUpRight size={16} />
-          </section>
         </aside>
       </div>
     </main>

@@ -28,7 +28,7 @@ function eventTitle(type: string) {
 
 export default async function IssuerReportsLabPage() {
   const session = await requireRole('issuer')
-  const { city, contexts } = await getLabWorkspace(session)
+  const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
   const [org, summary, activity] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
@@ -45,19 +45,19 @@ export default async function IssuerReportsLabPage() {
 
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="issuer-reports" workspace="issuer" session={session} city={city} contexts={contexts} />
+      <LabHeader activeSection="issuer-reports" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
       <div className={styles.issuerLayout}>
         <IssuerLabSidebar active="reports" organizationName={org?.name} cityName={city?.name} />
 
         <section className={styles.issuerMain} aria-label="Organization reports">
           <section className={styles.issuerPageHero}>
             <div><p className={styles.eyebrow}>Impact &amp; reports</p><h1>Make your work easy to tell.</h1><p>City/Sync turns the volunteer work you have already coordinated into organized, exportable reporting context.</p></div>
-            <Link href="/issuer/reports" className={styles.issuerPrimaryAction}><Download size={17} /> Export report</Link>
+            <a href="/api/reports?type=contributions" className={styles.issuerPrimaryAction}><Download size={17} /> Export report</a>
           </section>
 
           <section className={styles.reportPeriodCard}>
             <div><p className={styles.eyebrow}>Reporting period</p><h2>{reportPeriod}</h2><span>{city?.name ?? 'Your active city'}</span></div>
-            <div className={styles.reportPeriodActions}><Link href="/issuer/reports"><CalendarRange size={16} /> Change range</Link><Link href="/issuer/reports"><FileText size={16} /> Customize report</Link></div>
+            <div className={styles.reportPeriodActions}><span><CalendarRange size={16} /> All retained activity</span><span><FileText size={16} /> CSV-ready report</span></div>
           </section>
 
           <section className={styles.reportImpactCard}>
@@ -68,11 +68,11 @@ export default async function IssuerReportsLabPage() {
           </section>
 
           <section className={styles.reportStoryGrid}>
-            <section className={styles.reportNarrativeCard}><span><HeartHandshake size={22} /></span><div><p className={styles.eyebrow}>Your report, in plain language</p><h2>{summary.volunteers} volunteer{summary.volunteers === 1 ? '' : 's'} completed {summary.verifiedCompletions} verified contribution{summary.verifiedCompletions === 1 ? '' : 's'}.</h2><p>{summary.hours} documented service hour{summary.hours === 1 ? '' : 's'} are retained with the related shift and opportunity records.</p></div><Link href="/issuer/reports">Open summary <ArrowUpRight size={14} /></Link></section>
-            <section className={styles.reportComplianceCard}><FileCheck2 size={21} /><p className={styles.eyebrow}>Reporting readiness</p><h2>Your record is up to date.</h2><ul><li>Opportunity history retained</li><li>Volunteer completions verified</li><li>Organization activity logged</li></ul><Link href="/issuer/reports">Open reporting checklist <ArrowUpRight size={14} /></Link></section>
+            <section className={styles.reportNarrativeCard}><span><HeartHandshake size={22} /></span><div><p className={styles.eyebrow}>Your report, in plain language</p><h2>{summary.volunteers} volunteer{summary.volunteers === 1 ? '' : 's'} completed {summary.verifiedCompletions} verified contribution{summary.verifiedCompletions === 1 ? '' : 's'}.</h2><p>{summary.hours} documented service hour{summary.hours === 1 ? '' : 's'} are retained with the related shift and opportunity records.</p></div><a href="/api/reports?type=contributions">Download CSV <ArrowUpRight size={14} /></a></section>
+            <section className={styles.reportComplianceCard}><FileCheck2 size={21} /><p className={styles.eyebrow}>Reporting readiness</p><h2>Your record is up to date.</h2><ul><li>Opportunity history retained</li><li>Volunteer completions verified</li><li>Organization activity logged</li></ul><a href="#activity">Review activity log <ArrowUpRight size={14} /></a></section>
           </section>
 
-          <section className={styles.reportActivityCard}>
+          <section className={styles.reportActivityCard} id="activity">
             <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Activity log</p><h2>A clear record of what happened</h2></div><UsersRound size={18} /></div>
             <div className={styles.reportActivityList}>{activity.length === 0 ? <p className={styles.emptyCopy}>Actions taken for this organization will appear here.</p> : activity.slice(0, 6).map((item) => <article key={item.hash}><span>{new Date(item.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span><div><h3>{eventTitle(item.type)}</h3><p>Recorded by {item.actorName}</p></div><ArrowUpRight size={16} /></article>)}</div>
           </section>

@@ -2,21 +2,22 @@
 
 import { useState } from 'react'
 import { Bookmark, Heart, Link2 } from 'lucide-react'
-import { toggleHeartAction } from '@/app/actions'
+import { toggleHeartAction, toggleSavedItemAction } from '@/app/actions'
 import styles from './prototype.module.css'
 
 export function PostActions({
   isOpportunity = false,
   postId,
   initialLiked = false,
+  initialSaved = false,
   redirectTo = '/aesthetic-lab',
 }: {
   isOpportunity?: boolean
   postId?: string
   initialLiked?: boolean
+  initialSaved?: boolean
   redirectTo?: string
 }) {
-  const [isSaved, setIsSaved] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
 
   const copyLink = async () => {
@@ -33,9 +34,7 @@ export function PostActions({
 
   return (
     <div className={styles.storyActions}>
-      <button type="button" className={isSaved ? styles.actionSelected : undefined} onClick={() => setIsSaved((saved) => !saved)}>
-        <Bookmark size={18} fill={isSaved ? 'currentColor' : 'none'} /> {isSaved ? 'Saved' : saveLabel}
-      </button>
+      {postId ? <form action={toggleSavedItemAction}><input type="hidden" name="kind" value="post" /><input type="hidden" name="itemId" value={postId} /><input type="hidden" name="redirectTo" value={redirectTo} /><button type="submit" className={initialSaved ? styles.actionSelected : undefined}><Bookmark size={18} fill={initialSaved ? 'currentColor' : 'none'} /> {initialSaved ? 'Saved' : saveLabel}</button></form> : null}
       <button type="button" onClick={copyLink}>
         <Link2 size={18} /> {isCopied ? 'Link copied' : 'Share'}
       </button>

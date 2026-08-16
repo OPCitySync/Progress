@@ -25,11 +25,13 @@ export function UserMenu({
   workspace = 'participant',
   session,
   city,
+  cities = [],
   contexts = [],
 }: {
   workspace?: 'participant' | 'issuer'
   session?: Session
   city?: CityNetwork | null
+  cities?: CityNetwork[]
   contexts?: ActorContext[]
 }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -83,9 +85,9 @@ export function UserMenu({
 
           <div className={styles.userMenuSection}>
             <p className={styles.eyebrow}>Account</p>
-            <Link href="/workspace/cities" onClick={() => setIsOpen(false)}><MapPinned size={17} /><span>My Cities<small>{city?.name ?? 'Choose a city'}</small></span></Link>
-            <Link href="/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Profile &amp; settings</span></Link>
-            <Link href="/participant/notifications" onClick={() => setIsOpen(false)}><Bell size={17} /><span>Notifications</span></Link>
+            <Link href="/aesthetic-lab/cities" onClick={() => setIsOpen(false)}><MapPinned size={17} /><span>My Cities<small>{city?.name ?? 'Choose a city'}</small></span></Link>
+            <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Profile &amp; settings</span></Link>
+            {!isIssuer ? <Link href="/aesthetic-lab/notifications" onClick={() => setIsOpen(false)}><Bell size={17} /><span>Notifications</span></Link> : null}
           </div>
 
           <div className={styles.userMenuSection}>
@@ -93,13 +95,15 @@ export function UserMenu({
             <a href="mailto:support@city-sync.org?subject=City%2FSync%20help"><CircleHelp size={17} /><span>Help &amp; support</span></a>
           </div>
 
-          {city ? <div className={styles.userMenuSection}>
-            <p className={styles.eyebrow}>Current city</p>
-            <form action={switchCityAction}>
-              <input type="hidden" name="cityId" value={city.id} />
-              <input type="hidden" name="redirectTo" value={currentPath} />
-              <button type="submit"><MapPinned size={17} /><span>{city.name}<small>Selected city network</small></span></button>
-            </form>
+          {cities.length > 0 ? <div className={styles.userMenuSection}>
+            <p className={styles.eyebrow}>Switch city</p>
+            {cities.map((network) => (
+              <form action={switchCityAction} key={network.id}>
+                <input type="hidden" name="cityId" value={network.id} />
+                <input type="hidden" name="redirectTo" value={currentPath} />
+                <button type="submit" disabled={network.id === city?.id}><MapPinned size={17} /><span>{network.name}<small>{network.id === city?.id ? 'Selected city network' : 'Switch to this city'}</small></span></button>
+              </form>
+            ))}
           </div> : null}
 
           <form action={signOutAction}>

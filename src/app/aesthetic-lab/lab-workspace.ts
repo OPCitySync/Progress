@@ -1,4 +1,4 @@
-import { getActiveCity, type CityNetwork } from '@/lib/services/city-networks'
+import { getActiveCity, getCityNetworks, type CityNetwork } from '@/lib/services/city-networks'
 import { getActorContexts, type ActorContext } from '@/lib/services/identity-access'
 import type { Session } from '@/lib/auth/session'
 
@@ -9,12 +9,14 @@ import type { Session } from '@/lib/auth/session'
  */
 export async function getLabWorkspace(session: Session): Promise<{
   city: CityNetwork | null
+  cities: CityNetwork[]
   contexts: ActorContext[]
 }> {
-  const [city, contexts] = await Promise.all([
+  const [city, cities, contexts] = await Promise.all([
     getActiveCity(session),
+    getCityNetworks(session),
     getActorContexts(session.sub),
   ])
 
-  return { city, contexts }
+  return { city, cities, contexts }
 }

@@ -36,7 +36,7 @@ export function IssuerLabSidebar({
           <p className={styles.eyebrow}>Issuer organization</p>
           <h1>{organizationName} <BadgeCheck size={17} /></h1>
           <p>{cityName ? `Issuer Organization · ${cityName}` : 'Issuer Organization'}</p>
-          <Link href="/issuer/profile"><Pencil size={14} /> Edit public profile</Link>
+          <Link href="/aesthetic-lab/issuer/profile/edit"><Pencil size={14} /> Edit public profile</Link>
         </div>
       </section>
 

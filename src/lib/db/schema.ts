@@ -574,6 +574,24 @@ export const postHearts = sqliteTable(
   }),
 )
 
+// Participant-owned saved items. A single table supports both MyCity posts and
+// opportunities without exposing the saved state publicly or duplicating it in
+// a browser-only preference store.
+export const savedItems = sqliteTable(
+  'saved_items',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    kind: text('kind', { enum: ['post', 'task'] }).notNull(),
+    itemId: text('item_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    userItemUniq: uniqueIndex('saved_items_user_kind_item').on(t.userId, t.kind, t.itemId),
+    byUser: index('saved_items_user').on(t.userId, t.kind, t.createdAt),
+  }),
+)
+
 // ---------------------------------------------------------------------------
 // Operational notifications + reminders. NOT protocol state: these are
 // ephemeral delivery records (like uploads), so they are not ledgered.

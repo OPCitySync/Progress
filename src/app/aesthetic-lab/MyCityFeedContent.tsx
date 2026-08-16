@@ -24,6 +24,7 @@ export type LabFeedPost = {
   organizationType: string
   hearts: number
   heartedByMe: boolean
+  savedByMe: boolean
 }
 
 export type LabCommitment = {
@@ -59,11 +60,10 @@ function FeedPostCard({ post }: { post: LabFeedPost }) {
       <div className={styles.storyHeader}>
         <div className={styles.orgAvatar}>{initials || 'CS'}</div>
         <div><h2>{post.organization} <CheckCircle2 size={15} /></h2><p>{post.organizationType === 'issuer' ? 'Community organization' : post.organizationType} · {relativeTime(post.createdAt)}</p></div>
-        <button type="button" aria-label="Story options">•••</button>
       </div>
       <p className={styles.storyText}>{post.body}</p>
       <div className={styles.storyFooter}><span><Heart size={17} fill="currentColor" /> {post.hearts}</span><span>Posted to MyCity</span></div>
-      <PostActions postId={post.id} initialLiked={post.heartedByMe} />
+      <PostActions postId={post.id} initialLiked={post.heartedByMe} initialSaved={post.savedByMe} />
     </article>
   )
 }
@@ -85,7 +85,7 @@ function MyCalendar({ commitments }: { commitments: LabCommitment[] }) {
 
   return (
     <section className={styles.calendarView} aria-label="My Calendar">
-      <div className={styles.calendarHeader}><div><p className={styles.eyebrow}>My Calendar</p><h2>This week</h2></div><div><button type="button" aria-label="Previous week"><ChevronLeft size={16} /></button><button type="button" aria-label="Next week"><ChevronRight size={16} /></button></div></div>
+      <div className={styles.calendarHeader}><div><p className={styles.eyebrow}>My Calendar</p><h2>This week</h2></div></div>
       <p className={styles.calendarNote}>Your active commitments appear here. More city events are available in Opportunities.</p>
       <div className={styles.weekGrid}>
         {week.map((day) => {
@@ -119,7 +119,7 @@ export function MyCityFeedContent({ posts, commitments }: { posts: LabFeedPost[]
       </section>
 
       {view === 'calendar' ? <MyCalendar commitments={commitments} /> : <>
-        <div className={styles.feedTitle}><p className={styles.eyebrow}>{activeView.description}</p><button type="button">Most relevant <ChevronDown size={15} /></button></div>
+        <div className={styles.feedTitle}><p className={styles.eyebrow}>{activeView.description}</p><span>Most relevant</span></div>
         {view === 'news' ? (
           <section className={styles.calendarEmpty}><Newspaper size={20} /><div><b>Local news is coming to MyCity.</b><p>We&apos;ll add licensed feeds from participating local news sources as those partnerships are established.</p></div></section>
         ) : visiblePosts.length === 0 ? (
