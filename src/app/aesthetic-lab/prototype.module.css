@@ -117,6 +117,17 @@
 .brand { width: 132px; }
 .brand img { display: block; width: 132px; height: auto; }
 
+.demoTopbarActions { grid-column: 3 / span 3; display: flex; align-items: center; justify-content: flex-end; gap: .55rem; }
+.demoPill { display: inline-flex; align-items: center; padding: .38rem .55rem; border: 1px solid #c9b98d; border-radius: 999px; color: #68501d; background: linear-gradient(145deg, #fff9e9, #f0dfb5); box-shadow: inset 0 1px rgba(255,255,255,.82), inset 0 -1px 2px rgba(116,83,22,.13); font-size: .62rem; font-weight: 800; white-space: nowrap; }
+.demoSignIn { display: inline-flex; align-items: center; gap: .32rem; padding: .48rem .64rem; border: 1px solid #2a396f; border-radius: 10px; color: #fff; background: linear-gradient(145deg, #4358a3, #29386f); box-shadow: inset 0 1px rgba(255,255,255,.24), inset 0 -2px 4px rgba(9,10,25,.25), 0 2px 3px rgba(31,40,81,.2); font-size: .67rem; font-weight: 800; white-space: nowrap; }
+.demoSignIn:hover { background: linear-gradient(145deg, #4d63b0, #29386f); }
+.demoNotice { display: flex; align-items: center; gap: .55rem; margin-bottom: .85rem; padding: .7rem .8rem; border: 1px solid #c9b98d; border-radius: 13px; color: #585a68; background: linear-gradient(145deg, #fff8e6, #f1eadc); box-shadow: inset 0 1px rgba(255,255,255,.82), inset 0 -2px 4px rgba(103,81,40,.07); font-size: .69rem; line-height: 1.45; }
+.demoNotice svg { flex: none; color: #bd852a; }
+.demoNotice b { color: var(--blue-deep); }
+
+@media (max-width: 1040px) { .demoPill { display: none; } }
+@media (max-width: 740px) { .demoTopbarActions { grid-column: auto; } .demoSignIn { padding: .45rem; font-size: 0; } .demoSignIn svg { width: 17px; height: 17px; } }
+
 .sectionNav {
   border-color: #b9aa84;
   background: linear-gradient(145deg, #e7deca, #f8f3e8);

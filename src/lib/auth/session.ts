@@ -60,9 +60,12 @@ export function clearSession() {
   cookies().delete(COOKIE)
 }
 
-export async function requireSession(): Promise<Session> {
+export async function requireSession(next?: string): Promise<Session> {
   const session = await getSession()
-  if (!session) redirect('/login')
+  if (!session) {
+    const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : ''
+    redirect(safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : '/login')
+  }
   const active = await validateActiveSession(session)
   if (!active) {
     clearSession()

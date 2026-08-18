@@ -33,7 +33,7 @@ function shortTime(timestamp: number | null) {
 
 /** The participant Home experience using the same session and records as the functional application. */
 export default async function AestheticLabPage() {
-  const session = await requireSession()
+  const session = await requireSession('/aesthetic-lab')
   if (session.role === 'issuer') redirect('/aesthetic-lab/issuer')
   if (session.role !== 'participant') redirect('/participant')
 
