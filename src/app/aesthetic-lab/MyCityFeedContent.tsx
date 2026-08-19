@@ -1,17 +1,15 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+
 import {
   ArrowUpRight,
   Building2,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Heart,
-  Newspaper,
-  TrendingUp,
 } from 'lucide-react'
 import { PostActions } from './PostActions'
 import styles from './prototype.module.css'
@@ -36,15 +34,6 @@ export type LabCommitment = {
   isOnboarding: boolean
 }
 
-type FeedView = 'news' | 'organizations' | 'trending' | 'calendar'
-
-const views = [
-  { key: 'news', label: 'News', description: 'Local news', icon: Newspaper },
-  { key: 'organizations', label: 'Organizations', description: 'Organization posts', icon: Building2 },
-  { key: 'trending', label: 'Trending', description: 'Most liked posts', icon: TrendingUp },
-  { key: 'calendar', label: 'My Calendar', description: 'Your city calendar', icon: CalendarDays },
-] as const
-
 function relativeTime(timestamp: number) {
   const minutes = Math.max(1, Math.round((Date.now() - timestamp) / 60_000))
   if (minutes < 60) return `${minutes}m ago`
@@ -68,64 +57,40 @@ function FeedPostCard({ post }: { post: LabFeedPost }) {
   )
 }
 
-function MyCalendar({ commitments }: { commitments: LabCommitment[] }) {
-  const week = Array.from({ length: 7 }, (_, offset) => {
-    const date = new Date()
-    date.setHours(0, 0, 0, 0)
-    date.setDate(date.getDate() - date.getDay() + offset)
-    return date
-  })
-  const commitmentsByDay = new Map<number, LabCommitment[]>()
-  for (const commitment of commitments) {
-    if (!commitment.startsAt) continue
-    const date = new Date(commitment.startsAt)
-    const key = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
-    commitmentsByDay.set(key, [...(commitmentsByDay.get(key) ?? []), commitment])
-  }
-
-  return (
-    <section className={styles.calendarView} aria-label="My Calendar">
-      <div className={styles.calendarHeader}><div><p className={styles.eyebrow}>My Calendar</p><h2>This week</h2></div></div>
-      <p className={styles.calendarNote}>Your active commitments appear here. More city events are available in Opportunities.</p>
-      <div className={styles.weekGrid}>
-        {week.map((day) => {
-          const key = day.getTime()
-          const items = commitmentsByDay.get(key) ?? []
-          return <div className={day.toDateString() === new Date().toDateString() ? styles.currentDay : undefined} key={key}><span>{day.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}</span><strong>{day.getDate()}</strong>{items.map((item) => <a href="/aesthetic-lab/opportunities" className={item.isOnboarding ? styles.onboarding : styles.service} key={item.id}><small>{item.startsAt ? new Date(item.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}</small>{item.title}</a>)}</div>
-        })}
-      </div>
-      <div className={styles.calendarLegend}><span><i className={styles.service} /> Your commitment</span><span><i className={styles.onboarding} /> Onboarding</span></div>
-      {commitments.length === 0 ? <section className={styles.calendarEmpty}><CalendarDays size={20} /><div><b>Your calendar is open.</b><p>Add an opportunity when you&apos;re ready to show up.</p></div></section> : null}
-    </section>
-  )
-}
 
 export function MyCityFeedContent({ posts, commitments }: { posts: LabFeedPost[]; commitments: LabCommitment[] }) {
-  const [view, setView] = useState<FeedView>('news')
-  const activeView = views.find((item) => item.key === view)!
-  const visiblePosts = useMemo(() => view === 'trending' ? [...posts].sort((a, b) => b.hearts - a.hearts) : posts, [posts, view])
+  const [sortOrder, setSortOrder] = useState<'recent' | 'relevant'>('recent')
+  const [isSortOpen, setIsSortOpen] = useState(false)
+  const visiblePosts = useMemo(() => sortOrder === 'relevant' ? [...posts].sort((a, b) => b.hearts - a.hearts) : posts, [posts, sortOrder])
 
   return (
     <>
-      <section className={styles.feedFilters} aria-label="MyCity Feed filters">
-        <p className={styles.eyebrow}>Filters</p>
-        <div role="tablist" aria-label="MyCity Feed views">
-          {views.map((item) => {
-            const Icon = item.icon
-            const isActive = item.key === view
-            return <button key={item.key} type="button" role="tab" aria-selected={isActive} className={isActive ? styles.feedFilterActive : undefined} onClick={() => setView(item.key)}><Icon size={16} /> {item.label}</button>
-          })}
-        </div>
-      </section>
-
-      {view === 'calendar' ? <MyCalendar commitments={commitments} /> : <>
-        <div className={styles.feedTitle}><p className={styles.eyebrow}>{activeView.description}</p><span>Most relevant</span></div>
-        {view === 'news' ? (
-          <section className={styles.calendarEmpty}><Newspaper size={20} /><div><b>Local news is coming to MyCity.</b><p>We&apos;ll add licensed feeds from participating local news sources as those partnerships are established.</p></div></section>
-        ) : visiblePosts.length === 0 ? (
-          <section className={styles.calendarEmpty}><Building2 size={20} /><div><b>No organization updates yet.</b><p>Updates from approved organizations in your city will appear here.</p></div></section>
-        ) : visiblePosts.map((post) => <FeedPostCard key={post.id} post={post} />)}
-      </>}
+      <div className={styles.feedTitle} style={{ position: 'relative' }}>
+        <p className={styles.eyebrow}>City Updates</p>
+        <button 
+          onClick={() => setIsSortOpen(!isSortOpen)} 
+          style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border, #e2e8f0)', background: 'transparent', fontSize: '13px', color: 'var(--text-secondary, #64748b)', cursor: 'pointer', outline: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+        >
+          {sortOrder === 'recent' ? 'Most recent' : 'Most relevant'} <ChevronDown size={14} />
+        </button>
+        {isSortOpen && (
+          <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '4px', background: 'var(--card-bg, #fff)', border: '1px solid var(--border, #e2e8f0)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10, padding: '4px', minWidth: '140px', display: 'flex', flexDirection: 'column' }}>
+            <button type="button" onClick={() => { setSortOrder('recent'); setIsSortOpen(false) }} style={{ padding: '6px 12px', textAlign: 'left', background: sortOrder === 'recent' ? 'var(--surface-sunken, #f1f5f9)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}>Most recent</button>
+            <button type="button" onClick={() => { setSortOrder('relevant'); setIsSortOpen(false) }} style={{ padding: '6px 12px', textAlign: 'left', background: sortOrder === 'relevant' ? 'var(--surface-sunken, #f1f5f9)' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-primary)' }}>Most relevant</button>
+          </div>
+        )}
+      </div>
+      {visiblePosts.length === 0 ? (
+        <section className={styles.calendarEmpty}>
+          <Building2 size={20} />
+          <div>
+            <b>No updates yet.</b>
+            <p>Updates from your city will appear here.</p>
+          </div>
+        </section>
+      ) : (
+        visiblePosts.map((post) => <FeedPostCard key={post.id} post={post} />)
+      )}
     </>
   )
 }

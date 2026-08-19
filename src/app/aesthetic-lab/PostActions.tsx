@@ -33,13 +33,9 @@ export function PostActions({
   const saveLabel = isOpportunity ? 'Save' : 'Bookmark'
 
   return (
-    <div className={styles.storyActions}>
-      {postId ? <form action={toggleSavedItemAction}><input type="hidden" name="kind" value="post" /><input type="hidden" name="itemId" value={postId} /><input type="hidden" name="redirectTo" value={redirectTo} /><button type="submit" className={initialSaved ? styles.actionSelected : undefined}><Bookmark size={18} fill={initialSaved ? 'currentColor' : 'none'} /> {initialSaved ? 'Saved' : saveLabel}</button></form> : null}
-      <button type="button" onClick={copyLink}>
-        <Link2 size={18} /> {isCopied ? 'Link copied' : 'Share'}
-      </button>
+    <div className={styles.storyActions} style={{ justifyContent: 'center' }}>
       {postId ? (
-        <form action={toggleHeartAction}>
+        <form action={toggleHeartAction} style={{ display: 'contents' }}>
           <input type="hidden" name="postId" value={postId} />
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <button type="submit" className={initialLiked ? styles.actionSelected : undefined}>
@@ -49,6 +45,10 @@ export function PostActions({
       ) : (
         <button type="button"><Heart size={18} /> Like</button>
       )}
+      <button type="button" onClick={copyLink}>
+        <Link2 size={18} /> {isCopied ? 'Link copied' : 'Share'}
+      </button>
+      {postId ? <form action={toggleSavedItemAction} style={{ display: 'contents' }}><input type="hidden" name="kind" value="post" /><input type="hidden" name="itemId" value={postId} /><input type="hidden" name="redirectTo" value={redirectTo} /><button type="submit" className={initialSaved ? styles.actionSelected : undefined}><Bookmark size={18} fill={initialSaved ? 'currentColor' : 'none'} /> {initialSaved ? 'Saved' : saveLabel}</button></form> : null}
     </div>
   )
 }

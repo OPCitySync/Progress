@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import {
-  Bookmark,
   Building2,
   ClipboardList,
   Compass,
@@ -34,8 +33,6 @@ export type LabWorkspace = 'participant' | 'issuer'
 const participantSections = [
   { key: 'feed', label: 'Home', href: '/aesthetic-lab', icon: Home },
   { key: 'opportunities', label: 'Opportunities', href: '/aesthetic-lab/opportunities', icon: Compass },
-  { key: 'organizations', label: 'Discover Organizations', href: '/aesthetic-lab/organizations', icon: Building2 },
-  { key: 'history', label: 'Service History', href: '/aesthetic-lab/history', icon: Bookmark },
 ] as const
 
 const issuerSections = [

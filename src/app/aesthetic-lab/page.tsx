@@ -96,26 +96,23 @@ export default async function AestheticLabPage() {
         <aside className={styles.leftRail}>
           <section className={styles.cityCard}>
             <div className={styles.cityCardTop}>
-              <span className={styles.cityOverline}>Your city network</span>
-              <Link href="/aesthetic-lab/cities" aria-label="Switch city"><ChevronDown size={16} /></Link>
+              <span className={styles.cityOverline}>My City is:</span>
             </div>
             <div className={styles.cityName}><MapPin size={17} /><span>{cityLabel}</span></div>
-            <p>{city ? 'A shared place to show up, help out, and see local progress.' : 'Choose a City/Sync network to find local opportunities.'}</p>
-            <Link href="/aesthetic-lab/cities">Explore city network <ArrowUpRight size={14} /></Link>
-          </section>
-
-          <section className={styles.impactCard}>
-            <p className={styles.eyebrow}>Your impact</p>
-            <div className={styles.impactGrid}>
-              <div><strong>{String(activeClaims.length).padStart(2, '0')}</strong><span>Active shifts</span></div>
-              <div><strong>{resume?.totals.hours ?? 0}h</strong><span>Service record</span></div>
-              <div><strong>{String(joinedOrganizations.length).padStart(2, '0')}</strong><span>Organizations</span></div>
+            <p>{city ? 'This is your active city network. Below is a live snapshot of local civic engagement and community progress.' : 'Choose a City/Sync network to find local opportunities.'}</p>
+            
+            <div style={{ margin: '16px 0', borderTop: '1px solid var(--border, #e2e8f0)', paddingTop: '16px' }}>
+              {[
+                { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
+                { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
+                { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
+              ].map((note) => <div key={note.label} className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span></div>)}
             </div>
-            <Link href="/aesthetic-lab/history"><Bookmark size={15} /> View service history</Link>
+
+            <Link href="/aesthetic-lab/cities">Explore other cities <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.quickLinks}>
-            <Link href="/aesthetic-lab/opportunities"><CalendarDays size={17} /> My commitments</Link>
             <Link href="/aesthetic-lab/organizations"><Building2 size={17} /> Discover organizations</Link>
             <Link href="/aesthetic-lab/opportunities?saved=1"><Heart size={17} /> Saved opportunities</Link>
           </section>
@@ -144,7 +141,7 @@ export default async function AestheticLabPage() {
           </section>
 
           <section className={styles.todayEventsCard}>
-            <div className={styles.sectionHeading}><p className={styles.eyebrow}>Today&apos;s events</p><CalendarDays size={17} /></div>
+            <div className={styles.sectionHeading}><p className={styles.eyebrow}>My Calendar</p><CalendarDays size={17} /></div>
             <div className={styles.todayEventList}>
               {cityEvents.length === 0 ? <p className={styles.emptyCopy}>No upcoming public shifts are scheduled yet.</p> : cityEvents.map(({ task, org, shift }) => (
                 <Link href={`/aesthetic-lab/opportunities/${task.id}`} key={shift.id}><span>{shortTime(shift.startsAt)}</span><div><b>{task.title}</b><p>{task.location || org.name}</p></div><ArrowUpRight size={14} /></Link>
@@ -153,13 +150,14 @@ export default async function AestheticLabPage() {
             <Link className={styles.viewEventsLink} href="/aesthetic-lab/opportunities">View city calendar <ArrowUpRight size={14} /></Link>
           </section>
 
-          <section className={styles.cityPulse}>
-            <div className={styles.sectionHeading}><p className={styles.eyebrow}>{city?.name ?? 'City'} pulse</p><span>Live</span></div>
-            {[
-              { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
-              { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
-              { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
-            ].map((note) => <Link key={note.label} href="/aesthetic-lab" className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span><ArrowUpRight size={15} /></Link>)}
+          <section className={styles.impactCard}>
+            <p className={styles.eyebrow}>My impact</p>
+            <div className={styles.impactGrid}>
+              <div><strong>{String(activeClaims.length).padStart(2, '0')}</strong><span>Active shifts</span></div>
+              <div><strong>{resume?.totals.hours ?? 0}h</strong><span>Service record</span></div>
+              <div><strong>{String(joinedOrganizations.length).padStart(2, '0')}</strong><span>Organizations</span></div>
+            </div>
+            <Link href="/aesthetic-lab/history"><Bookmark size={15} /> View service history</Link>
           </section>
         </aside>
       </div>
