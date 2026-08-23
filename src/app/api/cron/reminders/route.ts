@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { processDueReminders } from '@/lib/services/notifications'
+import { publishDueRecurringOnboardingSessions } from '@/lib/services/onboarding-session'
+import { publishDueRecurringTemplateEvents } from '@/lib/services/recurring-template-events'
 import { flushAllCityLedgerOutbox } from '@/lib/ledger/city-outbox'
+import { cleanupExpiredEventChats } from '@/lib/services/event-chat'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,8 +21,14 @@ async function handle(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }
-  const [res, cityLedger] = await Promise.all([processDueReminders(), flushAllCityLedgerOutbox()])
-  return NextResponse.json({ ok: true, ...res, cityLedger })
+  const [res, cityLedger, onboarding, templateEvents, eventChats] = await Promise.all([
+    processDueReminders(),
+    flushAllCityLedgerOutbox(),
+    publishDueRecurringOnboardingSessions(),
+    publishDueRecurringTemplateEvents(),
+    cleanupExpiredEventChats(),
+  ])
+  return NextResponse.json({ ok: true, ...res, cityLedger, onboarding, templateEvents, eventChats })
 }
 
 export const GET = handle

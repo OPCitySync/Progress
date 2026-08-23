@@ -1,11 +1,17 @@
 import { randomUUID } from 'crypto'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { waiverVersions, waiverAcceptances } from '@/lib/db/schema'
+import { orgProfiles, waiverVersions, waiverAcceptances } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { canonicalJson, sha256Hex } from '@/lib/ledger/hash'
 import type { Result } from './identity'
+
+export type OnboardingWaiverMethod = 'digital' | 'in_person'
+
+function normalizeOnboardingWaiverMethod(value: unknown): OnboardingWaiverMethod | null {
+  return value === 'digital' || value === 'in_person' ? value : null
+}
 
 /**
  * Waiver module. Mirrors IssuerWaiverRegistry semantics:
@@ -19,6 +25,7 @@ export async function createWaiverVersion(input: {
   title: string
   body: string
   actorId: string
+  onboardingWaiverMethod?: OnboardingWaiverMethod
   document?: {
     url: string
     name: string
@@ -63,6 +70,19 @@ export async function createWaiverVersion(input: {
       active: 1,
       createdAt: Date.now(),
     })
+    if (input.onboardingWaiverMethod) {
+      await tx
+        .insert(orgProfiles)
+        .values({
+          orgId: input.orgId,
+          onboardingWaiverMethod: input.onboardingWaiverMethod,
+          updatedAt: Date.now(),
+        })
+        .onConflictDoUpdate({
+          target: orgProfiles.orgId,
+          set: { onboardingWaiverMethod: input.onboardingWaiverMethod, updatedAt: Date.now() },
+        })
+    }
     await appendEvent(
       tx,
       EventTypes.WAIVER_VERSION_CREATED,
@@ -80,13 +100,53 @@ export async function createWaiverVersion(input: {
   return { ok: true, id, version, sha256: hash }
 }
 
-export async function getActiveWaiver(orgId: string) {
+export async function getActiveWaiver(orgId: string): Promise<typeof waiverVersions.$inferSelect | null> {
   const rows = await db
     .select()
     .from(waiverVersions)
     .where(and(eq(waiverVersions.orgId, orgId), eq(waiverVersions.active, 1)))
     .limit(1)
   return rows[0] ?? null
+}
+
+/** The current waiver and collection rule governing a new onboarding reservation. */
+export async function getOnboardingWaiverSetup(orgId: string): Promise<{
+  waiver: Awaited<ReturnType<typeof getActiveWaiver>>
+  method: OnboardingWaiverMethod | null
+}> {
+  const [waiver, profile] = await Promise.all([
+    getActiveWaiver(orgId),
+    db
+      .select({ onboardingWaiverMethod: orgProfiles.onboardingWaiverMethod })
+      .from(orgProfiles)
+      .where(eq(orgProfiles.orgId, orgId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ])
+
+  if (!waiver) return { waiver: null, method: null }
+  // Existing organizations already used the digital acceptance path. Preserve
+  // that behavior until they expressly switch to paper collection.
+  return { waiver, method: normalizeOnboardingWaiverMethod(profile?.onboardingWaiverMethod) ?? 'digital' }
+}
+
+/** Changes only the collection process; the published waiver version remains intact. */
+export async function setOnboardingWaiverMethod(input: {
+  orgId: string
+  method: OnboardingWaiverMethod
+}): Promise<Result> {
+  const waiver = await getActiveWaiver(input.orgId)
+  if (!waiver) return { ok: false, error: 'Publish a liability waiver before choosing how it is collected.' }
+
+  const now = Date.now()
+  await db
+    .insert(orgProfiles)
+    .values({ orgId: input.orgId, onboardingWaiverMethod: input.method, updatedAt: now })
+    .onConflictDoUpdate({
+      target: orgProfiles.orgId,
+      set: { onboardingWaiverMethod: input.method, updatedAt: now },
+    })
+  return { ok: true }
 }
 
 export async function hasAcceptedWaiver(userId: string, waiverVersionId: string): Promise<boolean> {

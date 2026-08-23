@@ -1,10 +1,11 @@
 import { randomUUID } from 'crypto'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { users, orgs, tasks, shifts, claims } from '@/lib/db/schema'
+import { users, orgs, tasks, shifts, claims, volunteerReflections } from '@/lib/db/schema'
 import { participantDisplayName } from '@/lib/participant-name'
 
 export type ResumeContribution = {
+  claimId: string
   org: string
   orgSlug: string | null
   opportunity: string
@@ -13,6 +14,7 @@ export type ResumeContribution = {
   hours: number | null
   credits: number
   verifiedAt: number
+  hasReflection: boolean
 }
 
 export type ResumeData = {
@@ -29,6 +31,7 @@ type UserRow = typeof users.$inferSelect
 async function buildResume(u: UserRow): Promise<ResumeData> {
   const rows = await db
     .select({
+      claimId: claims.id,
       orgId: orgs.id,
       org: orgs.name,
       orgSlug: orgs.slug,
@@ -38,11 +41,13 @@ async function buildResume(u: UserRow): Promise<ResumeData> {
       sStart: shifts.startsAt,
       sEnd: shifts.endsAt,
       sLabel: shifts.label,
+      reflectionId: volunteerReflections.id,
     })
     .from(claims)
     .innerJoin(tasks, eq(claims.taskId, tasks.id))
     .innerJoin(orgs, eq(tasks.orgId, orgs.id))
     .leftJoin(shifts, eq(claims.shiftId, shifts.id))
+    .leftJoin(volunteerReflections, eq(volunteerReflections.claimId, claims.id))
     .where(and(eq(claims.userId, u.id), eq(claims.status, 'verified')))
     .orderBy(desc(claims.updatedAt))
 
@@ -55,6 +60,7 @@ async function buildResume(u: UserRow): Promise<ResumeData> {
     credits += r.credits
     orgSet.add(r.orgId)
     return {
+      claimId: r.claimId,
       org: r.org,
       orgSlug: r.orgSlug,
       opportunity: r.opportunity,
@@ -63,6 +69,7 @@ async function buildResume(u: UserRow): Promise<ResumeData> {
       hours: h != null ? Math.round(h * 10) / 10 : null,
       credits: r.credits,
       verifiedAt: r.verifiedAt,
+      hasReflection: Boolean(r.reflectionId),
     }
   })
 

@@ -1,44 +1,67 @@
 import Link from 'next/link'
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import {
   ArrowUpRight,
-  CalendarDays,
-  ChevronRight,
-  Clock3,
-  FileBarChart2,
-  MapPin,
-  MoreHorizontal,
-  Plus,
-  Send,
-  Sparkles,
+  Bell,
+  CheckCircle2,
+  ClipboardList,
+  UserRoundCheck,
   UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { claims, orgs, shifts, tasks, users } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
-import { aggregateOpportunities } from '@/lib/services/profile'
 import { participantDisplayName } from '@/lib/participant-name'
+import { getUnreadMessageCount } from '@/lib/services/roster'
+import { getUnreadNotificationCount } from '@/lib/services/notifications'
+import { getOrganizationCalendarEntries } from '@/lib/services/organization-calendar'
 import { LabHeader } from '../LabHeader'
+import { LabNotice } from '../LabNotice'
 import { getLabWorkspace } from '../lab-workspace'
 import { IssuerLabSidebar } from './IssuerLabSidebar'
+import { IssuerSchedulePanel } from './IssuerSchedulePanel'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-function shortTime(timestamp: number | null) {
-  if (!timestamp) return 'Time TBD'
-  return new Date(timestamp).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+function dayBounds() {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return { start: start.getTime(), end: end.getTime() }
 }
 
-export default async function IssuerAestheticLabPage() {
+function scheduleBounds() {
+  const now = new Date()
+  const from = new Date(now.getFullYear(), now.getMonth(), 1)
+  // The calendar's month grid begins with the prior Monday. Looking back a
+  // little further keeps multi-day private notes visible at the boundary.
+  from.setDate(from.getDate() - 7)
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 8)
+  return { from: from.getTime(), to: to.getTime() }
+}
+
+export default async function IssuerAestheticLabPage({ searchParams }: { searchParams: { ok?: string; error?: string } }) {
   const session = await requireRole('issuer')
   const orgId = session.orgId!
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [org, taskRows, scheduledShifts, activeClaimRows, rosterRows, verifiedStats] = await Promise.all([
+  const now = Date.now()
+  const today = dayBounds()
+  const schedule = scheduleBounds()
+  const [
+    org,
+    scheduledShifts,
+    rosterClaimRows,
+    verifiedStats,
+    cityEvents,
+    pendingShiftClaimRows,
+    pendingVolunteerRows,
+    unreadNotificationCount,
+    unreadMessageCount,
+    calendarEntries,
+  ] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
-    city
-      ? db.select().from(tasks).where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id))).orderBy(desc(tasks.createdAt))
-      : Promise.resolve([]),
     city
       ? db
           .select({ shift: shifts, task: tasks })
@@ -56,132 +79,150 @@ export default async function IssuerAestheticLabPage() {
       : Promise.resolve([]),
     city
       ? db
-          .select({ claim: claims, task: tasks, participant: users })
-          .from(claims)
-          .innerJoin(tasks, eq(claims.taskId, tasks.id))
-          .innerJoin(users, eq(claims.userId, users.id))
-          .where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id), inArray(claims.status, ['claimed', 'submitted'])))
-          .orderBy(desc(claims.updatedAt))
-          .limit(3)
-      : Promise.resolve([]),
-    city
-      ? db
           .select({ verified: sql<number>`count(*)` })
           .from(claims)
           .innerJoin(tasks, eq(claims.taskId, tasks.id))
           .where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id), eq(claims.status, 'verified')))
       : Promise.resolve([]),
+    city
+      ? db
+          .select({ shift: shifts, task: tasks, org: orgs })
+          .from(shifts)
+          .innerJoin(tasks, eq(shifts.taskId, tasks.id))
+          .innerJoin(orgs, eq(tasks.orgId, orgs.id))
+          .where(and(eq(tasks.cityId, city.id), eq(shifts.status, 'open'), gte(shifts.startsAt, today.start), lt(shifts.startsAt, today.end)))
+          .orderBy(asc(shifts.startsAt), asc(orgs.name))
+      : Promise.resolve([]),
+    city
+      ? db
+          .select({ claim: claims, shift: shifts, task: tasks })
+          .from(claims)
+          .innerJoin(tasks, eq(claims.taskId, tasks.id))
+          .innerJoin(shifts, eq(claims.shiftId, shifts.id))
+          .where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id), inArray(claims.status, ['claimed', 'submitted']), lte(shifts.endsAt, now)))
+          .orderBy(desc(shifts.endsAt), desc(claims.updatedAt))
+      : Promise.resolve([]),
+    city
+      ? db
+          .select({ claim: claims, task: tasks, participant: users })
+          .from(claims)
+          .innerJoin(tasks, eq(claims.taskId, tasks.id))
+          .innerJoin(users, eq(claims.userId, users.id))
+          .innerJoin(shifts, eq(claims.shiftId, shifts.id))
+          .where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id), eq(claims.status, 'claimed'), gte(shifts.endsAt, now)))
+          .orderBy(desc(claims.updatedAt))
+          .limit(3)
+      : Promise.resolve([]),
+    getUnreadNotificationCount(session.sub),
+    getUnreadMessageCount(session.sub),
+    city ? getOrganizationCalendarEntries(orgId, city.id, schedule.from, schedule.to) : Promise.resolve([]),
   ])
-  const aggregate = await aggregateOpportunities(taskRows)
   const activeByShift = new Map<string | null, number>()
-  for (const { claim } of activeClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
-  const openSpots = scheduledShifts.reduce((total, { shift }) => total + Math.max(0, shift.capacity - (activeByShift.get(shift.id) ?? 0)), 0)
-  const activeVolunteers = new Set(activeClaimRows.map(({ claim }) => claim.userId)).size
+  for (const { claim } of rosterClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
+  const rosterVolunteerCount = new Set(rosterClaimRows.map(({ claim }) => claim.userId)).size
   const verifiedCount = Number(verifiedStats[0]?.verified ?? 0)
-  const displayShifts = scheduledShifts.slice(0, 3)
+  const unreadUpdates = unreadNotificationCount + unreadMessageCount
+  const pendingVerificationGroups = Array.from(
+    pendingShiftClaimRows.reduce((groups, row) => {
+      const current = groups.get(row.shift.id)
+      if (current) current.participantCount += 1
+      else groups.set(row.shift.id, { shift: row.shift, task: row.task, participantCount: 1 })
+      return groups
+    }, new Map<string, { shift: typeof shifts.$inferSelect; task: typeof tasks.$inferSelect; participantCount: number }>()),
+  ).map(([, group]) => group).slice(0, 3)
+  const scheduleEntries = [
+    ...scheduledShifts.map(({ shift, task }) => ({
+      id: shift.id,
+      taskId: task.id,
+      title: task.title,
+      startsAt: shift.startsAt,
+      endsAt: shift.endsAt,
+      capacity: shift.capacity,
+      reserved: activeByShift.get(shift.id) ?? 0,
+      isOnboarding: /onboard|orientation/i.test(task.title),
+      color: /onboard|orientation/i.test(task.title) ? 'gold' as const : 'blue' as const,
+    })),
+    ...calendarEntries.map((entry) => ({
+      id: `calendar-${entry.id}`,
+      taskId: null,
+      title: entry.title,
+      startsAt: entry.startsAt,
+      endsAt: entry.endsAt,
+      capacity: null,
+      reserved: null,
+      isOnboarding: false,
+      color: entry.color as 'blue' | 'gold' | 'mint' | 'coral',
+    })),
+  ]
+  const queue = [
+    ...pendingVerificationGroups.map(({ shift, task, participantCount }) => ({
+      kind: 'verify' as const,
+      title: `Verify ${participantCount} attendee${participantCount === 1 ? '' : 's'}`,
+      detail: `${task.title} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Completed shift'}`,
+      href: `/aesthetic-lab/issuer/shifts/${shift.id}/verify`,
+      action: 'Review',
+    })),
+    ...pendingVolunteerRows.map(({ task, participant }) => ({
+      kind: 'review' as const,
+      title: `Review ${participantDisplayName(participant)}’s volunteer request`,
+      detail: task.title,
+      href: '/aesthetic-lab/issuer/volunteers',
+      action: 'Review',
+    })),
+    ...(unreadUpdates
+      ? [{
+          kind: 'update' as const,
+          title: `${unreadUpdates} unread update${unreadUpdates === 1 ? '' : 's'}`,
+          detail: unreadMessageCount ? 'Messages and City/Sync updates need your attention.' : 'A City/Sync update needs your attention.',
+          href: '/aesthetic-lab/issuer/notifications',
+          action: 'Open',
+        }]
+      : []),
+  ].slice(0, 6)
 
   return (
     <main className={styles.app}>
       <LabHeader activeSection="issuer-overview" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
 
       <div className={styles.issuerLayout}>
-        <IssuerLabSidebar active="overview" organizationName={org?.name} cityName={city?.name} />
+        <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
 
         <section className={styles.issuerMain} id="overview" aria-label="Organization workspace">
           <section className={styles.issuerHero}>
             <div>
               <p className={styles.eyebrow}>Organization workspace</p>
-              <h2>Keep the good work moving.</h2>
-              <p>{scheduledShifts.length > 0 ? `${scheduledShifts.length} upcoming shift${scheduledShifts.length === 1 ? '' : 's'} need your attention this week.` : 'Start by creating an opportunity your community can join.'}</p>
+              <h2>Keep today’s work moving.</h2>
+              <p>{scheduledShifts.length ? `${scheduledShifts.length} scheduled volunteer event${scheduledShifts.length === 1 ? '' : 's'} are ready for your organization.` : 'Start by creating an opportunity your community can join.'}</p>
             </div>
             <div className={styles.issuerHeroActions}>
-              <Link href="/aesthetic-lab/issuer/new" className={styles.issuerPrimaryAction}><Plus size={18} /> Post opportunity</Link>
-              <Link href="/aesthetic-lab/issuer/volunteers#message" className={styles.issuerSecondaryAction}><Send size={17} /> Message roster</Link>
+              <Link href="/aesthetic-lab/issuer/catalog" className={styles.issuerPrimaryAction}><ClipboardList size={18} /> Open Workspace</Link>
             </div>
           </section>
+
+          <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 
           <section className={styles.issuerMetricGrid} aria-label="Organization metrics">
-            <article><span>{openSpots}</span><div><b>Open volunteer spots</b><small>Across {taskRows.filter((task) => task.status === 'open').length} published opportunities</small></div><ArrowUpRight size={16} /></article>
-            <article><span>{activeVolunteers}</span><div><b>Active volunteers</b><small>With an active or submitted commitment</small></div><ArrowUpRight size={16} /></article>
-            <article><span>{verifiedCount}</span><div><b>Verified contributions</b><small>Recognized in this city</small></div><ArrowUpRight size={16} /></article>
+            <article><span>{rosterVolunteerCount}</span><div><b>Volunteers</b><small>People in your organization’s roster</small></div><UsersRound size={16} /></article>
+            <article><span>{verifiedCount}</span><div><b>Verified contributions</b><small>Recognized in this city</small></div><CheckCircle2 size={16} /></article>
+            <Link href="/aesthetic-lab/issuer/events" className={styles.issuerMetricLink}><span>{cityEvents.length}</span><div><b>Events today</b><small>Across every organization in {city?.name ?? 'your city'}</small></div><ArrowUpRight size={16} /></Link>
           </section>
 
-          <section className={styles.issuerScheduleCard}>
+          <section className={styles.issuerTaskQueue} aria-label="Organization action queue">
             <div className={styles.issuerPanelHeading}>
-              <div><p className={styles.eyebrow}>This week</p><h2>Volunteer schedule</h2></div>
-              <Link href="/aesthetic-lab/issuer/catalog"><span>Open calendar</span> <ArrowUpRight size={14} /></Link>
+              <div><p className={styles.eyebrow}>Action queue</p><h2>What needs attention.</h2></div>
+              <ClipboardList size={19} />
             </div>
-            <div className={styles.issuerScheduleTrack}>
-              {displayShifts.length === 0 ? <p className={styles.emptyCopy}>No upcoming shifts are scheduled. Create an opportunity to begin building your calendar.</p> : displayShifts.map(({ shift, task }) => (
-                <article key={shift.id} className={`${styles.issuerShift} ${styles[task.title.toLowerCase().includes('onboard') ? 'gold' : 'blue']}`}>
-                  <div><span>{shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase() : 'TBD'}</span><strong>{shift.startsAt ? new Date(shift.startsAt).getDate() : '—'}</strong></div>
-                  <p><b>{task.title}</b><small><Clock3 size={13} /> {shortTime(shift.startsAt)}</small></p>
-                  <span className={styles.shiftCount}>{activeByShift.get(shift.id) ?? 0} / {shift.capacity}</span>
-                </article>
-              ))}
-            </div>
-            {displayShifts.some(({ task }) => task.title.toLowerCase().includes('onboard')) ? <div className={styles.issuerScheduleNote}><Sparkles size={17} /><span><b>You have an onboarding session on the calendar.</b> Keep its capacity current so new participants can reliably find a first step.</span><Link href="/aesthetic-lab/issuer/catalog">Manage <ChevronRight size={15} /></Link></div> : null}
-          </section>
-
-          <section className={styles.issuerCatalogCard} id="catalog">
-            <div className={styles.issuerPanelHeading}>
-              <div><p className={styles.eyebrow}>Opportunity catalog</p><h2>Published opportunities</h2></div>
-              <Link href="/aesthetic-lab/issuer/catalog" className={styles.issuerTextButton}>Manage opportunities <ArrowUpRight size={14} /></Link>
-            </div>
-            <div className={styles.issuerOpportunityList}>
-              {taskRows.length === 0 ? <p className={styles.emptyCopy}>Your published opportunities will appear here.</p> : taskRows.slice(0, 4).map((task) => {
-                const card = aggregate.get(task.id)
-                const isOnboarding = task.title.toLowerCase().includes('onboard')
-                return <article key={task.id}>
-                  <span className={`${styles.issuerStatus} ${styles[isOnboarding ? 'onboarding' : task.status === 'open' ? 'open' : 'closed']}`}>{isOnboarding ? 'Onboarding' : task.status}</span>
-                  <div><h3>{task.title}</h3><p><CalendarDays size={14} /> {card?.nextShiftAt ? shortTime(card.nextShiftAt) : 'No scheduled shift'} <i /> <UsersRound size={14} /> {card?.totalOpenSlots ?? 0} spot{card?.totalOpenSlots === 1 ? '' : 's'} open</p></div>
-                  <Link href={`/aesthetic-lab/issuer/opportunities/${task.id}`} aria-label={`Manage ${task.title}`}><MoreHorizontal size={20} /></Link>
-                </article>
-              })}
+            <p className={styles.issuerQueueIntro}>Verification, volunteer review, and incoming updates are collected here so the next step is always clear.</p>
+            <div className={styles.issuerQueueList}>
+              {queue.length ? queue.map((item, index) => <article key={`${item.kind}-${index}`}>
+                <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : item.kind === 'review' ? <UserRoundCheck size={17} /> : <Bell size={17} />}</span>
+                <div><b>{item.title}</b><small>{item.detail}</small></div>
+                <Link href={item.href}>{item.action} <ArrowUpRight size={13} /></Link>
+              </article>) : <p className={styles.issuerQueueEmpty}>You’re caught up. New verifications, volunteer reviews, messages, and notifications will appear here.</p>}
             </div>
           </section>
 
-          <section className={styles.issuerManagementGrid} aria-label="Organization management">
-            <section className={styles.issuerRosterCard} id="volunteers">
-              <div className={styles.issuerPanelHeading}>
-                <div><p className={styles.eyebrow}>Volunteer roster</p><h2>People to know today</h2></div>
-                <UsersRound size={18} />
-              </div>
-              <div className={styles.issuerRosterList}>
-                {rosterRows.length === 0 ? <p className={styles.emptyCopy}>Volunteer commitments will appear here as people sign up.</p> : rosterRows.map(({ claim, task, participant }) => (
-                  <Link href="/aesthetic-lab/issuer/volunteers" key={claim.id}>
-                    <span className={styles.rosterAvatar}>{participantDisplayName(participant).slice(0, 2).toUpperCase()}</span>
-                    <div><b>{participantDisplayName(participant)}</b><small>{task.title}</small></div>
-                    <em>{claim.status === 'submitted' ? 'Awaiting verification' : 'Confirmed'}</em>
-                  </Link>
-                ))}
-              </div>
-              <Link className={styles.issuerFooterLink} href="/aesthetic-lab/issuer/volunteers">View full roster <ArrowUpRight size={14} /></Link>
-            </section>
-
-            <section className={styles.issuerMessageCard}>
-              <span><Send size={19} /></span>
-              <div><p className={styles.eyebrow}>Roster note</p><h2>Send a helpful reminder.</h2><p>Reach your full roster or a saved volunteer grouping from one place.</p></div>
-              <Link href="/aesthetic-lab/issuer/volunteers#message">Message volunteers <ArrowUpRight size={14} /></Link>
-            </section>
-
-            <section className={styles.issuerReportCard} id="reports">
-              <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Impact snapshot</p><h2>Made visible</h2></div><FileBarChart2 size={18} /></div>
-              <div className={styles.issuerImpactBars}>
-                <div><span>Verified contributions</span><strong>{verifiedCount}</strong><i><b /></i></div>
-                <div><span>Active volunteers</span><strong>{activeVolunteers}</strong><i><b /></i></div>
-                <div><span>Open spaces</span><strong>{openSpots}</strong><i><b /></i></div>
-              </div>
-              <Link href="/aesthetic-lab/issuer/reports">Open reporting view <ArrowUpRight size={14} /></Link>
-            </section>
-
-            <section className={styles.issuerPublicProfileCard} id="profile">
-              <div><MapPin size={17} /><span>Public profile</span></div>
-              <h2>What people see before they join you.</h2>
-              <p>Mission, opportunities, onboarding, and how to get involved—clear and ready to share.</p>
-              <Link href="/aesthetic-lab/issuer/profile">Preview profile <ArrowUpRight size={14} /></Link>
-            </section>
-          </section>
+          <IssuerSchedulePanel entries={scheduleEntries} />
         </section>
       </div>
     </main>

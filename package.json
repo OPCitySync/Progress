@@ -5,10 +5,14 @@
   "description": "City/Sync Volunteer Management Application with an event-sourced civic credit ledger and on-chain anchoring adapters",
   "scripts": {
     "dev": "next dev",
+    "dev:reset": "rm -rf .next-dev && next dev",
     "build": "next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run build",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed:onboarding-demo": "tsx scripts/seed-onboarding-simulations.ts",
     "verify:city-ledger": "tsx scripts/verify-city-ledger-outbox.ts",
     "setup": "npm run db:migrate && npm run db:seed"
   },

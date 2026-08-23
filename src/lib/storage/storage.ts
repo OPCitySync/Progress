@@ -37,6 +37,12 @@ export const ALLOWED_WAIVER_DOCUMENT_TYPES: Record<string, string> = {
 
 export const MAX_WAIVER_DOCUMENT_BYTES = 10 * 1024 * 1024 // 10 MB
 
+// Guides, safety plans, and operational templates use the same deliberate
+// format and size limits as waiver attachments. The content remains owned by
+// the organization and is stored through the same replaceable storage adapter.
+export const ALLOWED_ORGANIZATION_DOCUMENT_TYPES = ALLOWED_WAIVER_DOCUMENT_TYPES
+export const MAX_ORGANIZATION_DOCUMENT_BYTES = MAX_WAIVER_DOCUMENT_BYTES
+
 class LocalStorageAdapter implements StorageAdapter {
   backend = 'local'
   async put({ key, bytes }: { key: string; bytes: Buffer; contentType: string }) {

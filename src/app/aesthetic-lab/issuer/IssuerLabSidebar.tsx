@@ -1,31 +1,19 @@
 import Link from 'next/link'
 import {
   BadgeCheck,
-  CalendarDays,
-  ClipboardList,
-  FileBarChart2,
   Pencil,
   ShieldCheck,
-  UsersRound,
 } from 'lucide-react'
 import styles from '../prototype.module.css'
-
-type IssuerSidebarSection = 'overview' | 'catalog' | 'volunteers' | 'reports' | 'profile'
-
-const navigation = [
-  { key: 'overview', href: '/aesthetic-lab/issuer', label: 'Today’s workspace', icon: ClipboardList },
-  { key: 'catalog', href: '/aesthetic-lab/issuer/catalog', label: 'Opportunity catalog', icon: CalendarDays },
-  { key: 'volunteers', href: '/aesthetic-lab/issuer/volunteers', label: 'Volunteer roster', icon: UsersRound },
-  { key: 'reports', href: '/aesthetic-lab/issuer/reports', label: 'Impact & reports', icon: FileBarChart2 },
-] as const
+import { IssuerQuickActions } from './IssuerQuickActions'
 
 export function IssuerLabSidebar({
-  active,
   organizationName = 'Issuer organization',
+  organizationId,
   cityName,
 }: {
-  active: IssuerSidebarSection
   organizationName?: string
+  organizationId?: string
   cityName?: string
 }) {
   return (
@@ -40,14 +28,7 @@ export function IssuerLabSidebar({
         </div>
       </section>
 
-      <section className={styles.issuerSideNav}>
-        <p className={styles.eyebrow}>Your organization</p>
-        {navigation.map((item) => {
-          const Icon = item.icon
-          const selected = item.key === active
-          return <Link className={selected ? styles.issuerSideActive : undefined} href={item.href} aria-current={selected ? 'page' : undefined} key={item.key}><Icon size={17} /> {item.label}</Link>
-        })}
-      </section>
+      <IssuerQuickActions organizationId={organizationId ?? organizationName} />
 
       <section className={styles.issuerTrustCard}>
         <ShieldCheck size={19} />

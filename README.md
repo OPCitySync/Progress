@@ -99,3 +99,19 @@ recorded on the ledger as `ORG_APPROVED { sandbox: true }` — the history stays
 - `src/lib/ledger/ledger.ts → verifyChain()` recomputes every event hash.
 - Each anchor's Merkle root covers events `fromSeq–toSeq`; with a database export, any third
   party can recompute the root and compare.
+# City/Sync Progress
+
+## Local development safety
+
+The local application and production verification builds deliberately use
+different generated directories:
+
+- `npm run dev` writes only to `.next-dev`.
+- `npm run build` writes only to `.next`.
+- `npm run verify` runs the type check and production build without disturbing
+  a running local server.
+
+This separation prevents a production build from invalidating the CSS and
+JavaScript chunks that the local development server is currently serving. If a
+development cache ever needs to be rebuilt, use `npm run dev:reset`; it clears
+only `.next-dev`, never application data or source code.

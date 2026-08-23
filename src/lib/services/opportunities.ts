@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { tasks, shifts, claims, orgs, orgProfiles, users } from '@/lib/db/schema'
+import { tasks, shifts, claims, orgs, orgProfiles, users, verificationBatches } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
-import { getActiveWaiver, hasAcceptedWaiver } from './waivers'
+import { getOnboardingWaiverSetup, hasAcceptedWaiver } from './waivers'
 import {
   notifyShiftClaimed,
+  notifyVerifiedShiftReflection,
   cancelRemindersForClaim,
   cancelRemindersForShift,
   cancelRemindersForTask,
@@ -107,6 +108,58 @@ export async function createTask(input: {
   return { ok: true, id }
 }
 
+/**
+ * Update the reusable definition of an opportunity. Scheduled shifts retain
+ * their own dates and capacity; these fields become the defaults for future
+ * shifts and the public context volunteers see.
+ */
+export async function updateTask(input: {
+  taskId: string
+  orgId: string
+  actorId: string
+  title: string
+  description: string
+  location: string
+  credits?: number
+  slots?: number
+}): Promise<Result> {
+  if (!input.title.trim()) return { ok: false, error: 'Title is required.' }
+  const location = normalizeOrganizationLocation(input.location)
+  if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
+  if (input.credits !== undefined && (!Number.isInteger(input.credits) || input.credits < 1 || input.credits > 100000)) {
+    return { ok: false, error: 'Credits must be a whole number between 1 and 100,000.' }
+  }
+  if (input.slots !== undefined && (!Number.isInteger(input.slots) || input.slots < 1 || input.slots > 10000)) {
+    return { ok: false, error: 'Default capacity must be a whole number of at least 1.' }
+  }
+
+  const task = (await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1))[0]
+  if (!task || task.orgId !== input.orgId) return { ok: false, error: 'Opportunity not found.' }
+  const credits = input.credits ?? task.credits
+  const slots = input.slots ?? task.slots
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(tasks)
+      .set({
+        title: input.title.trim(),
+        description: input.description.trim(),
+        location,
+        credits,
+        slots,
+      })
+      .where(eq(tasks.id, input.taskId))
+    await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
+    await appendEvent(
+      tx,
+      EventTypes.TASK_UPDATED,
+      { taskId: input.taskId, cityId: task.cityId, credits, title: input.title.trim() },
+      input.actorId,
+    )
+  })
+  return { ok: true }
+}
+
 export async function createShift(input: {
   taskId: string
   orgId: string
@@ -121,6 +174,7 @@ export async function createShift(input: {
   }
   const task = (await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1))[0]
   if (!task || task.orgId !== input.orgId) return { ok: false, error: 'Opportunity not found.' }
+  if (task.status !== 'open') return { ok: false, error: 'Reopen this opportunity before publishing another session.' }
 
   const id = randomUUID()
   await db.transaction(async (tx) => {
@@ -244,7 +298,7 @@ export async function getShiftsWithCounts(
 }
 
 export type ClaimGate =
-  | { ok: true }
+  | { ok: true; inPersonWaiver?: { waiverVersionId: string } }
   | { ok: false; reason: 'waiver_required'; waiverVersionId: string }
   | { ok: false; reason: 'credentials_required'; missing: string[] }
   | { ok: false; reason: 'error'; error: string }
@@ -283,9 +337,21 @@ export async function checkClaimGate(shiftId: string, userId: string): Promise<C
     if (missing.length > 0) return { ok: false, reason: 'credentials_required', missing }
   }
 
-  const waiver = await getActiveWaiver(task.orgId)
-  if (waiver && !(await hasAcceptedWaiver(userId, waiver.id))) {
-    return { ok: false, reason: 'waiver_required', waiverVersionId: waiver.id }
+  const [onboardingProfile, waiverSetup] = await Promise.all([
+    db
+      .select({ onboardingTaskId: orgProfiles.onboardingTaskId })
+      .from(orgProfiles)
+      .where(eq(orgProfiles.orgId, task.orgId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    getOnboardingWaiverSetup(task.orgId),
+  ])
+  const isOnboarding = onboardingProfile?.onboardingTaskId === task.id
+  if (isOnboarding && waiverSetup.method === 'in_person' && waiverSetup.waiver) {
+    return { ok: true, inPersonWaiver: { waiverVersionId: waiverSetup.waiver.id } }
+  }
+  if (waiverSetup.waiver && !(await hasAcceptedWaiver(userId, waiverSetup.waiver.id))) {
+    return { ok: false, reason: 'waiver_required', waiverVersionId: waiverSetup.waiver.id }
   }
 
   return { ok: true }
@@ -319,9 +385,12 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
   )[0]
 
   const now = Date.now()
+  const inPersonWaiverFields = gate.inPersonWaiver
+    ? { waiverVersionId: gate.inPersonWaiver.waiverVersionId, waiverCollectionMethod: 'in_person' as const }
+    : {}
   await db.transaction(async (tx) => {
     if (existing) {
-      await tx.update(claims).set({ status: 'claimed', updatedAt: now }).where(eq(claims.id, existing.id))
+      await tx.update(claims).set({ status: 'claimed', updatedAt: now, ...inPersonWaiverFields }).where(eq(claims.id, existing.id))
     } else {
       await tx.insert(claims).values({
         id: randomUUID(),
@@ -329,6 +398,7 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
         shiftId,
         userId,
         status: 'claimed',
+        ...inPersonWaiverFields,
         createdAt: now,
         updatedAt: now,
       })
@@ -394,7 +464,13 @@ export async function submitCompletion(claimId: string, userId: string, note: st
 }
 
 /** Issuer verifies a completion: claim -> verified, credits minted. */
-export async function verifyCompletion(claimId: string, orgId: string, actorId: string): Promise<Result> {
+export async function verifyCompletion(
+  claimId: string,
+  orgId: string,
+  actorId: string,
+  paperWaiverReceived = false,
+  verificationBatchId?: string,
+): Promise<Result> {
   const claim = (await db.select().from(claims).where(eq(claims.id, claimId)).limit(1))[0]
   if (!claim) return { ok: false, error: 'Claim not found.' }
   if (claim.status !== 'submitted' && claim.status !== 'claimed') {
@@ -407,6 +483,10 @@ export async function verifyCompletion(claimId: string, orgId: string, actorId: 
   )[0]
   if (onboardingProfile && !claim.checkedInAt) {
     return { ok: false, error: 'Check the participant in before verifying an onboarding task.' }
+  }
+  const paperWaiverNeedsConfirmation = claim.waiverCollectionMethod === 'in_person' && !claim.paperWaiverConfirmedAt
+  if (paperWaiverNeedsConfirmation && !paperWaiverReceived) {
+    return { ok: false, error: 'Confirm that you received the participant’s signed paper waiver at check-in before verifying onboarding.' }
   }
 
   const participant = (await db.select().from(users).where(eq(users.id, claim.userId)).limit(1))[0]
@@ -425,15 +505,144 @@ export async function verifyCompletion(claimId: string, orgId: string, actorId: 
   })
 
   await db.transaction(async (tx) => {
-    await tx.update(claims).set({ status: 'verified', updatedAt: Date.now() }).where(eq(claims.id, claimId))
+    const now = Date.now()
+    await tx
+      .update(claims)
+      .set({
+        status: 'verified',
+        updatedAt: now,
+        verifiedByUserId: actorId,
+        verifiedAt: now,
+        ...(verificationBatchId ? { verificationBatchId } : {}),
+        ...(paperWaiverNeedsConfirmation ? { paperWaiverConfirmedAt: now, paperWaiverConfirmedBy: actorId } : {}),
+      })
+      .where(eq(claims.id, claimId))
     await appendEvent(
       tx,
       EventTypes.COMPLETION_VERIFIED,
-      { claimId, taskId: task.id, shiftId: claim.shiftId, participantId: participant.id, cityId: task.cityId, credits: task.credits },
+      {
+        claimId,
+        taskId: task.id,
+        shiftId: claim.shiftId,
+        participantId: participant.id,
+        cityId: task.cityId,
+        credits: task.credits,
+        ...(verificationBatchId ? { verificationBatchId } : {}),
+      },
       actorId,
     )
   })
+
+  // A reflection invitation appears only after verified service is durable.
+  // Notification delivery is non-authoritative and must not affect the result.
+  try {
+    const organization = (await db.select({ name: orgs.name }).from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0]
+    await notifyVerifiedShiftReflection({
+      userId: participant.id,
+      claimId,
+      taskTitle: task.title,
+      organizationName: organization?.name ?? 'the organization',
+    })
+  } catch (error) {
+    console.error('notifyVerifiedShiftReflection failed', error)
+  }
+
   return { ok: true }
+}
+
+/**
+ * Staff can confirm an entire completed shift in one operation. Every selected
+ * attendee still receives an individual check-in, verified claim, credit mint,
+ * and ledger event; the shared batch only removes repeated administrative work.
+ */
+export async function verifyShiftAttendance(input: {
+  shiftId: string
+  claimIds: string[]
+  orgId: string
+  actorId: string
+  note?: string
+  paperWaiverReceived?: boolean
+}): Promise<Result<{ batchId: string; verifiedCount: number }>> {
+  const now = Date.now()
+  const shiftRow = (await db
+    .select({ shift: shifts, task: tasks })
+    .from(shifts)
+    .innerJoin(tasks, eq(shifts.taskId, tasks.id))
+    .where(and(eq(shifts.id, input.shiftId), eq(shifts.orgId, input.orgId)))
+    .limit(1))[0]
+  if (!shiftRow || shiftRow.task.orgId !== input.orgId) {
+    return { ok: false, error: 'That shift is not available to your organization.' }
+  }
+  if (shiftRow.shift.status !== 'open') {
+    return { ok: false, error: 'Only an active shift can be verified.' }
+  }
+  if ((shiftRow.shift.endsAt ?? shiftRow.shift.startsAt) && (shiftRow.shift.endsAt ?? shiftRow.shift.startsAt)! > now) {
+    return { ok: false, error: 'Wait until the shift has ended before confirming attendance.' }
+  }
+
+  const selectedIds = Array.from(new Set(input.claimIds.filter(Boolean)))
+  if (selectedIds.length === 0) return { ok: false, error: 'Select at least one attendee to verify.' }
+  const selectedClaims = await db
+    .select()
+    .from(claims)
+    .where(and(eq(claims.shiftId, input.shiftId), inArray(claims.id, selectedIds), inArray(claims.status, ['claimed', 'submitted'])))
+  if (selectedClaims.length !== selectedIds.length) {
+    return { ok: false, error: 'One or more selected sign-ups have already been resolved. Refresh the shift roster and try again.' }
+  }
+  const needsPaperWaiver = selectedClaims.some((claim) => claim.waiverCollectionMethod === 'in_person' && !claim.paperWaiverConfirmedAt)
+  if (needsPaperWaiver && !input.paperWaiverReceived) {
+    return { ok: false, error: 'Confirm that the selected attendees provided their signed paper waivers before verifying this onboarding shift.' }
+  }
+
+  const batchId = randomUUID()
+  const note = input.note?.trim().slice(0, 2_000) ?? ''
+  await db.insert(verificationBatches).values({
+    id: batchId,
+    orgId: input.orgId,
+    taskId: shiftRow.task.id,
+    shiftId: shiftRow.shift.id,
+    verifiedByUserId: input.actorId,
+    note,
+    participantCount: selectedClaims.length,
+    verifiedAt: now,
+    createdAt: now,
+  })
+
+  // Keep these operations sequential: both the organization ledger and the
+  // city credit ledger are hash-chained, and each participant needs a durable
+  // individual record even though staff confirmed them together.
+  for (const claim of selectedClaims) {
+    if (!claim.checkedInAt) {
+      const checkIn = await issuerCheckIn(claim.id, input.orgId, input.actorId)
+      if (!checkIn.ok) return checkIn
+    }
+    const verified = await verifyCompletion(
+      claim.id,
+      input.orgId,
+      input.actorId,
+      Boolean(input.paperWaiverReceived),
+      batchId,
+    )
+    if (!verified.ok) return verified
+  }
+
+  await db.transaction(async (tx) => {
+    await appendEvent(
+      tx,
+      EventTypes.SHIFT_ATTENDANCE_BATCH_VERIFIED,
+      {
+        batchId,
+        taskId: shiftRow.task.id,
+        shiftId: shiftRow.shift.id,
+        orgId: input.orgId,
+        participantCount: selectedClaims.length,
+        verifiedAt: now,
+      },
+      input.actorId,
+      shiftRow.task.cityId,
+    )
+  })
+  return { ok: true, batchId, verifiedCount: selectedClaims.length }
 }
 
 /**

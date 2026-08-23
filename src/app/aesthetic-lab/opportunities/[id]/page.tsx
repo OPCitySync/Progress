@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, CheckCircle2, Clock3, MapPin, ShieldCheck, UsersRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CheckCircle2, Clock3, FileText, MapPin, ShieldCheck, UsersRound } from 'lucide-react'
 import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, orgs, tasks } from '@/lib/db/schema'
+import { claims, orgProfiles, orgs, tasks } from '@/lib/db/schema'
 import { claimShiftAction } from '@/app/actions'
-import { getActiveWaiver } from '@/lib/services/waivers'
+import { getOnboardingWaiverSetup } from '@/lib/services/waivers'
+import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
 import { checkClaimGate, getShiftsWithCounts } from '@/lib/services/opportunities'
 import { savedItemIds } from '@/lib/services/saved-items'
 import { getLabWorkspace } from '../../lab-workspace'
@@ -29,20 +30,122 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
   const task = (await db.select().from(tasks).where(eq(tasks.id, params.id)).limit(1))[0]
   const org = task ? (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0] : null
   if (!task || !org || task.status !== 'open' || (city && task.cityId !== city.id)) return <main className={styles.app}><LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} /><section className={styles.primaryColumn}><p className={styles.emptyCopy}>This opportunity is no longer available in your active city.</p><Link href="/aesthetic-lab/opportunities">Back to opportunities</Link></section></main>
-  const [sessions, waiver, myClaims, savedTaskIds] = await Promise.all([
+  const [sessions, waiverSetup, myClaims, savedTaskIds, onboardingProfile, organizationDocuments] = await Promise.all([
     getShiftsWithCounts(task.id),
-    getActiveWaiver(org.id),
+    getOnboardingWaiverSetup(org.id),
     db.select().from(claims).where(and(eq(claims.taskId, task.id), eq(claims.userId, session.sub))),
     savedItemIds(session.sub, 'task', [task.id]),
+    db
+      .select({ onboardingTaskId: orgProfiles.onboardingTaskId })
+      .from(orgProfiles)
+      .where(eq(orgProfiles.orgId, org.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    getOrganizationDocuments(org.id),
   ])
   const claimByShift = new Map(myClaims.map((claim) => [claim.shiftId, claim]))
-  const isOnboarding = /onboard|orientation/i.test(task.title)
+  const waiver = waiverSetup.waiver
+  const isOnboarding = onboardingProfile?.onboardingTaskId === task.id || /onboard|orientation/i.test(task.title)
+  const usesPaperWaiver = isOnboarding && waiverSetup.method === 'in_person'
+  const includedDocuments = organizationDocuments.filter((document) => document.taskIds.includes(task.id))
 
-  return <main className={styles.app}>
-    <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
-    <section className={styles.detailLayout}><aside className={styles.leftRail}><section className={styles.cityCard}><p className={styles.eyebrow}>{isOnboarding ? 'Onboarding session' : 'Volunteer opportunity'}</p><h2>{org.name}</h2><p>Provided by an approved organization in {city?.name ?? 'your city'}.</p><Link href={`/aesthetic-lab/organizations/${org.slug}`}>View organization</Link></section></aside><section className={styles.primaryColumn}><Link href="/aesthetic-lab/opportunities" className={styles.issuerTextButton}><ArrowLeft size={15} /> Back to opportunities</Link><div className={styles.pageIntro}><p className={styles.eyebrow}>{isOnboarding ? 'A good first step' : 'Open opportunity'}</p><h1>{task.title}</h1><p>{task.description || 'The organization has not added a description yet.'}</p></div><LabNotice ok={searchParams.ok} error={searchParams.error} /><SaveTaskButton taskId={task.id} saved={savedTaskIds.has(task.id)} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} /><section className={`${styles.labPanel} ${styles.labStack}`}><div><p className={styles.eyebrow}>What to expect</p><h2>Plan your visit</h2></div><div className={styles.labChoiceList}><div className={styles.labChoice}><p><MapPin size={15} /> <strong>Location</strong><small>{task.location || 'Location to be confirmed'}</small></p><p><UsersRound size={15} /> <strong>Capacity</strong><small>{task.slots} spot{task.slots === 1 ? '' : 's'} per session</small></p></div>{waiver ? <div className={styles.labChoice}><p><ShieldCheck size={15} /> <strong>Liability waiver</strong><small>{waiver.title} will be shown for acceptance when you reserve a shift.</small></p></div> : null}</div></section><section className={`${styles.labPanel} ${styles.labStack}`}><div><p className={styles.eyebrow}>Available sessions</p><h2>Choose a time</h2></div>{sessions.length ? sessions.map(({ shift, slotsLeft }) => {
-    const existing = claimByShift.get(shift.id)
-    return <article className={styles.labChoice} key={shift.id}><div><p><strong><CalendarDays size={15} /> {shiftTime(shift.startsAt, shift.endsAt)}</strong></p><small>{shift.label || 'Scheduled shift'} · {slotsLeft} of {shift.capacity} spot{shift.capacity === 1 ? '' : 's'} open</small></div>{existing && existing.status !== 'unclaimed' ? <span>{existing.status === 'claimed' ? 'You’re signed up' : existing.status}</span> : slotsLeft <= 0 ? <span>Full</span> : <form action={claimShiftAction} className={styles.labForm}><input type="hidden" name="taskId" value={task.id} /><input type="hidden" name="shiftId" value={shift.id} /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/opportunities/${task.id}`} />{waiver ? <><input type="hidden" name="acceptWaiverVersionId" value={waiver.id} /><label><span><input type="checkbox" name="waiverAgree" required /> I accept the current waiver.</span></label></> : null}<button className={styles.labButton} type="submit">Reserve this shift</button></form>}</article>
-  }) : <p className={styles.emptyCopy}>No sessions are scheduled yet.</p>}</section></section><aside className={styles.rightRail}><section className={styles.commitmentCard}><div className={styles.sectionHeading}><p className={styles.eyebrow}>Participation</p><Clock3 size={17} /></div><p>{isOnboarding ? 'Completing local onboarding activates your City Member status.' : 'Your attendance is confirmed by the organization after the shift.'}</p></section><section className={styles.savedCard}><CheckCircle2 size={19} /><div><p className={styles.eyebrow}>City/Sync verified</p><strong>Approved local organization</strong><span>Each listing shows current capacity and requirements.</span></div></section></aside></section>
-  </main>
+  return (
+    <main className={styles.app}>
+      <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
+      <section className={styles.detailLayout}>
+        <aside className={styles.leftRail}>
+          <section className={styles.cityCard}>
+            <p className={styles.eyebrow}>{isOnboarding ? 'Onboarding session' : 'Volunteer opportunity'}</p>
+            <h2>{org.name}</h2>
+            <p>Provided by an approved organization in {city?.name ?? 'your city'}.</p>
+            <Link href={`/aesthetic-lab/organizations/${org.slug}`}>View organization</Link>
+          </section>
+        </aside>
+        <section className={styles.primaryColumn}>
+          <Link href="/aesthetic-lab/opportunities" className={styles.issuerTextButton}>
+            <ArrowLeft size={15} /> Back to opportunities
+          </Link>
+          <div className={styles.pageIntro}>
+            <p className={styles.eyebrow}>{isOnboarding ? 'A good first step' : 'Open opportunity'}</p>
+            <h1>{task.title}</h1>
+            <p>{task.description || 'The organization has not added a description yet.'}</p>
+          </div>
+          <LabNotice ok={searchParams.ok} error={searchParams.error} />
+          <SaveTaskButton taskId={task.id} saved={savedTaskIds.has(task.id)} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} />
+          <section className={`${styles.labPanel} ${styles.labStack}`}>
+            <div>
+              <p className={styles.eyebrow}>What to expect</p>
+              <h2>Plan your visit</h2>
+            </div>
+            <div className={styles.labChoiceList}>
+              <div className={styles.labChoice}>
+                <p><MapPin size={15} /> <strong>Location</strong><small>{task.location || 'Location to be confirmed'}</small></p>
+                <p><UsersRound size={15} /> <strong>Capacity</strong><small>{task.slots} spot{task.slots === 1 ? '' : 's'} per session</small></p>
+              </div>
+              {waiver ? (
+                <div className={styles.labChoice}>
+                  <p>
+                    <ShieldCheck size={15} /> <strong>Liability waiver</strong>
+                    <small>{usesPaperWaiver ? `${waiver.title} is signed in person at check-in. Your place is provisional until staff records receipt.` : `${waiver.title} will be shown for acceptance when you reserve a shift.`}</small>
+                  </p>
+                </div>
+              ) : isOnboarding ? (
+                <div className={styles.labChoice}>
+                  <p><ShieldCheck size={15} /> <strong>No waiver added</strong><small>This organization has not added a waiver for this onboarding session.</small></p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+          {includedDocuments.length > 0 ? <section className={`${styles.labPanel} ${styles.labStack}`}>
+            <div><p className={styles.eyebrow}>Included materials</p><h2>Review before your session</h2><p>These resources were included by the organization for every onboarding participant.</p></div>
+            <div className={styles.labChoiceList}>{includedDocuments.map((document) => <article className={styles.labChoice} key={document.id}>
+              <div><p><strong><FileText size={15} /> {document.title}</strong></p><small>{ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label}{document.body ? ' · Written guidance included' : ''}</small>{document.body ? <details><summary>Read guidance</summary><p>{document.body}</p></details> : null}</div>
+              {document.documentUrl ? <a href={document.documentUrl} target="_blank" rel="noreferrer" className={styles.issuerTextButton}>Open document</a> : null}
+            </article>)}</div>
+          </section> : null}
+          <section className={`${styles.labPanel} ${styles.labStack}`}>
+            <div><p className={styles.eyebrow}>Available sessions</p><h2>Choose a time</h2></div>
+            {sessions.length ? sessions.map(({ shift, slotsLeft }) => {
+              const existing = claimByShift.get(shift.id)
+              return (
+                <article className={styles.labChoice} key={shift.id}>
+                  <div>
+                    <p><strong><CalendarDays size={15} /> {shiftTime(shift.startsAt, shift.endsAt)}</strong></p>
+                    <small>{shift.label || 'Scheduled shift'} · {slotsLeft} of {shift.capacity} spot{shift.capacity === 1 ? '' : 's'} open</small>
+                  </div>
+                  {existing && existing.status !== 'unclaimed' ? <span>{existing.status === 'claimed' ? 'You’re signed up' : existing.status}</span>
+                    : slotsLeft <= 0 ? <span>Full</span>
+                      : (
+                          <form action={claimShiftAction} className={styles.labForm}>
+                            <input type="hidden" name="taskId" value={task.id} />
+                            <input type="hidden" name="shiftId" value={shift.id} />
+                            <input type="hidden" name="redirectTo" value={`/aesthetic-lab/opportunities/${task.id}`} />
+                            {waiver && !usesPaperWaiver ? (
+                              <>
+                                <input type="hidden" name="acceptWaiverVersionId" value={waiver.id} />
+                                <label><span><input type="checkbox" name="waiverAgree" required /> I accept the current waiver.</span></label>
+                              </>
+                            ) : null}
+                            {usesPaperWaiver ? <p className={styles.emptyCopy}>Your place is provisional. Bring or sign the waiver at check-in; staff must record receipt before onboarding is verified.</p> : null}
+                            <button className={styles.labButton} type="submit">Reserve this shift</button>
+                          </form>
+                        )}
+                </article>
+              )
+            }) : <p className={styles.emptyCopy}>No sessions are scheduled yet.</p>}
+          </section>
+        </section>
+        <aside className={styles.rightRail}>
+          <section className={styles.commitmentCard}>
+            <div className={styles.sectionHeading}><p className={styles.eyebrow}>Participation</p><Clock3 size={17} /></div>
+            <p>{isOnboarding ? usesPaperWaiver ? 'Your local onboarding is verified after staff records your in-person waiver and attendance.' : 'Completing local onboarding activates your City Member status.' : 'Your attendance is confirmed by the organization after the shift.'}</p>
+          </section>
+          <section className={styles.savedCard}>
+            <CheckCircle2 size={19} />
+            <div><p className={styles.eyebrow}>City/Sync verified</p><strong>Approved local organization</strong><span>Each listing shows current capacity and requirements.</span></div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  )
 }

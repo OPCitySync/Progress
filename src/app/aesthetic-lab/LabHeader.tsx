@@ -3,7 +3,6 @@ import {
   Building2,
   ClipboardList,
   Compass,
-  FileBarChart2,
   Home,
   UsersRound,
 } from 'lucide-react'
@@ -27,6 +26,7 @@ export type LabSection =
   | 'issuer-volunteers'
   | 'issuer-reports'
   | 'issuer-profile'
+  | 'issuer-utility'
 
 export type LabWorkspace = 'participant' | 'issuer'
 
@@ -36,10 +36,9 @@ const participantSections = [
 ] as const
 
 const issuerSections = [
-  { key: 'issuer-overview', label: 'Overview', href: '/aesthetic-lab/issuer', icon: Home },
-  { key: 'issuer-catalog', label: 'Opportunity Catalog', href: '/aesthetic-lab/issuer/catalog', icon: ClipboardList },
+  { key: 'issuer-overview', label: 'Home', href: '/aesthetic-lab/issuer', icon: Home },
+  { key: 'issuer-catalog', label: 'Workspace', href: '/aesthetic-lab/issuer/catalog', icon: ClipboardList },
   { key: 'issuer-volunteers', label: 'Volunteers', href: '/aesthetic-lab/issuer/volunteers', icon: UsersRound },
-  { key: 'issuer-reports', label: 'Reports', href: '/aesthetic-lab/issuer/reports', icon: FileBarChart2 },
   { key: 'issuer-profile', label: 'Public Profile', href: '/aesthetic-lab/issuer/profile', icon: Building2 },
 ] as const
 
@@ -60,8 +59,10 @@ export async function LabHeader({
 }) {
   const isIssuer = workspace === 'issuer'
   const sections = isIssuer ? issuerSections : participantSections
-  const notificationCount = session?.role === 'participant'
-    ? await Promise.all([getUnreadNotificationCount(session.sub), getUnreadMessageCount(session.sub)]).then(([updates, messages]) => updates + messages)
+  const notificationCount = session
+    ? isIssuer
+      ? await getUnreadNotificationCount(session.sub)
+      : await Promise.all([getUnreadNotificationCount(session.sub, ['volunteer_reflection', 'organization_calendar']), getUnreadMessageCount(session.sub)]).then(([updates, messages]) => updates + messages)
     : 0
 
   return (
@@ -91,7 +92,12 @@ export async function LabHeader({
 
         <WeatherWidget />
 
-        {!isIssuer ? <NotificationsControl count={notificationCount} /> : null}
+        <NotificationsControl
+          count={notificationCount}
+          href={isIssuer ? '/aesthetic-lab/issuer/notifications' : '/aesthetic-lab/notifications'}
+          label={isIssuer ? 'Messages' : 'Notifications'}
+          variant={isIssuer ? 'messages' : 'notifications'}
+        />
 
         <UserMenu workspace={workspace} session={session} city={city} cities={cities} contexts={contexts} />
       </div>

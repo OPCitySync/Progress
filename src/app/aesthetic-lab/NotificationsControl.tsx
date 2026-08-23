@@ -2,28 +2,40 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Bell } from 'lucide-react'
+import { Bell, MessageCircle } from 'lucide-react'
 import styles from './prototype.module.css'
 
-export function NotificationsControl({ count = 0 }: { count?: number }) {
+export function NotificationsControl({
+  count = 0,
+  href = '/aesthetic-lab/notifications',
+  label = 'Notifications',
+  variant = 'notifications',
+}: {
+  count?: number
+  href?: string
+  label?: string
+  variant?: 'notifications' | 'messages'
+}) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const Icon = variant === 'messages' ? MessageCircle : Bell
+  const showLabel = variant === 'messages' || isExpanded
 
   return (
-    <nav className={styles.utilityNav} aria-label="Participant utilities">
+    <nav className={styles.utilityNav} aria-label={`${label} utilities`}>
       <Link
-        href="/aesthetic-lab/notifications"
+        href={href}
         type="button"
-        aria-expanded={isExpanded}
-        aria-label={isExpanded ? 'Hide Notifications label' : 'Show Notifications label'}
+        aria-expanded={variant === 'notifications' ? isExpanded : undefined}
+        aria-label={variant === 'messages' ? `Open ${label}` : isExpanded ? `Open ${label}` : `Show ${label} label`}
         onClick={(event) => {
-          if (!isExpanded) {
+          if (variant === 'notifications' && !isExpanded) {
             event.preventDefault()
             setIsExpanded(true)
           }
         }}
       >
-        <Bell size={19} />
-        {isExpanded && <span>Notifications</span>}
+        <Icon size={19} />
+        {showLabel && <span>{label}</span>}
         {count > 0 ? <b>{count > 99 ? '99+' : count}</b> : null}
       </Link>
     </nav>

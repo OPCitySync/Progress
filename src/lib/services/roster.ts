@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   claims,
@@ -73,6 +73,21 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
       .from(waiverAcceptances)
       .where(eq(waiverAcceptances.waiverVersionId, waiver.id))
     for (const a of acceptances) acceptedSet.add(a.userId)
+
+    // Paper waivers are not a participant click-through. A participant is
+    // current only after an authorized organization representative records
+    // receipt on the related onboarding claim.
+    const paperWaiverConfirmations = await db
+      .select({ userId: claims.userId })
+      .from(claims)
+      .innerJoin(tasks, eq(claims.taskId, tasks.id))
+      .where(and(
+        eq(tasks.orgId, orgId),
+        eq(claims.waiverVersionId, waiver.id),
+        eq(claims.waiverCollectionMethod, 'in_person'),
+        isNotNull(claims.paperWaiverConfirmedAt),
+      ))
+    for (const confirmation of paperWaiverConfirmations) acceptedSet.add(confirmation.userId)
   }
 
   const byUser = new Map<string, RosterVolunteer>()

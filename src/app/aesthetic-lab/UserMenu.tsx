@@ -7,6 +7,7 @@ import {
   Bell,
   ChevronDown,
   CircleHelp,
+  FileBarChart2,
   LogOut,
   MapPinned,
   Settings2,
@@ -84,9 +85,10 @@ export function UserMenu({
           </div> : null}
 
           <div className={styles.userMenuSection}>
-            <p className={styles.eyebrow}>Account</p>
+            <p className={styles.eyebrow}>{isIssuer ? 'Organization' : 'Account'}</p>
+            {isIssuer ? <Link href="/aesthetic-lab/issuer/reports" onClick={() => setIsOpen(false)}><FileBarChart2 size={17} /><span>Reports<small>Impact, exports, and activity</small></span></Link> : null}
             <Link href="/aesthetic-lab/cities" onClick={() => setIsOpen(false)}><MapPinned size={17} /><span>My Cities<small>{city?.name ?? 'Choose a city'}</small></span></Link>
-            <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Profile &amp; settings</span></Link>
+            <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>{isIssuer ? 'Settings' : 'Profile &amp; settings'}{isIssuer ? <small>Organization and account controls</small> : null}</span></Link>
             {!isIssuer ? <Link href="/aesthetic-lab/notifications" onClick={() => setIsOpen(false)}><Bell size={17} /><span>Notifications</span></Link> : null}
           </div>
 

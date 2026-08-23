@@ -45,9 +45,9 @@ export default async function IssuerReportsLabPage() {
 
   return (
     <main className={styles.app}>
-      <LabHeader activeSection="issuer-reports" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
+      <LabHeader activeSection="issuer-utility" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
       <div className={styles.issuerLayout}>
-        <IssuerLabSidebar active="reports" organizationName={org?.name} cityName={city?.name} />
+        <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
 
         <section className={styles.issuerMain} aria-label="Organization reports">
           <section className={styles.issuerPageHero}>

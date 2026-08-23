@@ -34,7 +34,7 @@ export default async function IssuerProfileLabPage() {
   const checks = [
     { label: 'Mission and cause areas', ready: Boolean(profile.mission.trim() && profile.causes.length) },
     { label: 'Primary location and contact path', ready: Boolean(profile.location.trim() || profile.contactEmail.trim()) },
-    { label: 'Active opportunities and onboarding', ready: impact.openOpportunities > 0 },
+    { label: 'At least one active way to participate', ready: impact.openOpportunities > 0 },
     { label: 'Published public profile', ready: profile.published },
   ]
   const causes = profile.causes.length ? profile.causes.join(' · ') : 'Add cause areas'
@@ -45,7 +45,7 @@ export default async function IssuerProfileLabPage() {
     <main className={styles.app}>
       <LabHeader activeSection="issuer-profile" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
       <div className={styles.issuerLayout}>
-        <IssuerLabSidebar active="profile" organizationName={org.name} cityName={city?.name} />
+        <IssuerLabSidebar organizationId={org.id} organizationName={org.name} cityName={city?.name} />
 
         <section className={styles.issuerMain} aria-label="Public Profile">
           <section className={styles.issuerPageHero}>
@@ -79,7 +79,7 @@ export default async function IssuerProfileLabPage() {
 
           <section className={styles.profilePublicCard}>
             <div><p className={styles.eyebrow}>Public experience</p><h2>What happens next for someone visiting your page.</h2></div>
-            <ol><li><b>1</b><span>They understand your mission and current local work.</span></li><li><b>2</b><span>They see an onboarding session or open opportunity.</span></li><li><b>3</b><span>They join with clear expectations and verified context.</span></li></ol>
+            <ol><li><b>1</b><span>They understand your mission and current local work.</span></li><li><b>2</b><span>They see the opportunities or onboarding experiences you choose to offer.</span></li><li><b>3</b><span>They join with clear expectations and current organization information.</span></li></ol>
             <Link href={`/aesthetic-lab/organizations/${org.slug}`}>Preview public profile <ArrowUpRight size={15} /></Link>
           </section>
         </section>

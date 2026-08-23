@@ -74,7 +74,10 @@ export default async function HistoryLabPage() {
                 <div className={styles.historyDate}>{date.month}<strong>{date.day}</strong></div>
                 <span className={`${styles.historyIcon} ${styles.food}`}><Sparkles size={17} /></span>
                 <div><p className={styles.orgLine}><Building2 size={14} /> {entry.org} <CheckCircle2 size={14} /></p><h3>{entry.opportunity}</h3><p className={styles.historyMeta}><CalendarDays size={14} /> {entry.hours ? `${entry.hours} hour${entry.hours === 1 ? '' : 's'}` : 'Verified contribution'}{entry.whenLabel ? ` · ${entry.whenLabel}` : ''}</p></div>
-                {entry.orgSlug ? <Link href={`/aesthetic-lab/organizations/${entry.orgSlug}`} aria-label={`Open ${entry.org}`}><ArrowUpRight size={18} /></Link> : <span />}
+                <div className={styles.historyEntryActions}>
+                  <Link className={styles.historyReflectionLink} href={`/aesthetic-lab/reflections/${entry.claimId}`}>{entry.hasReflection ? 'View your note' : 'Share a thought'}</Link>
+                  {entry.orgSlug ? <Link href={`/aesthetic-lab/organizations/${entry.orgSlug}`} aria-label={`Open ${entry.org}`}><ArrowUpRight size={18} /></Link> : null}
+                </div>
               </article>
             })}
           </div>
