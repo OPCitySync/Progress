@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { signUpAction } from '@/app/actions'
-import { getSession, homeFor } from '@/lib/auth/session'
+import { aestheticHomeFor, getSession } from '@/lib/auth/session'
 import { Logo } from '@/components/brand/Logo'
 import { Card, Input, Label, Textarea, Button, Flash } from '@/components/ui'
 import { getAvailableCities } from '@/lib/services/city-networks'
@@ -12,7 +12,7 @@ export default async function SignupPage({
   searchParams: { error?: string; type?: string; next?: string }
 }) {
   const session = await getSession()
-  if (session) redirect(homeFor(session.role))
+  if (session) redirect(aestheticHomeFor(session.role))
 
   const type = (['participant', 'issuer', 'redeemer'].includes(searchParams.type ?? '')
     ? searchParams.type

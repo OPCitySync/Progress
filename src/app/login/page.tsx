@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { signInAction } from '@/app/actions'
-import { getSession, homeFor } from '@/lib/auth/session'
+import { aestheticHomeFor, getSession } from '@/lib/auth/session'
 import { Logo } from '@/components/brand/Logo'
 import { Card, Input, Label, Button, Flash } from '@/components/ui'
 
@@ -11,7 +11,7 @@ export default async function LoginPage({
   searchParams: { error?: string; ok?: string; next?: string }
 }) {
   const session = await getSession()
-  if (session) redirect(homeFor(session.role))
+  if (session) redirect(aestheticHomeFor(session.role))
 
   const next = searchParams.next?.startsWith('/') ? searchParams.next : ''
   const loginRedirect = next ? `/login?next=${encodeURIComponent(next)}` : '/login'

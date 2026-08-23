@@ -76,7 +76,7 @@ export async function requireSession(next?: string): Promise<Session> {
 
 export async function requireRole(role: Session['role']): Promise<Session> {
   const session = await requireSession()
-  if (session.role !== role) redirect(homeFor(session.role))
+  if (session.role !== role) redirect(aestheticHomeFor(session.role))
   return session
 }
 
@@ -90,5 +90,21 @@ export function homeFor(role: Session['role']): string {
       return '/redeemer'
     default:
       return '/participant'
+  }
+}
+
+/**
+ * The default authenticated entry point for the branch-preview experience.
+ * Keep `homeFor` above for the established application routes: callers that
+ * explicitly link to the legacy workspace should continue to work there.
+ */
+export function aestheticHomeFor(role: Session['role']): string {
+  switch (role) {
+    case 'issuer':
+      return '/aesthetic-lab/issuer'
+    case 'participant':
+      return '/aesthetic-lab'
+    default:
+      return homeFor(role)
   }
 }

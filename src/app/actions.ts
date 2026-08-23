@@ -7,7 +7,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { claims, organizationDocumentAssignments, organizationDocuments, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants } from '@/lib/db/schema'
 import { verifyPassword } from '@/lib/auth/password'
-import { createSession, clearSession, getSession, homeFor, type Session } from '@/lib/auth/session'
+import { aestheticHomeFor, createSession, clearSession, getSession, homeFor, type Session } from '@/lib/auth/session'
 import { participantCreditsEnabled } from '@/lib/config'
 import { registerParticipant, registerOrg, setOrgStatus, updateAccountIdentity } from '@/lib/services/identity'
 import {
@@ -191,7 +191,7 @@ export async function signInAction(formData: FormData) {
   const session = await defaultSessionForUser(user.id)
   if (!session) back(formData, '/login', { error: 'Your account is missing an active identity. Contact support.' })
   await createSession(session)
-  redirect(safeNext(formData) ?? homeFor(session.role))
+  redirect(safeNext(formData) ?? aestheticHomeFor(session.role))
 }
 
 export async function signUpAction(formData: FormData) {
@@ -206,7 +206,7 @@ export async function signUpAction(formData: FormData) {
     const session = await defaultSessionForUser(result.userId)
     if (!session) back(formData, '/signup', { error: 'We could not provision your participant identity.' })
     await createSession(session)
-    redirect(safeNext(formData) ?? '/participant')
+    redirect(safeNext(formData) ?? aestheticHomeFor(session.role))
   }
 
   if (kind === 'issuer' || kind === 'redeemer') {
@@ -224,7 +224,7 @@ export async function signUpAction(formData: FormData) {
     const session = await sessionForIdentity(result.userId, result.authorityIdentityId)
     if (!session) back(formData, '/signup', { error: 'We could not provision the organization authority.' })
     await createSession(session)
-    redirect(session.role === 'issuer' ? '/issuer' : '/redeemer')
+    redirect(aestheticHomeFor(session.role))
   }
 
   back(formData, '/signup', { error: 'Choose an account type.' })
@@ -245,10 +245,10 @@ export async function switchIdentityAction(formData: FormData) {
     redirect('/login?error=' + encodeURIComponent('This account has been disabled.'))
   }
   const next = await sessionForIdentity(current.sub, str(formData, 'identityId'))
-  if (!next) back(formData, homeFor(current.role), { error: 'That identity is not available to this account.' })
+  if (!next) back(formData, aestheticHomeFor(current.role), { error: 'That identity is not available to this account.' })
   await createSession(next)
   const destination = str(formData, 'redirectTo')
-  redirect(destination.startsWith('/') && !destination.startsWith('//') ? destination : homeFor(next.role))
+  redirect(destination.startsWith('/') && !destination.startsWith('//') ? destination : aestheticHomeFor(next.role))
 }
 
 export async function saveAccountSettingsAction(formData: FormData) {
