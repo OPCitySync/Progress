@@ -3,10 +3,11 @@ import { ArrowLeft, CalendarDays, CheckCircle2, Clock3, FileText, MapPin, Shield
 import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, orgProfiles, orgs, tasks } from '@/lib/db/schema'
+import { claims, orgs, tasks } from '@/lib/db/schema'
 import { claimShiftAction } from '@/app/actions'
 import { getOnboardingWaiverSetup } from '@/lib/services/waivers'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
+import { getWaiversAttachedToTask } from '@/lib/services/organization-resources'
 import { checkClaimGate, getShiftsWithCounts } from '@/lib/services/opportunities'
 import { savedItemIds } from '@/lib/services/saved-items'
 import { getLabWorkspace } from '../../lab-workspace'
@@ -30,22 +31,22 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
   const task = (await db.select().from(tasks).where(eq(tasks.id, params.id)).limit(1))[0]
   const org = task ? (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0] : null
   if (!task || !org || task.status !== 'open' || (city && task.cityId !== city.id)) return <main className={styles.app}><LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} /><section className={styles.primaryColumn}><p className={styles.emptyCopy}>This opportunity is no longer available in your active city.</p><Link href="/aesthetic-lab/opportunities">Back to opportunities</Link></section></main>
-  const [sessions, waiverSetup, myClaims, savedTaskIds, onboardingProfile, organizationDocuments] = await Promise.all([
+  const [sessions, waiverSetup, myClaims, savedTaskIds, organizationDocuments, attachedWaivers] = await Promise.all([
     getShiftsWithCounts(task.id),
     getOnboardingWaiverSetup(org.id),
     db.select().from(claims).where(and(eq(claims.taskId, task.id), eq(claims.userId, session.sub))),
     savedItemIds(session.sub, 'task', [task.id]),
-    db
-      .select({ onboardingTaskId: orgProfiles.onboardingTaskId })
-      .from(orgProfiles)
-      .where(eq(orgProfiles.orgId, org.id))
-      .limit(1)
-      .then((rows) => rows[0] ?? null),
     getOrganizationDocuments(org.id),
+    getWaiversAttachedToTask(task.id),
   ])
   const claimByShift = new Map(myClaims.map((claim) => [claim.shiftId, claim]))
-  const waiver = waiverSetup.waiver
-  const isOnboarding = onboardingProfile?.onboardingTaskId === task.id || /onboard|orientation/i.test(task.title)
+  // Private shifts are intentionally absent from the public opportunity view;
+  // a roster member sees one only after the organization has added them.
+  const visibleSessions = sessions.filter(({ shift }) => (
+    shift.visibility === 'public' || Boolean(claimByShift.get(shift.id) && claimByShift.get(shift.id)?.status !== 'unclaimed')
+  ))
+  const waivers = waiverSetup.waivers
+  const isOnboarding = task.isOnboarding === 1
   const usesPaperWaiver = isOnboarding && waiverSetup.method === 'in_person'
   const includedDocuments = organizationDocuments.filter((document) => document.taskIds.includes(task.id))
 
@@ -82,11 +83,11 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                 <p><MapPin size={15} /> <strong>Location</strong><small>{task.location || 'Location to be confirmed'}</small></p>
                 <p><UsersRound size={15} /> <strong>Capacity</strong><small>{task.slots} spot{task.slots === 1 ? '' : 's'} per session</small></p>
               </div>
-              {waiver ? (
+              {isOnboarding && waivers.length > 0 ? (
                 <div className={styles.labChoice}>
                   <p>
                     <ShieldCheck size={15} /> <strong>Liability waiver</strong>
-                    <small>{usesPaperWaiver ? `${waiver.title} is signed in person at check-in. Your place is provisional until staff records receipt.` : `${waiver.title} will be shown for acceptance when you reserve a shift.`}</small>
+                    <small>{usesPaperWaiver ? `${waivers.length} waiver${waivers.length === 1 ? '' : 's'} must be signed in person at check-in. Your place is provisional until staff records receipt.` : `${waivers.length} waiver${waivers.length === 1 ? '' : 's'} will be shown for acceptance when you reserve a shift.`}</small>
                   </p>
                 </div>
               ) : isOnboarding ? (
@@ -103,9 +104,16 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
               {document.documentUrl ? <a href={document.documentUrl} target="_blank" rel="noreferrer" className={styles.issuerTextButton}>Open document</a> : null}
             </article>)}</div>
           </section> : null}
+          {!isOnboarding && attachedWaivers.length > 0 ? <section className={`${styles.labPanel} ${styles.labStack}`}>
+            <div><p className={styles.eyebrow}>Included materials</p><h2>Organization waivers</h2><p>These waivers were shared as reference material for this opportunity. They do not add a signature step to your reservation.</p></div>
+            <div className={styles.labChoiceList}>{attachedWaivers.map((waiver) => <article className={styles.labChoice} key={waiver.id}>
+              <div><p><strong><ShieldCheck size={15} /> {waiver.title}</strong></p><small>Liability waiver{waiver.body ? ' · Written text included' : ''}</small>{waiver.body ? <details><summary>Read waiver</summary><p>{waiver.body}</p></details> : null}</div>
+              {waiver.documentUrl ? <a href={waiver.documentUrl} target="_blank" rel="noreferrer" className={styles.issuerTextButton}>Open document</a> : null}
+            </article>)}</div>
+          </section> : null}
           <section className={`${styles.labPanel} ${styles.labStack}`}>
             <div><p className={styles.eyebrow}>Available sessions</p><h2>Choose a time</h2></div>
-            {sessions.length ? sessions.map(({ shift, slotsLeft }) => {
+            {visibleSessions.length ? visibleSessions.map(({ shift, slotsLeft }) => {
               const existing = claimByShift.get(shift.id)
               return (
                 <article className={styles.labChoice} key={shift.id}>
@@ -114,25 +122,25 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                     <small>{shift.label || 'Scheduled shift'} · {slotsLeft} of {shift.capacity} spot{shift.capacity === 1 ? '' : 's'} open</small>
                   </div>
                   {existing && existing.status !== 'unclaimed' ? <span>{existing.status === 'claimed' ? 'You’re signed up' : existing.status}</span>
+                    : shift.enrollmentMode === 'organization_managed' ? <span>Organization-managed enrollment</span>
                     : slotsLeft <= 0 ? <span>Full</span>
                       : (
                           <form action={claimShiftAction} className={styles.labForm}>
                             <input type="hidden" name="taskId" value={task.id} />
                             <input type="hidden" name="shiftId" value={shift.id} />
                             <input type="hidden" name="redirectTo" value={`/aesthetic-lab/opportunities/${task.id}`} />
-                            {waiver && !usesPaperWaiver ? (
-                              <>
-                                <input type="hidden" name="acceptWaiverVersionId" value={waiver.id} />
-                                <label><span><input type="checkbox" name="waiverAgree" required /> I accept the current waiver.</span></label>
-                              </>
+                            {isOnboarding && waivers.length > 0 && !usesPaperWaiver ? (
+                              <div className={styles.labStack}>
+                                {waivers.map((waiver) => <label key={waiver.id}><span><input type="hidden" name="acceptWaiverVersionId" value={waiver.id} /><input type="checkbox" name={`waiverAgree:${waiver.id}`} required /> I accept: {waiver.title}.</span></label>)}
+                              </div>
                             ) : null}
-                            {usesPaperWaiver ? <p className={styles.emptyCopy}>Your place is provisional. Bring or sign the waiver at check-in; staff must record receipt before onboarding is verified.</p> : null}
+                            {usesPaperWaiver ? <p className={styles.emptyCopy}>Your place is provisional. Bring or sign the required waivers at check-in; staff must record receipt before onboarding is verified.</p> : null}
                             <button className={styles.labButton} type="submit">Reserve this shift</button>
                           </form>
                         )}
                 </article>
               )
-            }) : <p className={styles.emptyCopy}>No sessions are scheduled yet.</p>}
+            }) : <p className={styles.emptyCopy}>No public sessions are scheduled yet.</p>}
           </section>
         </section>
         <aside className={styles.rightRail}>

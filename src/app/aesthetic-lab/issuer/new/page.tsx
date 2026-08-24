@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowLeft, CalendarDays, Plus } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { createTaskAction } from '@/app/actions'
+import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
 import { LabNotice } from '../../LabNotice'
@@ -9,9 +10,11 @@ import styles from '../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-export default async function NewLabOpportunityPage({ searchParams }: { searchParams: { ok?: string; error?: string } }) {
+export default async function NewLabOpportunityPage({ searchParams }: { searchParams: { ok?: string; error?: string; program?: string } }) {
   const session = await requireRole('issuer')
   const { city, cities, contexts } = await getLabWorkspace(session)
+  const volunteerPrograms = await getVolunteerPrograms(session.orgId!)
+  const selectedProgramId = volunteerPrograms.some((program) => program.id === searchParams.program) ? searchParams.program : ''
 
   return (
     <main className={styles.app}>
@@ -45,6 +48,7 @@ export default async function NewLabOpportunityPage({ searchParams }: { searchPa
                 <label>Opportunity title<input name="title" required placeholder="e.g. Saturday pantry sorting" /></label>
                 <label>Default location<input name="location" required placeholder="Address or meeting point" /></label>
               </div>
+              <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={selectedProgramId}><option value="">Not assigned to a program</option>{volunteerPrograms.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Tag this opportunity to the area of work it supports.</small></label>
               <label>Description<textarea name="description" required placeholder="Explain the work, expectations, and what to bring." /></label>
               <details className={styles.optionalSessionDetails}>
                 <summary>

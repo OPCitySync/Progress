@@ -11,6 +11,7 @@ import {
   ORGANIZATION_DOCUMENT_CATEGORY_DETAILS,
   type OrganizationDocumentCategory,
 } from '@/lib/services/organization-documents'
+import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
 import { LabNotice } from '../../LabNotice'
@@ -40,7 +41,7 @@ export default async function IssuerDocumentsLabPage({
 }) {
   const session = await requireRole('issuer')
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [documents, taskRows] = await Promise.all([
+  const [documents, taskRows, volunteerPrograms] = await Promise.all([
     getOrganizationDocuments(session.orgId!),
     city
       ? db
@@ -49,6 +50,7 @@ export default async function IssuerDocumentsLabPage({
           .where(and(eq(tasks.orgId, session.orgId!), eq(tasks.cityId, city.id)))
           .orderBy(desc(tasks.createdAt))
       : Promise.resolve([]),
+    getVolunteerPrograms(session.orgId!),
   ])
   const defaultCategory = categoryFrom(searchParams.category)
   const formCopy: Record<OrganizationDocumentCategory, { eyebrow: string; title: string; helper: string; placeholder: string }> = {
@@ -65,9 +67,9 @@ export default async function IssuerDocumentsLabPage({
       placeholder: 'Add safety instructions, site procedures, key contacts, or equipment details.',
     },
     template: {
-      eyebrow: 'New template',
-      title: 'Add a reusable template.',
-      helper: 'Save a checklist, project plan, after-action report, or team-ready starting point for future work.',
+      eyebrow: 'New additional document',
+      title: 'Add an additional document.',
+      helper: 'Save a checklist, project plan, after-action report, or other team-ready resource for future work.',
       placeholder: 'Add the reusable structure, prompts, or steps for your team to follow.',
     },
   }
@@ -98,6 +100,7 @@ export default async function IssuerDocumentsLabPage({
             <input type="hidden" name="successRedirectTo" value={successDestination} />
             <input type="hidden" name="category" value={defaultCategory} />
             <label>Document title<input name="title" required placeholder="e.g. Community garden volunteer guide" /></label>
+            <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Organization-wide / not assigned</option>{volunteerPrograms.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Tag this document to the area of volunteer work it supports.</small></label>
             <label>Written guidance <span>(optional if you attach a file)</span><textarea name="body" placeholder={selectedForm.placeholder} /></label>
             <label>Attach a source file <span>(optional)</span><input name="document" type="file" accept="application/pdf,.doc,.docx" /><small>PDF, DOC, or DOCX; up to 10 MB.</small></label>
             <fieldset className={styles.documentAssignmentFieldset}><legend>{selectedTask ? 'Include with onboarding' : <>Attach to opportunities <span>(optional)</span></>}</legend>

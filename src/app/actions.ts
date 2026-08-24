@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, organizationDocumentAssignments, organizationDocuments, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants } from '@/lib/db/schema'
+import { claims, organizationDocumentAssignments, organizationDocuments, organizationQueueAcknowledgements, organizationResourcePublications, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants, waiverTaskAssignments, waiverVersions } from '@/lib/db/schema'
 import { verifyPassword } from '@/lib/auth/password'
 import { aestheticHomeFor, createSession, clearSession, getSession, homeFor, type Session } from '@/lib/auth/session'
 import { participantCreditsEnabled } from '@/lib/config'
@@ -14,9 +14,11 @@ import {
   createTask,
   updateTask,
   createShift,
+  assignVolunteersToShift,
   closeTask,
   reopenTask,
   closeShift,
+  cancelUpcomingShiftAndNotify,
   claimShift,
   unclaimClaim,
   submitCompletion,
@@ -39,7 +41,7 @@ import {
 import { parseCredentialList } from '@/lib/credentials'
 import { setInterests, setNeighborhood, notifyMatchingParticipants } from '@/lib/services/interests'
 import { setResumePublic } from '@/lib/services/resume'
-import { createWaiverVersion, acceptWaiver, setOnboardingWaiverMethod } from '@/lib/services/waivers'
+import { createWaiverVersion, acceptWaiver, retireWaiverVersion, setOnboardingWaiverMethod } from '@/lib/services/waivers'
 import {
   ALLOWED_ORGANIZATION_DOCUMENT_TYPES,
   ALLOWED_WAIVER_DOCUMENT_TYPES,
@@ -48,9 +50,11 @@ import {
   MAX_WAIVER_DOCUMENT_BYTES,
 } from '@/lib/storage/storage'
 import { isOrganizationDocumentCategory } from '@/lib/services/organization-documents'
+import { RESOURCE_DESTINATIONS, type OrganizationResourceKind } from '@/lib/services/organization-resources'
 import { saveProfile } from '@/lib/services/profile'
 import { cancelOnboardingSession, createRecurringOnboardingSession, publishOnboardingSession, updateRecurringOnboardingSession } from '@/lib/services/onboarding-session'
 import { publishTemplateEvent } from '@/lib/services/recurring-template-events'
+import { createVolunteerProgram, programBelongsToOrganization } from '@/lib/services/volunteer-programs'
 import { createOrganizationCalendarEntry } from '@/lib/services/organization-calendar'
 import { markNotificationRead, markNotificationsRead, processDueReminders } from '@/lib/services/notifications'
 import { submitVolunteerReflection } from '@/lib/services/volunteer-reflections'
@@ -464,6 +468,42 @@ export async function createOrganizationCalendarEntryAction(formData: FormData) 
   back(formData, '/aesthetic-lab/issuer', result.ok ? { ok: 'Calendar item added.' } : { error: result.error })
 }
 
+/** Dismiss a private dashboard prompt without changing the underlying record. */
+export async function acknowledgeOrganizationQueueAction(formData: FormData) {
+  const session = await requireActor('issuer')
+  if (!session.orgId) redirect('/aesthetic-lab/issuer')
+  const actionKey = str(formData, 'actionKey').trim()
+  if (!actionKey || actionKey.length > 240) {
+    back(formData, '/aesthetic-lab/issuer', { error: 'That queue item could not be acknowledged.' })
+  }
+
+  await db
+    .insert(organizationQueueAcknowledgements)
+    .values({
+      id: randomUUID(),
+      orgId: session.orgId,
+      actionKey,
+      acknowledgedByUserId: session.sub,
+      acknowledgedAt: Date.now(),
+    })
+    .onConflictDoNothing()
+
+  back(formData, '/aesthetic-lab/issuer')
+}
+
+export async function createVolunteerProgramAction(formData: FormData) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=programs'
+  const result = await createVolunteerProgram({
+    orgId: session.orgId,
+    actorId: session.sub,
+    name: str(formData, 'name'),
+    description: str(formData, 'description'),
+  })
+  back(formData, destination, result.ok ? { ok: 'Volunteer program created.' } : { error: result.error })
+}
+
 export async function createTaskAction(formData: FormData) {
   const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
@@ -491,6 +531,7 @@ export async function createTaskAction(formData: FormData) {
     slots: Number.isInteger(capacity) && capacity > 0 ? capacity : 1,
     startsAt: label,
     requiredCredentials: strList(formData, 'cred'),
+    programId: str(formData, 'programId') || null,
   })
   if (!task.ok) back(formData, '/issuer/tasks/new', { error: task.error })
   if (wantsFirstSession) {
@@ -527,6 +568,7 @@ export async function updateTaskAction(formData: FormData) {
     location: str(formData, 'location'),
     credits: str(formData, 'credits') ? int(formData, 'credits') : undefined,
     slots: str(formData, 'slots') ? int(formData, 'slots') : undefined,
+    programId: str(formData, 'programId') || null,
   })
   back(formData, `/aesthetic-lab/issuer/opportunities/${taskId}`, result.ok ? { ok: 'Opportunity details saved.' } : { error: result.error })
 }
@@ -564,9 +606,11 @@ export async function createOnboardingSessionAction(formData: FormData) {
     firstStartsAt: parseDateTime(formData, 'firstStartsAt'),
     durationMinutes: int(formData, 'durationMinutes'),
     weeklyCapacity: int(formData, 'weeklyCapacity'),
+    programId: str(formData, 'programId') || null,
   })
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=onboarding'
   if (result.ok) await notifyMatchingParticipants(result.taskId)
-  back(formData, '/issuer/catalog', result.ok ? { ok: 'Public recurring onboarding session created.' } : { error: result.error })
+  back(formData, destination, result.ok ? { ok: 'Onboarding session created.' } : { error: result.error })
 }
 
 export async function updateOnboardingSessionAction(formData: FormData) {
@@ -583,8 +627,9 @@ export async function updateOnboardingSessionAction(formData: FormData) {
     nextStartsAt: parseDateTime(formData, 'firstStartsAt'),
     durationMinutes: int(formData, 'durationMinutes'),
     weeklyCapacity: int(formData, 'weeklyCapacity'),
+    programId: str(formData, 'programId') || null,
   })
-  back(formData, '/aesthetic-lab/issuer/catalog?workspace=onboarding', result.ok ? { ok: 'Onboarding session saved.' } : { error: result.error })
+  back(formData, '/aesthetic-lab/issuer/catalog?workspace=onboarding', result.ok ? undefined : { error: result.error })
 }
 
 export async function publishOnboardingSessionAction(formData: FormData) {
@@ -609,6 +654,11 @@ export async function publishTemplateEventAction(formData: FormData) {
   const city = await getActiveCity(session)
   if (!city) back(formData, '/aesthetic-lab/issuer/catalog?workspace=opportunities', { error: 'Choose an organization city before publishing an event.' })
   const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=opportunities'
+  const visibility = str(formData, 'visibility') === 'private' ? 'private' : 'public'
+  const assignedUserIds = visibility === 'private' ? strList(formData, 'assignedUserId') : []
+  // Do this check before publishing so a role that can schedule shifts but
+  // cannot manage people cannot create a partially completed roster action.
+  if (assignedUserIds.length) await requireActor('issuer', 'participants.manage')
   const result = await publishTemplateEvent({
     taskId: str(formData, 'taskId'),
     orgId: session.orgId,
@@ -616,10 +666,39 @@ export async function publishTemplateEventAction(formData: FormData) {
     actorId: session.sub,
     startsAt: parseDateTime(formData, 'startsAt'),
     recurring: str(formData, 'recurring') === 'true',
+    visibility,
   })
-  if (result.ok && result.mode === 'published') await notifyMatchingParticipants(result.taskId)
+  if (result.ok && result.mode === 'published' && visibility === 'public') await notifyMatchingParticipants(result.taskId)
+  if (result.ok && assignedUserIds.length) {
+    if (!result.shiftId) {
+      back(formData, destination, { ok: 'Recurring private schedule saved. Add volunteers when its first shift is published.' })
+    }
+    const assignment = await assignVolunteersToShift({
+      shiftId: result.shiftId,
+      orgId: session.orgId,
+      actorId: session.sub,
+      userIds: assignedUserIds,
+    })
+    if (!assignment.ok) back(formData, destination, { error: `Shift published, but volunteers could not be assigned: ${assignment.error}` })
+    back(formData, destination, { ok: `Private shift published and ${assignment.assigned} volunteer${assignment.assigned === 1 ? '' : 's'} added.` })
+  }
   back(formData, destination, result.ok
     ? { ok: result.mode === 'scheduled' ? 'Recurring event is set. The next date will publish after the current event ends.' : 'Event published.' }
+    : { error: result.error })
+}
+
+export async function assignVolunteersToShiftAction(formData: FormData) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=opportunities'
+  const result = await assignVolunteersToShift({
+    shiftId: str(formData, 'shiftId'),
+    orgId: session.orgId,
+    actorId: session.sub,
+    userIds: strList(formData, 'userId'),
+  })
+  back(formData, destination, result.ok
+    ? { ok: result.assigned ? `${result.assigned} volunteer${result.assigned === 1 ? '' : 's'} added to this shift.` : 'Those volunteers are already assigned to this shift.' }
     : { error: result.error })
 }
 
@@ -642,6 +721,20 @@ export async function closeShiftAction(formData: FormData) {
   if (!session.orgId) redirect('/issuer')
   const result = await closeShift(str(formData, 'shiftId'), session.orgId, session.sub)
   back(formData, '/issuer', result.ok ? { ok: 'Shift closed.' } : { error: result.error })
+}
+
+export async function cancelShiftAndNotifyAction(formData: FormData) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer'
+  const result = await cancelUpcomingShiftAndNotify({
+    shiftId: str(formData, 'shiftId'),
+    orgId: session.orgId,
+    actorId: session.sub,
+  })
+  back(formData, destination, result.ok
+    ? { ok: result.notified > 0 ? `Event cancelled and ${result.notified} participant${result.notified === 1 ? '' : 's'} notified.` : 'Event cancelled.' }
+    : { error: result.error })
 }
 
 export async function closeTaskAction(formData: FormData) {
@@ -849,15 +942,16 @@ export async function createWaiverAction(formData: FormData) {
   const destination = str(formData, 'redirectTo') || '/issuer/waiver'
   const title = str(formData, 'title')
   const body = str(formData, 'body')
-  if (!title.trim() || !body.trim()) {
-    back(formData, destination, { error: 'Waiver title and text are required.' })
+  const file = formData.get('document')
+  const hasDocument = file instanceof File && file.size > 0
+  if (!title.trim() || (!body.trim() && !hasDocument)) {
+    back(formData, destination, { error: 'Give the waiver a title and add either waiver text or a source file.' })
   }
 
   let document:
     | { url: string; name: string; mimeType: string; sha256: string }
     | undefined
-  const file = formData.get('document')
-  if (file instanceof File && file.size > 0) {
+  if (hasDocument && file instanceof File) {
     const ext = ALLOWED_WAIVER_DOCUMENT_TYPES[file.type]
     if (!ext) {
       back(formData, destination, { error: 'Upload a PDF, DOC, or DOCX waiver document.' })
@@ -890,12 +984,13 @@ export async function createWaiverAction(formData: FormData) {
     title,
     body,
     document,
+    programId: str(formData, 'programId') || null,
     onboardingWaiverMethod: formData.has('onboardingWaiverMethod')
       ? (str(formData, 'onboardingWaiverMethod') === 'in_person' ? 'in_person' : 'digital')
       : undefined,
   })
   if (!result.ok) back(formData, destination, { error: result.error })
-  back(formData, destination, { ok: `Waiver v${result.version} is now active.` })
+  back(formData, destination, { ok: 'Waiver published and included with future onboarding sessions.' })
 }
 
 export async function setOnboardingWaiverMethodAction(formData: FormData) {
@@ -913,6 +1008,51 @@ export async function setOnboardingWaiverMethodAction(formData: FormData) {
   )
 }
 
+export async function retireWaiverAction(formData: FormData) {
+  const session = await requireActor('issuer', 'waiver.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=documentation'
+  const result = await retireWaiverVersion({
+    orgId: session.orgId,
+    waiverVersionId: str(formData, 'waiverVersionId'),
+    actorId: session.sub,
+  })
+  if (result.ok) {
+    const waiverVersionId = str(formData, 'waiverVersionId')
+    await db.transaction(async (tx) => {
+      await tx.delete(waiverTaskAssignments).where(eq(waiverTaskAssignments.waiverVersionId, waiverVersionId))
+      await tx.delete(organizationResourcePublications).where(and(
+        eq(organizationResourcePublications.orgId, session.orgId!),
+        eq(organizationResourcePublications.resourceKind, 'waiver'),
+        eq(organizationResourcePublications.resourceId, waiverVersionId),
+      ))
+    })
+  }
+  back(formData, destination, result.ok ? undefined : { error: result.error })
+}
+
+/** Program placement is organizational metadata only: it never alters a
+ * published waiver's version, source file, or participant acceptance record. */
+export async function setWaiverProgramAction(formData: FormData) {
+  const session = await requireActor('issuer', 'waiver.manage')
+  if (!session.orgId) redirect('/issuer')
+  const waiverVersionId = str(formData, 'waiverVersionId')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/waiver'
+  const programId = str(formData, 'programId') || null
+  if (!waiverVersionId) back(formData, destination, { error: 'Choose a waiver to update.' })
+  if (!(await programBelongsToOrganization(session.orgId, programId))) {
+    back(formData, destination, { error: 'Choose a volunteer program belonging to your organization.' })
+  }
+  const waiver = await db
+    .select({ id: waiverVersions.id })
+    .from(waiverVersions)
+    .where(and(eq(waiverVersions.id, waiverVersionId), eq(waiverVersions.orgId, session.orgId), eq(waiverVersions.active, 1)))
+    .limit(1)
+  if (!waiver[0]) back(formData, destination, { error: 'Waiver not found.' })
+  await db.update(waiverVersions).set({ programId }).where(eq(waiverVersions.id, waiverVersionId))
+  back(formData, destination, { ok: 'Waiver program saved.' })
+}
+
 export async function createOrganizationDocumentAction(formData: FormData) {
   const session = await requireActor('issuer', 'documents.manage')
   if (!session.orgId) redirect('/issuer')
@@ -923,7 +1063,7 @@ export async function createOrganizationDocumentAction(formData: FormData) {
   const body = str(formData, 'body')
 
   if (!isOrganizationDocumentCategory(category)) {
-    back(formData, destination, { error: 'Choose Volunteer Guides, Safety & Operations, or Templates.' })
+    back(formData, destination, { error: 'Choose Volunteer Guides, Safety & Operations, or Additional Documents.' })
   }
   if (!title.trim()) back(formData, destination, { error: 'Give this document a title.' })
 
@@ -958,6 +1098,10 @@ export async function createOrganizationDocumentAction(formData: FormData) {
   }
 
   const taskIds = Array.from(new Set(formData.getAll('taskIds').filter((value): value is string => typeof value === 'string' && value.trim().length > 0)))
+  const programId = str(formData, 'programId') || null
+  if (!(await programBelongsToOrganization(session.orgId, programId))) {
+    back(formData, destination, { error: 'Choose a volunteer program belonging to your organization.' })
+  }
   if (taskIds.length > 0) {
     const permittedTasks = await db
       .select({ id: tasks.id })
@@ -974,6 +1118,7 @@ export async function createOrganizationDocumentAction(formData: FormData) {
     await tx.insert(organizationDocuments).values({
       id: documentId,
       orgId: session.orgId!,
+      programId,
       category,
       title: title.trim(),
       body: body.trim(),
@@ -1004,11 +1149,133 @@ export async function archiveOrganizationDocumentAction(formData: FormData) {
   const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/documents'
   const documentId = str(formData, 'documentId')
   if (!documentId) back(formData, destination, { error: 'Document not found.' })
+  await db.transaction(async (tx) => {
+    await tx
+      .update(organizationDocuments)
+      .set({ active: 0, updatedAt: Date.now() })
+      .where(and(eq(organizationDocuments.id, documentId), eq(organizationDocuments.orgId, session.orgId!)))
+    await tx.delete(organizationDocumentAssignments).where(eq(organizationDocumentAssignments.documentId, documentId))
+    await tx.delete(organizationResourcePublications).where(and(
+      eq(organizationResourcePublications.orgId, session.orgId!),
+      eq(organizationResourcePublications.resourceKind, 'document'),
+      eq(organizationResourcePublications.resourceId, documentId),
+    ))
+  })
+  back(formData, destination)
+}
+
+function resourceKind(formData: FormData): OrganizationResourceKind | null {
+  const value = str(formData, 'resourceKind')
+  return value === 'document' || value === 'waiver' ? value : null
+}
+
+async function assertOrganizationResource(input: { orgId: string; kind: OrganizationResourceKind; id: string }) {
+  if (input.kind === 'document') {
+    const document = await db
+      .select({ id: organizationDocuments.id })
+      .from(organizationDocuments)
+      .where(and(eq(organizationDocuments.id, input.id), eq(organizationDocuments.orgId, input.orgId), eq(organizationDocuments.active, 1)))
+      .limit(1)
+    return Boolean(document[0])
+  }
+  const waiver = await db
+    .select({ id: waiverVersions.id })
+    .from(waiverVersions)
+    .where(and(eq(waiverVersions.id, input.id), eq(waiverVersions.orgId, input.orgId), eq(waiverVersions.active, 1)))
+    .limit(1)
+  return Boolean(waiver[0])
+}
+
+/** Replaces the task placements selected from the resource's Attach To… dialog.
+ * Waiver placements are reference visibility only; onboarding acceptance keeps
+ * using the active-waiver policy. */
+export async function setOrganizationResourceAssignmentsAction(formData: FormData) {
+  const kind = resourceKind(formData)
+  const session = await requireActor('issuer', kind === 'waiver' ? 'waiver.manage' : 'documents.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=documentation'
+  const resourceId = str(formData, 'resourceId')
+  if (!kind || !resourceId || !await assertOrganizationResource({ orgId: session.orgId, kind, id: resourceId })) {
+    back(formData, destination, { error: 'That resource is no longer available.' })
+  }
+
+  const taskIds = Array.from(new Set(strList(formData, 'taskIds').filter(Boolean)))
+  if (taskIds.length) {
+    const permitted = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.orgId, session.orgId), inArray(tasks.id, taskIds)))
+    if (permitted.length !== taskIds.length) {
+      back(formData, destination, { error: 'One of the selected tasks is no longer available to your organization.' })
+    }
+  }
+
+  const now = Date.now()
+  await db.transaction(async (tx) => {
+    if (kind === 'document') {
+      await tx.delete(organizationDocumentAssignments).where(eq(organizationDocumentAssignments.documentId, resourceId))
+      if (taskIds.length) await tx.insert(organizationDocumentAssignments).values(taskIds.map((taskId) => ({ id: randomUUID(), documentId: resourceId, taskId, createdAt: now })))
+    } else {
+      await tx.delete(waiverTaskAssignments).where(eq(waiverTaskAssignments.waiverVersionId, resourceId))
+      if (taskIds.length) await tx.insert(waiverTaskAssignments).values(taskIds.map((taskId) => ({ id: randomUUID(), waiverVersionId: resourceId, taskId, createdAt: now })))
+    }
+  })
+  back(formData, destination)
+}
+
+/** Replaces the public destinations selected from the resource's Publish To… dialog. */
+export async function setOrganizationResourcePublicationsAction(formData: FormData) {
+  const kind = resourceKind(formData)
+  const session = await requireActor('issuer', kind === 'waiver' ? 'waiver.manage' : 'documents.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=documentation'
+  const resourceId = str(formData, 'resourceId')
+  if (!kind || !resourceId || !await assertOrganizationResource({ orgId: session.orgId, kind, id: resourceId })) {
+    back(formData, destination, { error: 'That resource is no longer available.' })
+  }
+
+  const destinations = Array.from(new Set(strList(formData, 'destinations').filter((value): value is (typeof RESOURCE_DESTINATIONS)[number] => RESOURCE_DESTINATIONS.includes(value as (typeof RESOURCE_DESTINATIONS)[number]))))
+  await db.transaction(async (tx) => {
+    await tx.delete(organizationResourcePublications).where(and(
+      eq(organizationResourcePublications.orgId, session.orgId!),
+      eq(organizationResourcePublications.resourceKind, kind),
+      eq(organizationResourcePublications.resourceId, resourceId),
+    ))
+    if (destinations.length) await tx.insert(organizationResourcePublications).values(destinations.map((publicationDestination) => ({
+      id: randomUUID(),
+      orgId: session.orgId!,
+      resourceKind: kind,
+      resourceId,
+      destination: publicationDestination,
+      createdAt: Date.now(),
+    })))
+  })
+  back(formData, destination)
+}
+
+/** Updates only the organizational context for an existing document. This
+ * deliberately leaves its legal/source content and opportunity attachments intact. */
+export async function setOrganizationDocumentProgramAction(formData: FormData) {
+  const session = await requireActor('issuer', 'documents.manage')
+  if (!session.orgId) redirect('/issuer')
+  const documentId = str(formData, 'documentId')
+  const destination = str(formData, 'redirectTo') || `/aesthetic-lab/issuer/documents/${documentId}`
+  const programId = str(formData, 'programId') || null
+  if (!documentId) back(formData, destination, { error: 'Choose a document to update.' })
+  if (!(await programBelongsToOrganization(session.orgId, programId))) {
+    back(formData, destination, { error: 'Choose a volunteer program belonging to your organization.' })
+  }
+  const document = await db
+    .select({ id: organizationDocuments.id })
+    .from(organizationDocuments)
+    .where(and(eq(organizationDocuments.id, documentId), eq(organizationDocuments.orgId, session.orgId), eq(organizationDocuments.active, 1)))
+    .limit(1)
+  if (!document[0]) back(formData, destination, { error: 'Document not found.' })
   await db
     .update(organizationDocuments)
-    .set({ active: 0, updatedAt: Date.now() })
-    .where(and(eq(organizationDocuments.id, documentId), eq(organizationDocuments.orgId, session.orgId)))
-  back(formData, destination, { ok: 'Document archived.' })
+    .set({ programId, updatedAt: Date.now() })
+    .where(eq(organizationDocuments.id, documentId))
+  back(formData, destination, { ok: 'Document program saved.' })
 }
 
 export async function attachOrganizationDocumentAction(formData: FormData) {
@@ -1048,6 +1315,7 @@ export async function updateOrganizationDocumentAction(formData: FormData) {
   const destination = str(formData, 'redirectTo') || `/aesthetic-lab/issuer/documents/${documentId}`
   const title = str(formData, 'title')
   const body = str(formData, 'body')
+  const programId = formData.has('programId') ? str(formData, 'programId') || null : undefined
   if (!documentId || !title.trim()) back(formData, destination, { error: 'Document title is required.' })
 
   const document = await db
@@ -1058,6 +1326,9 @@ export async function updateOrganizationDocumentAction(formData: FormData) {
   if (!document[0]) back(formData, destination, { error: 'Document not found.' })
   if (!body.trim() && !document[0].documentUrl) {
     back(formData, destination, { error: 'Keep written guidance or an attached source file.' })
+  }
+  if (programId !== undefined && !(await programBelongsToOrganization(session.orgId, programId))) {
+    back(formData, destination, { error: 'Choose a volunteer program belonging to your organization.' })
   }
 
   const taskIds = Array.from(new Set(formData.getAll('taskIds').filter((value): value is string => typeof value === 'string' && value.trim().length > 0)))
@@ -1075,7 +1346,7 @@ export async function updateOrganizationDocumentAction(formData: FormData) {
   await db.transaction(async (tx) => {
     await tx
       .update(organizationDocuments)
-      .set({ title: title.trim(), body: body.trim(), updatedAt: now })
+      .set({ title: title.trim(), body: body.trim(), ...(programId !== undefined ? { programId } : {}), updatedAt: now })
       .where(eq(organizationDocuments.id, documentId))
     await tx.delete(organizationDocumentAssignments).where(eq(organizationDocumentAssignments.documentId, documentId))
     if (taskIds.length > 0) {
@@ -1495,11 +1766,12 @@ export async function claimShiftAction(formData: FormData) {
   const taskId = str(formData, 'taskId') // for redirect back to the opportunity
   const dest = `/participant/opportunities/${taskId}`
 
-  // If the claim form included a waiver acceptance, record it first.
-  const waiverVersionId = str(formData, 'acceptWaiverVersionId')
-  if (waiverVersionId) {
-    if (str(formData, 'waiverAgree') !== 'on') {
-      back(formData, dest, { error: 'You must check the box to accept the liability waiver.' })
+  // Each currently active waiver must be accepted before a digital onboarding
+  // reservation can be completed.
+  const waiverVersionIds = Array.from(new Set(strList(formData, 'acceptWaiverVersionId')))
+  for (const waiverVersionId of waiverVersionIds) {
+    if (!formData.has(`waiverAgree:${waiverVersionId}`)) {
+      back(formData, dest, { error: 'Please accept every liability waiver before reserving this shift.' })
     }
     const accepted = await acceptWaiver({ waiverVersionId, userId: session.sub })
     if (!accepted.ok) back(formData, dest, { error: accepted.error })
@@ -1694,14 +1966,14 @@ export async function createPostAction(formData: FormData) {
 }
 
 export async function toggleHeartAction(formData: FormData) {
-  const session = await requireActor('participant')
+  const session = await requireActor()
   const result = await toggleHeart(str(formData, 'postId'), session.sub)
   if (!result.ok) back(formData, '/feed', { error: result.error })
   back(formData, '/feed')
 }
 
 export async function toggleSavedItemAction(formData: FormData) {
-  const session = await requireActor('participant')
+  const session = await requireActor()
   const kind = str(formData, 'kind')
   if (kind !== 'post' && kind !== 'task') back(formData, '/aesthetic-lab', { error: 'That item cannot be saved.' })
   const itemId = str(formData, 'itemId')

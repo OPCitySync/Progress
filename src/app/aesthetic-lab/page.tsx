@@ -59,7 +59,7 @@ export default async function AestheticLabPage() {
           .from(shifts)
           .innerJoin(tasks, eq(shifts.taskId, tasks.id))
           .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-          .where(and(eq(tasks.cityId, city.id), eq(tasks.status, 'open'), eq(shifts.status, 'open')))
+          .where(and(eq(tasks.cityId, city.id), eq(tasks.status, 'open'), eq(shifts.status, 'open'), eq(shifts.visibility, 'public')))
           .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
           .limit(3)
       : Promise.resolve([]),
@@ -99,17 +99,17 @@ export default async function AestheticLabPage() {
               <span className={styles.cityOverline}>My City is:</span>
             </div>
             <div className={styles.cityName}><MapPin size={17} /><span>{cityLabel}</span></div>
-            <p>{city ? 'This is your active city network. Below is a live snapshot of local civic engagement and community progress.' : 'Choose a City/Sync network to find local opportunities.'}</p>
-            
-            <div style={{ margin: '16px 0', borderTop: '1px solid var(--border, #e2e8f0)', paddingTop: '16px' }}>
-              {[
-                { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
-                { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
-                { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
-              ].map((note) => <div key={note.label} className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span></div>)}
-            </div>
-
+            <p>{city ? 'This is your active City/Sync network.' : 'Choose a City/Sync network to find local opportunities.'}</p>
             <Link href="/aesthetic-lab/cities">Explore other cities <ArrowUpRight size={14} /></Link>
+          </section>
+
+          <section className={styles.cityPulse}>
+            <div className={styles.sectionHeading}><p className={styles.eyebrow}>{city?.name ?? 'City'} Pulse</p><span>Live</span></div>
+            {[
+              { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
+              { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
+              { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
+            ].map((note) => <div key={note.label} className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span></div>)}
           </section>
 
           <section className={styles.quickLinks}>
@@ -119,9 +119,9 @@ export default async function AestheticLabPage() {
         </aside>
 
         <section className={styles.feed} aria-label="MyCity Feed">
-          <div className={styles.welcomeBand}>
-            <div><p className={styles.eyebrow}>Good morning, {session.name}</p><h1>There are good things happening today.</h1></div>
-          </div>
+          <section className={`${styles.issuerHero} ${styles.participantFeedHero}`}>
+            <div><p className={styles.eyebrow}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
+          </section>
           <MyCityFeedContent posts={feedPosts} commitments={commitments} />
         </section>
 

@@ -82,6 +82,8 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
       return `${l.orgName(p.orgId)} received requested changes on an opportunity catalog entry.`
     case 'WAIVER_VERSION_CREATED':
       return `${l.orgName(p.orgId)} published liability waiver v${String(p.version ?? '?')} (hash ${String(p.sha256 ?? '').slice(0, 12)}…).`
+    case 'WAIVER_RETIRED':
+      return `${l.orgName(p.orgId)} removed liability waiver v${String(p.version ?? '?')} from future onboarding.`
     case 'WAIVER_ACCEPTED':
       return `${l.who(actorId)} accepted ${l.orgName(p.orgId)}'s waiver v${String(p.version ?? '?')} against hash ${String(p.sha256 ?? '').slice(0, 12)}…`
     case 'TASK_CREATED':

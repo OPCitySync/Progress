@@ -21,6 +21,7 @@ export type LabSection =
   | 'opportunities'
   | 'organizations'
   | 'history'
+  | 'resources'
   | 'issuer-overview'
   | 'issuer-catalog'
   | 'issuer-volunteers'
@@ -94,9 +95,9 @@ export async function LabHeader({
 
         <NotificationsControl
           count={notificationCount}
-          href={isIssuer ? '/aesthetic-lab/issuer/notifications' : '/aesthetic-lab/notifications'}
-          label={isIssuer ? 'Messages' : 'Notifications'}
-          variant={isIssuer ? 'messages' : 'notifications'}
+          href={isIssuer ? '/aesthetic-lab/issuer/notifications' : '/aesthetic-lab/messages'}
+          label="Messages"
+          variant="messages"
         />
 
         <UserMenu workspace={workspace} session={session} city={city} cities={cities} contexts={contexts} />

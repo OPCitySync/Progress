@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   claims,
@@ -12,7 +12,7 @@ import {
   volunteerGroups,
   volunteerGroupMembers,
 } from '@/lib/db/schema'
-import { getActiveWaiver } from './waivers'
+import { getActiveWaivers } from './waivers'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from './identity'
@@ -65,14 +65,19 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
     .where(eq(tasks.orgId, orgId))
     .orderBy(desc(claims.updatedAt))
 
-  const waiver = await getActiveWaiver(orgId)
+  const waivers = await getActiveWaivers(orgId)
   const acceptedSet = new Set<string>()
-  if (waiver) {
+  if (waivers.length > 0) {
     const acceptances = await db
-      .select({ userId: waiverAcceptances.userId })
+      .select({ userId: waiverAcceptances.userId, waiverVersionId: waiverAcceptances.waiverVersionId })
       .from(waiverAcceptances)
-      .where(eq(waiverAcceptances.waiverVersionId, waiver.id))
-    for (const a of acceptances) acceptedSet.add(a.userId)
+      .where(inArray(waiverAcceptances.waiverVersionId, waivers.map((waiver) => waiver.id)))
+    const acceptedByUser = new Map<string, Set<string>>()
+    for (const acceptance of acceptances) {
+      const set = acceptedByUser.get(acceptance.userId) ?? new Set<string>()
+      set.add(acceptance.waiverVersionId)
+      acceptedByUser.set(acceptance.userId, set)
+    }
 
     // Paper waivers are not a participant click-through. A participant is
     // current only after an authorized organization representative records
@@ -83,11 +88,13 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
       .innerJoin(tasks, eq(claims.taskId, tasks.id))
       .where(and(
         eq(tasks.orgId, orgId),
-        eq(claims.waiverVersionId, waiver.id),
         eq(claims.waiverCollectionMethod, 'in_person'),
         isNotNull(claims.paperWaiverConfirmedAt),
       ))
     for (const confirmation of paperWaiverConfirmations) acceptedSet.add(confirmation.userId)
+    for (const [userId, acceptedWaiverIds] of Array.from(acceptedByUser.entries())) {
+      if (waivers.every((waiver) => acceptedWaiverIds.has(waiver.id))) acceptedSet.add(userId)
+    }
   }
 
   const byUser = new Map<string, RosterVolunteer>()
@@ -105,7 +112,7 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
         lastActivity: 0,
         activeClaims: 0,
         completedTaskIds: [],
-        waiverCurrent: !waiver || acceptedSet.has(volunteer.id),
+        waiverCurrent: waivers.length === 0 || acceptedSet.has(volunteer.id),
       }
       byUser.set(volunteer.id, v)
     }

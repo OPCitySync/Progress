@@ -48,8 +48,8 @@ export async function toggleHeart(postId: string, userId: string): Promise<Resul
   if (!post) return { ok: false, error: 'Post not found.' }
 
   const user = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0]
-  if (!user || user.role !== 'participant') {
-    return { ok: false, error: 'Only civic participants can heart posts.' }
+  if (!user) {
+    return { ok: false, error: 'Your account could not be found.' }
   }
 
   const existing = (

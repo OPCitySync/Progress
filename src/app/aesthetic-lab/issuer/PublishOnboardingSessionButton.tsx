@@ -32,7 +32,7 @@ export function PublishOnboardingSessionButton({
           <div><p className={styles.eyebrow}>Onboarding</p><h2 id="publish-onboarding-title">Publish an onboarding session.</h2><p>Choose the date and time participants will see. Your current capacity and duration are used automatically.</p></div>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
-        <form action={publishOnboardingSessionAction} className={styles.issuerCalendarForm}>
+        <form action={publishOnboardingSessionAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
           <input type="hidden" name="taskId" value={taskId} />
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <label>Date and time<input name="startsAt" type="datetime-local" required defaultValue={localDateTimeValue(suggestedStartsAt)} /></label>

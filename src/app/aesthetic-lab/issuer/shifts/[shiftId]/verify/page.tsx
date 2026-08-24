@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, orgProfiles, orgs, shifts, tasks, users } from '@/lib/db/schema'
+import { claims, orgs, shifts, tasks, users } from '@/lib/db/schema'
 import { participantDisplayName } from '@/lib/participant-name'
 import { getLabWorkspace } from '../../../../lab-workspace'
 import { LabHeader } from '../../../../LabHeader'
@@ -20,7 +20,7 @@ export default async function ShiftVerificationPage({ params }: { params: { shif
   if (!session.orgId) notFound()
   const orgId = session.orgId
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [shiftRow, profile, org] = await Promise.all([
+  const [shiftRow, org] = await Promise.all([
     db
       .select({ shift: shifts, task: tasks })
       .from(shifts)
@@ -28,7 +28,6 @@ export default async function ShiftVerificationPage({ params }: { params: { shif
       .where(and(eq(shifts.id, params.shiftId), eq(shifts.orgId, orgId), eq(tasks.orgId, orgId)))
       .limit(1)
       .then((rows) => rows[0] ?? null),
-    db.select({ onboardingTaskId: orgProfiles.onboardingTaskId }).from(orgProfiles).where(eq(orgProfiles.orgId, orgId)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
   ])
   if (!shiftRow) notFound()
@@ -58,7 +57,7 @@ export default async function ShiftVerificationPage({ params }: { params: { shif
             startsAt: shiftRow.shift.startsAt,
             endsAt: shiftRow.shift.endsAt,
             location: shiftRow.task.location,
-            isOnboarding: profile?.onboardingTaskId === shiftRow.task.id,
+            isOnboarding: shiftRow.task.isOnboarding === 1,
             canVerify,
           }}
           participants={pendingParticipants.map(({ claim, participant }) => ({

@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, cityParticipantStatuses, orgProfiles, shifts, tasks } from '@/lib/db/schema'
+import { claims, cityParticipantStatuses, shifts, tasks } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { getCityParticipantStatus } from './city-networks'
@@ -17,10 +17,8 @@ function noShowCutoff(shift: typeof shifts.$inferSelect): number | null {
 }
 
 async function isOnboardingTask(taskId: string): Promise<boolean> {
-  const profile = (
-    await db.select({ onboardingTaskId: orgProfiles.onboardingTaskId }).from(orgProfiles).where(eq(orgProfiles.onboardingTaskId, taskId)).limit(1)
-  )[0]
-  return !!profile
+  const task = (await db.select({ isOnboarding: tasks.isOnboarding }).from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
+  return task?.isOnboarding === 1
 }
 
 /**

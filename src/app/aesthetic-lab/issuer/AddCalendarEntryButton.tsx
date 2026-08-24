@@ -10,14 +10,18 @@ function localInputValue(value: Date) {
   return local.toISOString().slice(0, 16)
 }
 
-const initialStart = new Date()
-initialStart.setMinutes(0, 0, 0)
-initialStart.setHours(initialStart.getHours() + 1)
-const initialEnd = new Date(initialStart.getTime() + 60 * 60 * 1000)
+function initialRange(defaultDate?: number) {
+  const start = defaultDate ? new Date(defaultDate) : new Date()
+  start.setMinutes(0, 0, 0)
+  if (defaultDate) start.setHours(9, 0, 0, 0)
+  else start.setHours(start.getHours() + 1)
+  return { start, end: new Date(start.getTime() + 60 * 60 * 1000) }
+}
 
 /** A compact modal for private, organization-owned planning entries. */
-export function AddCalendarEntryButton() {
+export function AddCalendarEntryButton({ defaultDate }: { defaultDate?: number }) {
   const [open, setOpen] = useState(false)
+  const { start: initialStart, end: initialEnd } = initialRange(defaultDate)
 
   return <>
     <button type="button" className={styles.issuerAddCalendarButton} onClick={() => setOpen(true)}>
@@ -26,10 +30,10 @@ export function AddCalendarEntryButton() {
     {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setOpen(false)}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby="calendar-entry-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
-          <div><p className={styles.eyebrow}>Organization calendar</p><h2 id="calendar-entry-title">Add an important date.</h2><p>This stays private to your organization and appears beside volunteer shifts.</p></div>
+          <div><p className={styles.eyebrow}>Organization calendar</p><h2 id="calendar-entry-title">Add an important date.</h2><p>{defaultDate ? 'This will be added to the day you are viewing and stays private to your organization.' : 'This stays private to your organization and appears beside volunteer shifts.'}</p></div>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
-        <form action={createOrganizationCalendarEntryAction} className={styles.issuerCalendarForm}>
+        <form action={createOrganizationCalendarEntryAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
           <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer" />
           <label>Title<input name="title" required maxLength={140} placeholder="e.g. Confirm supply delivery" /></label>
           <label>Details <span>(optional)</span><textarea name="details" maxLength={500} placeholder="Add context your team will need." /></label>

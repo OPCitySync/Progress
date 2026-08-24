@@ -286,6 +286,41 @@ export async function getEventChatsForParticipant(userId: string, now = Date.now
   return rows.filter((row) => !isExpired(row.chat, row.shift, now))
 }
 
+/**
+ * Finished event chats remain visible to their signed-up participants for the
+ * same fourteen-day retention period used by the organization. The chat is
+ * read-only here: it is a short-term record of the event conversation, not a
+ * permanent participant message history.
+ */
+export async function getArchivedEventChatsForParticipant(userId: string, now = Date.now()) {
+  await cleanupExpiredEventChats(now)
+  const rows = await db
+    .select({ chat: eventChats, shift: shifts, task: tasks })
+    .from(claims)
+    .innerJoin(eventChats, eq(claims.shiftId, eventChats.shiftId))
+    .innerJoin(shifts, eq(eventChats.shiftId, shifts.id))
+    .innerJoin(tasks, eq(eventChats.taskId, tasks.id))
+    .where(and(eq(claims.userId, userId), inArray(claims.status, [...CHAT_CLAIM_STATUSES]), eq(eventChats.status, 'archived')))
+    .orderBy(desc(eventChats.closedAt), desc(eventChats.createdAt))
+
+  const details = await Promise.all(rows.map((item) => getChatWithMessages(item.chat.id)))
+  const detailsById = new Map(
+    details
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      .map((item) => [item.chat.id, item] as const),
+  )
+
+  return rows.map((item) => {
+    const archivedAt = item.chat.closedAt ?? item.chat.closesAt
+    return {
+      ...item,
+      messages: detailsById.get(item.chat.id)?.messages ?? [],
+      archivedAt,
+      deleteAt: archivedAt + EVENT_CHAT_ARCHIVE_RETENTION_MS,
+    }
+  })
+}
+
 export async function getEventChatForParticipant(chatId: string, userId: string, now = Date.now()) {
   await cleanupExpiredEventChats(now)
   const allowed = (await db

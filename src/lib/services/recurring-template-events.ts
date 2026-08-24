@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { and, asc, desc, eq, gt, gte, or } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { orgProfiles, recurringEventSchedules, shifts, tasks } from '@/lib/db/schema'
+import { recurringEventSchedules, shifts, tasks } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from '@/lib/services/identity'
@@ -64,22 +64,26 @@ export async function publishTemplateEvent(input: {
   actorId: string
   startsAt: number | null
   recurring: boolean
-}): Promise<Result<{ mode: 'published' | 'scheduled'; taskId: string }>> {
+  visibility?: 'public' | 'private'
+}): Promise<Result<{ mode: 'published' | 'scheduled'; taskId: string; shiftId: string | null }>> {
   const startsAt = input.startsAt
   if (!startsAt || startsAt < Date.now() - 5 * MINUTE_MS) {
     return { ok: false, error: 'Choose an event date and time in the future.' }
   }
+  const visibility = input.visibility === 'private' ? 'private' : 'public'
+  // Public shifts are always claimable; private shifts are always managed by
+  // the organization. This removes an unnecessary middle state.
+  const enrollmentMode = visibility === 'private' ? 'organization_managed' : 'open_claims'
 
-  const [task, profile, existingSchedule, priorSessions] = await Promise.all([
+  const [task, existingSchedule, priorSessions] = await Promise.all([
     db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null),
-    db.select({ onboardingTaskId: orgProfiles.onboardingTaskId }).from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(recurringEventSchedules).where(eq(recurringEventSchedules.taskId, input.taskId)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(shifts).where(eq(shifts.taskId, input.taskId)).orderBy(desc(shifts.createdAt)),
   ])
   if (!task) return { ok: false, error: 'That opportunity is not available to your organization.' }
   if (task.cityId !== input.cityId) return { ok: false, error: 'Switch to the city where this opportunity belongs before publishing it.' }
   if (task.status !== 'open') return { ok: false, error: 'Reopen this opportunity before publishing an event.' }
-  if (profile?.onboardingTaskId === task.id) return { ok: false, error: 'Publish onboarding dates from the Onboarding section.' }
+  if (task.isOnboarding === 1) return { ok: false, error: 'Publish onboarding dates from the Onboarding section.' }
 
   const now = Date.now()
   const capacity = task.slots
@@ -99,6 +103,8 @@ export async function publishTemplateEvent(input: {
         label: '',
         capacity,
         status: 'open',
+        visibility,
+        enrollmentMode,
         checkInCode: shiftCode(),
         createdAt: now,
       })
@@ -111,9 +117,11 @@ export async function publishTemplateEvent(input: {
         durationMinutes,
         capacity,
         recurring: false,
+        visibility,
+        enrollmentMode,
       }, input.actorId)
     })
-    return { ok: true, mode: 'published', taskId: task.id }
+    return { ok: true, mode: 'published', taskId: task.id, shiftId }
   }
 
   if (futureSessions.length > 1) {
@@ -123,6 +131,7 @@ export async function publishTemplateEvent(input: {
     return { ok: false, error: 'Choose a recurring event time after the currently published event ends.' }
   }
 
+  let publishedShiftId: string | null = null
   await db.transaction(async (tx) => {
     if (activeSession?.endsAt && activeSession.endsAt > now) {
       await tx
@@ -134,6 +143,8 @@ export async function publishTemplateEvent(input: {
           nextStartsAt: startsAt,
           durationMinutes,
           capacity,
+          visibility,
+          enrollmentMode,
           lastPublishedShiftId: activeSession.id,
           active: 1,
           createdAt: now,
@@ -141,7 +152,7 @@ export async function publishTemplateEvent(input: {
         })
         .onConflictDoUpdate({
           target: recurringEventSchedules.taskId,
-          set: { intervalDays: 7, nextStartsAt: startsAt, durationMinutes, capacity, lastPublishedShiftId: activeSession.id, active: 1, updatedAt: now },
+          set: { intervalDays: 7, nextStartsAt: startsAt, durationMinutes, capacity, visibility, enrollmentMode, lastPublishedShiftId: activeSession.id, active: 1, updatedAt: now },
         })
       await appendEvent(tx, EventTypes.TEMPLATE_EVENT_RECURRENCE_SET, {
         taskId: task.id,
@@ -154,6 +165,7 @@ export async function publishTemplateEvent(input: {
     }
 
     const shiftId = randomUUID()
+    publishedShiftId = shiftId
     await tx.insert(shifts).values({
       id: shiftId,
       taskId: task.id,
@@ -163,6 +175,8 @@ export async function publishTemplateEvent(input: {
       label: recurringLabel(startsAt),
       capacity,
       status: 'open',
+      visibility,
+      enrollmentMode,
       checkInCode: shiftCode(),
       createdAt: now,
     })
@@ -175,6 +189,8 @@ export async function publishTemplateEvent(input: {
         nextStartsAt: advanceDays(startsAt, 7),
         durationMinutes,
         capacity,
+        visibility,
+        enrollmentMode,
         lastPublishedShiftId: shiftId,
         active: 1,
         createdAt: now,
@@ -182,7 +198,7 @@ export async function publishTemplateEvent(input: {
       })
       .onConflictDoUpdate({
         target: recurringEventSchedules.taskId,
-        set: { intervalDays: 7, nextStartsAt: advanceDays(startsAt, 7), durationMinutes, capacity, lastPublishedShiftId: shiftId, active: 1, updatedAt: now },
+        set: { intervalDays: 7, nextStartsAt: advanceDays(startsAt, 7), durationMinutes, capacity, visibility, enrollmentMode, lastPublishedShiftId: shiftId, active: 1, updatedAt: now },
       })
     await appendEvent(tx, EventTypes.TEMPLATE_EVENT_PUBLISHED, {
       taskId: task.id,
@@ -191,8 +207,10 @@ export async function publishTemplateEvent(input: {
       shiftId,
       startsAt,
       durationMinutes,
-      capacity,
-      recurring: true,
+        capacity,
+        recurring: true,
+        visibility,
+        enrollmentMode,
     }, input.actorId)
     await appendEvent(tx, EventTypes.TEMPLATE_EVENT_RECURRENCE_SET, {
       taskId: task.id,
@@ -203,7 +221,7 @@ export async function publishTemplateEvent(input: {
     }, input.actorId)
   })
 
-  return { ok: true, mode: activeSession?.endsAt && activeSession.endsAt > now ? 'scheduled' : 'published', taskId: task.id }
+  return { ok: true, mode: activeSession?.endsAt && activeSession.endsAt > now ? 'scheduled' : 'published', taskId: task.id, shiftId: publishedShiftId }
 }
 
 /** Release the next event only after the prior recurring event has finished. */
@@ -234,6 +252,8 @@ export async function publishDueRecurringTemplateEvents(now = Date.now()) {
         label: recurringLabel(startsAt),
         capacity: schedule.capacity,
         status: 'open',
+        visibility: schedule.visibility,
+        enrollmentMode: schedule.enrollmentMode,
         checkInCode: shiftCode(),
         createdAt: now,
       })

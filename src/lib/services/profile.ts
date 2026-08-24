@@ -181,6 +181,7 @@ export type PublicOpportunity = {
   totalOpenSlots: number
   nextShiftAt: number | null
   nextShiftLabel: string
+  nextEnrollmentMode: 'open_claims' | 'organization_managed'
 }
 
 const ACTIVE = ['claimed', 'submitted', 'verified'] as const
@@ -196,7 +197,7 @@ export async function aggregateOpportunities(taskRows: TaskRow[]): Promise<Map<s
   const openShifts = await db
     .select()
     .from(shifts)
-    .where(and(inArray(shifts.taskId, ids), eq(shifts.status, 'open')))
+    .where(and(inArray(shifts.taskId, ids), eq(shifts.status, 'open'), eq(shifts.visibility, 'public')))
     .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
 
   const counts = await db
@@ -228,6 +229,7 @@ export async function aggregateOpportunities(taskRows: TaskRow[]): Promise<Map<s
       totalOpenSlots,
       nextShiftAt: next?.startsAt ?? null,
       nextShiftLabel: next?.label ?? '',
+      nextEnrollmentMode: next?.enrollmentMode ?? 'open_claims',
     })
   }
   return out

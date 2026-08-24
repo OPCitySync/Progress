@@ -77,7 +77,7 @@ export function IssuerOpportunityStatusControl({
               <Button type="button" variant="secondary" onClick={() => setConfirming(false)}>
                 Cancel
               </Button>
-              <form action={isOpen ? closeTaskAction : reopenTaskAction}>
+              <form action={isOpen ? closeTaskAction : reopenTaskAction} onSubmit={() => setConfirming(false)}>
                 <input type="hidden" name="taskId" value={taskId} />
                 <input type="hidden" name="redirectTo" value="/issuer" />
                 <Button type="submit" variant={isOpen ? 'danger' : 'primary'}>

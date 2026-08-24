@@ -7,6 +7,7 @@ import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from '@/lib/services/identity'
 import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
 import { cancelRemindersForShift, notifyOnboardingSessionCancelled } from './notifications'
+import { programBelongsToOrganization } from './volunteer-programs'
 
 const MINUTE_MS = 60_000
 
@@ -41,6 +42,7 @@ export async function createRecurringOnboardingSession(input: {
   firstStartsAt: number | null
   durationMinutes: number
   weeklyCapacity: number
+  programId?: string | null
 }): Promise<Result<{ taskId: string }>> {
   const title = input.title.trim()
   const description = input.description.trim()
@@ -59,6 +61,9 @@ export async function createRecurringOnboardingSession(input: {
   }
   if (!Number.isInteger(input.credits) || input.credits < 1 || input.credits > 100_000) {
     return { ok: false, error: 'Credits must be a whole number between 1 and 100,000.' }
+  }
+  if (!(await programBelongsToOrganization(input.orgId, input.programId))) {
+    return { ok: false, error: 'Choose a volunteer program belonging to your organization.' }
   }
 
   const org = (await db.select({ status: orgs.status }).from(orgs).where(eq(orgs.id, input.orgId)).limit(1))[0]
@@ -95,6 +100,8 @@ export async function createRecurringOnboardingSession(input: {
       slots: input.weeklyCapacity,
       startsAt: weeklyLabel,
       status: 'open',
+      programId: input.programId || null,
+      isOnboarding: 1,
       requiredCredentials: '[]',
       catalogEntryId: null,
       createdBy: input.actorId,
@@ -103,7 +110,10 @@ export async function createRecurringOnboardingSession(input: {
     await tx.insert(shifts).values(firstShift)
     await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
 
-    if (profile) {
+    if (profile?.onboardingTaskId) {
+      // The original series remains the compatibility/default pointer. Every
+      // series is recognized by tasks.isOnboarding from here forward.
+    } else if (profile) {
       await tx
         .update(orgProfiles)
         .set({ onboardingTaskId: taskId, updatedAt: now })
@@ -148,6 +158,7 @@ export async function updateRecurringOnboardingSession(input: {
   nextStartsAt: number | null
   durationMinutes: number
   weeklyCapacity: number
+  programId?: string | null
 }): Promise<Result> {
   const title = input.title.trim()
   const description = input.description.trim()
@@ -167,11 +178,12 @@ export async function updateRecurringOnboardingSession(input: {
     return { ok: false, error: 'Credits must be a whole number between 1 and 100,000.' }
   }
 
-  const [task, profile] = await Promise.all([
-    db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null),
-    db.select({ onboardingTaskId: orgProfiles.onboardingTaskId }).from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1).then((rows) => rows[0] ?? null),
-  ])
-  if (!task || profile?.onboardingTaskId !== input.taskId) return { ok: false, error: 'That onboarding session is not available to your organization.' }
+  const task = await db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null)
+  if (!task || task.isOnboarding !== 1) return { ok: false, error: 'That onboarding session is not available to your organization.' }
+  const programId = input.programId === undefined ? task.programId : input.programId
+  if (!(await programBelongsToOrganization(input.orgId, programId))) {
+    return { ok: false, error: 'Choose a volunteer program belonging to your organization.' }
+  }
 
   const now = Date.now()
   const futureShifts = await db
@@ -219,6 +231,7 @@ export async function updateRecurringOnboardingSession(input: {
         location,
         credits: input.credits,
         slots: input.weeklyCapacity,
+        programId,
         startsAt: weeklyLabel,
       })
       .where(eq(tasks.id, input.taskId))
@@ -287,12 +300,11 @@ export async function publishOnboardingSession(input: {
   if (!input.startsAt || input.startsAt < Date.now() - 5 * MINUTE_MS) {
     return { ok: false, error: 'Choose a session date and time in the future.' }
   }
-  const [task, profile, existingSchedule] = await Promise.all([
+  const [task, existingSchedule] = await Promise.all([
     db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null),
-    db.select({ onboardingTaskId: orgProfiles.onboardingTaskId }).from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(onboardingRecurringSchedules).where(eq(onboardingRecurringSchedules.taskId, input.taskId)).limit(1).then((rows) => rows[0] ?? null),
   ])
-  if (!task || profile?.onboardingTaskId !== input.taskId) {
+  if (!task || task.isOnboarding !== 1) {
     return { ok: false, error: 'That onboarding session is not available to your organization.' }
   }
 
@@ -435,18 +447,15 @@ export async function cancelOnboardingSession(input: {
   actorId: string
 }): Promise<Result<{ notified: number }>> {
   const now = Date.now()
-  const [row, profile] = await Promise.all([
-    db
-      .select({ shift: shifts, task: tasks, organizationName: orgs.name })
-      .from(shifts)
-      .innerJoin(tasks, eq(shifts.taskId, tasks.id))
-      .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-      .where(and(eq(shifts.id, input.shiftId), eq(shifts.orgId, input.orgId)))
-      .limit(1)
-      .then((rows) => rows[0] ?? null),
-    db.select({ onboardingTaskId: orgProfiles.onboardingTaskId }).from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1).then((rows) => rows[0] ?? null),
-  ])
-  if (!row || profile?.onboardingTaskId !== row.task.id) {
+  const row = await db
+    .select({ shift: shifts, task: tasks, organizationName: orgs.name })
+    .from(shifts)
+    .innerJoin(tasks, eq(shifts.taskId, tasks.id))
+    .innerJoin(orgs, eq(tasks.orgId, orgs.id))
+    .where(and(eq(shifts.id, input.shiftId), eq(shifts.orgId, input.orgId)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!row || row.task.isOnboarding !== 1) {
     return { ok: false, error: 'That onboarding session is not available to your organization.' }
   }
   if (row.shift.status !== 'open') return { ok: false, error: 'That session has already been closed.' }

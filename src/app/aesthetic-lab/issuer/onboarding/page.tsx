@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import { and, asc, eq, gte } from 'drizzle-orm'
-import { FileText, Repeat2, ShieldCheck, UsersRound } from 'lucide-react'
+import { FileText, FolderKanban, Repeat2, ShieldCheck, UsersRound } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { attachOrganizationDocumentAction, createOnboardingSessionAction, updateOnboardingSessionAction } from '@/app/actions'
 import { db } from '@/lib/db/client'
-import { orgProfiles, orgs, shifts, tasks } from '@/lib/db/schema'
+import { orgs, shifts, tasks } from '@/lib/db/schema'
 import { getOnboardingWaiverSetup } from '@/lib/services/waivers'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
+import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
 import { LabNotice } from '../../LabNotice'
@@ -31,16 +32,17 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
   const session = await requireRole('issuer')
   const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
-  const [waiverSetup, profile, org, organizationDocuments] = await Promise.all([
+  const [waiverSetup, org, organizationDocuments, volunteerPrograms] = await Promise.all([
     getOnboardingWaiverSetup(orgId),
-    db.select({ onboardingTaskId: orgProfiles.onboardingTaskId }).from(orgProfiles).where(eq(orgProfiles.orgId, orgId)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     getOrganizationDocuments(orgId),
+    getVolunteerPrograms(orgId),
   ])
-  const editingTaskId = searchParams.taskId && searchParams.taskId === profile?.onboardingTaskId ? searchParams.taskId : null
-  const editingTask = editingTaskId
+  const editingTaskId = searchParams.taskId ?? null
+  const candidateEditingTask = editingTaskId
     ? (await db.select().from(tasks).where(and(eq(tasks.id, editingTaskId), eq(tasks.orgId, orgId))).limit(1))[0] ?? null
     : null
+  const editingTask = candidateEditingTask?.isOnboarding === 1 ? candidateEditingTask : null
   const nextSession = editingTask
     ? (await db.select().from(shifts).where(and(eq(shifts.taskId, editingTask.id), gte(shifts.startsAt, Date.now()))).orderBy(asc(shifts.startsAt), asc(shifts.createdAt)).limit(1))[0] ?? null
     : null
@@ -67,6 +69,7 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
           <Link href={returnToWorkspace} className={styles.catalogWorkspaceAction}>Back to Workspace</Link>
         </section>
         <nav className={styles.workspaceSectionNav} aria-label="Workspace navigation">
+          <Link href="/aesthetic-lab/issuer/catalog?workspace=programs"><FolderKanban size={15} /> Volunteer Programs</Link>
           <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation"><FileText size={15} /> Documentation</Link>
           <Link href={manageUrl} data-active="true" aria-current="page"><Repeat2 size={15} /> Onboarding</Link>
           <Link href="/aesthetic-lab/issuer/catalog?workspace=opportunities"><UsersRound size={15} /> Opportunities</Link>
@@ -76,6 +79,7 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
               <form action={isEditing ? updateOnboardingSessionAction : createOnboardingSessionAction} className={styles.labForm}>
                 {isEditing ? <input type="hidden" name="taskId" value={editingTask!.id} /> : <input type="hidden" name="redirectTo" value={returnToWorkspace} />}
                 <div className={styles.labFormGrid}><label>Session title<input name="title" defaultValue={editingTask?.title ?? 'New volunteer orientation'} required /></label><label>Location<input name="location" defaultValue={editingTask?.location ?? ''} required placeholder="Address or meeting point" /></label></div>
+                <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={editingTask?.programId ?? ''}><option value="">Not assigned to a program</option>{volunteerPrograms.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Connect this onboarding session to the program it prepares volunteers for.</small></label>
                 <label>Description<textarea name="description" required defaultValue={editingTask?.description ?? 'A welcoming local orientation for people beginning with our organization.'} /></label>
                 <input type="hidden" name="credits" value={editingTask?.credits ?? 5} />
                 {isEditing ? <input type="hidden" name="firstStartsAt" value={localDateTimeValue(nextSession?.startsAt)} /> : <label>First session<input type="datetime-local" name="firstStartsAt" defaultValue={localDateTimeValue(nextSession?.startsAt)} required /></label>}
@@ -85,10 +89,10 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
                     <div><p className={styles.eyebrow}>Included documents</p><h2>Materials participants receive for onboarding.</h2><p>Attach guides, forms, safety information, or other resources that participants should review before their session.</p></div>
                   </div>
                   {isEditing ? <>
-                    {waiverSetup.waiver || includedDocuments.length > 0 ? <div className={styles.onboardingDocumentList}>
-                      {waiverSetup.waiver ? <article>
-                        <span><ShieldCheck size={17} /></span><div><p>Liability waiver</p><h3>{waiverSetup.waiver.title}</h3><small>{usesPaperWaivers ? 'Signed in person at check-in' : 'Digital acceptance required before reservation'} · Included with this onboarding session</small></div><Link href="/aesthetic-lab/issuer/waiver" className={styles.catalogWorkspaceAction}>Manage</Link>
-                      </article> : null}
+                    {waiverSetup.waivers.length > 0 || includedDocuments.length > 0 ? <div className={styles.onboardingDocumentList}>
+                      {waiverSetup.waivers.map((waiver) => <article key={waiver.id}>
+                        <span><ShieldCheck size={17} /></span><div><p>Liability waiver</p><h3>{waiver.title}</h3><small>{usesPaperWaivers ? 'Signed in person at check-in' : 'Digital acceptance required before reservation'} · Included with this onboarding session</small></div><Link href="/aesthetic-lab/issuer/waiver" className={styles.catalogWorkspaceAction}>Manage</Link>
+                      </article>)}
                       {includedDocuments.map((document) => <article key={document.id}>
                       <span><FileText size={17} /></span><div><p>{ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label}</p><h3>{document.title}</h3><small>{document.documentUrl ? 'Source file attached' : 'Written guidance'} · Included with this onboarding session</small></div><Link href={`/aesthetic-lab/issuer/documents/${document.id}`} className={styles.catalogWorkspaceAction}>Manage</Link>
                       </article>)}</div> : <p className={styles.onboardingDocumentsEmpty}>No supplemental documents or waiver are included yet.</p>}

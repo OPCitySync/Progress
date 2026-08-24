@@ -1,7 +1,7 @@
 'use client'
 
-import { CalendarPlus, Repeat2, X } from 'lucide-react'
-import { useState } from 'react'
+import { CalendarPlus, Check, Repeat2, Search, UsersRound, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { publishTemplateEventAction } from '@/app/actions'
 import styles from '../prototype.module.css'
 
@@ -11,44 +11,136 @@ function localDateTimeValue(timestamp: number) {
   return value.toISOString().slice(0, 16)
 }
 
+type Template = { id: string; title: string; capacity: number }
+type Volunteer = { userId: string; name: string; email: string }
+
+/** A template becomes a dated shift here. Private shifts can be staffed before
+ * publication, so volunteers receive their assignment as soon as it exists. */
 export function PublishTemplateEventButton({
   templates,
+  volunteers = [],
   redirectTo,
   suggestedStartsAt,
+  buttonLabel = 'Publish shift',
 }: {
-  templates: Array<{ id: string; title: string }>
+  templates: Template[]
+  volunteers?: Volunteer[]
   redirectTo: string
   suggestedStartsAt: number
+  buttonLabel?: string
 }) {
   const [open, setOpen] = useState(false)
+  const [rosterOpen, setRosterOpen] = useState(false)
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public')
+  const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? '')
+  const [query, setQuery] = useState('')
+  const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([])
   const hasTemplates = templates.length > 0
+  const oneTemplate = templates.length === 1
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
+  const capacity = selectedTemplate?.capacity ?? 0
+  const selectedVolunteerSet = new Set(selectedVolunteerIds)
+  const selectedVolunteers = volunteers.filter((volunteer) => selectedVolunteerSet.has(volunteer.userId))
+  const filteredVolunteers = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    if (!normalized) return volunteers
+    return volunteers.filter((volunteer) => `${volunteer.name} ${volunteer.email}`.toLowerCase().includes(normalized))
+  }, [query, volunteers])
+
+  const close = () => {
+    setOpen(false)
+    setRosterOpen(false)
+    setVisibility('public')
+    setQuery('')
+    setSelectedVolunteerIds([])
+  }
+  const toggleVolunteer = (userId: string) => {
+    setSelectedVolunteerIds((current) => current.includes(userId)
+      ? current.filter((id) => id !== userId)
+      : current.length >= capacity ? current : [...current, userId])
+  }
+  const setTemplate = (taskId: string) => {
+    setSelectedTemplateId(taskId)
+    const nextCapacity = templates.find((template) => template.id === taskId)?.capacity ?? 0
+    setSelectedVolunteerIds((current) => current.slice(0, nextCapacity))
+  }
 
   return <>
     <button
       type="button"
-      className={styles.catalogWorkspaceAction}
+      className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton}`}
       disabled={!hasTemplates}
       title={hasTemplates ? 'Publish an event from a saved template' : 'Create an opportunity template first'}
       onClick={() => setOpen(true)}
-    ><CalendarPlus size={15} /> Publish event</button>
-    {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setOpen(false)}>
+    ><CalendarPlus size={15} /> {buttonLabel}</button>
+
+    {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={close}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby="publish-template-event-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
-          <div><p className={styles.eyebrow}>Published schedule</p><h2 id="publish-template-event-title">Publish an event.</h2><p>Choose a saved opportunity and the time volunteers can join. The template supplies capacity; the event uses its most recent session length, or two hours for a new template.</p></div>
-          <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
+          <div><p className={styles.eyebrow}>Published shift</p><h2 id="publish-template-event-title">Schedule a volunteer shift.</h2><p>Set the date, then make this shift public and claimable or private and roster-managed.</p></div>
+          <button type="button" aria-label="Close" onClick={close}><X size={18} /></button>
         </div>
-        <form action={publishTemplateEventAction} className={styles.issuerCalendarForm}>
+        <form action={publishTemplateEventAction} className={styles.issuerCalendarForm} onSubmit={close}>
           <input type="hidden" name="redirectTo" value={redirectTo} />
-          <label>Opportunity template
-            <select name="taskId" required defaultValue="">
+          {oneTemplate ? <input type="hidden" name="taskId" value={templates[0].id} /> : <label>Opportunity template
+            <select name="taskId" required value={selectedTemplateId} onChange={(event) => setTemplate(event.target.value)}>
               <option value="" disabled>Select a template</option>
               {templates.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}
             </select>
-          </label>
+          </label>}
           <label>Date and time<input name="startsAt" type="datetime-local" required defaultValue={localDateTimeValue(suggestedStartsAt)} /></label>
-          <label className={styles.onboardingRecurringChoice}><span><input type="checkbox" name="recurring" value="true" /> <Repeat2 size={15} /> Set up as recurring</span><small>City/Sync keeps one event public at a time. After it ends, the next weekly event will publish automatically.</small></label>
-          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="submit"><CalendarPlus size={15} /> Publish event</button></div>
+          <fieldset className={styles.publishShiftAccessChoices}>
+            <legend>Shift access</legend>
+            <label data-selected={visibility === 'public' ? 'true' : undefined}><input type="radio" name="visibility" value="public" checked={visibility === 'public'} onChange={() => setVisibility('public')} /><span><b>Public</b><small>Eligible Civic Participants can find and claim a spot.</small></span></label>
+            <label data-selected={visibility === 'private' ? 'true' : undefined}><input type="radio" name="visibility" value="private" checked={visibility === 'private'} onChange={() => setVisibility('private')} /><span><b>Private</b><small>Only your organization can assign volunteers from its roster.</small></span></label>
+          </fieldset>
+          {visibility === 'private' ? <>
+            <div className={styles.publishPrivateRoster}>
+              <div><b>{selectedVolunteerIds.length ? `${selectedVolunteerIds.length} volunteer${selectedVolunteerIds.length === 1 ? '' : 's'} selected` : 'No volunteers selected yet'}</b><small>{capacity} available spot{capacity === 1 ? '' : 's'} for this shift.</small></div>
+              <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton}`} disabled={!volunteers.length || capacity < 1} onClick={() => setRosterOpen(true)}><UsersRound size={14} /> Add Volunteer</button>
+            </div>
+            {selectedVolunteers.length ? <div className={styles.publishPrivateRosterList} aria-label="Selected volunteers">
+              <p>Selected volunteers</p>
+              {selectedVolunteers.map((volunteer) => <article key={volunteer.userId}>
+                <span>{volunteer.name.slice(0, 2).toUpperCase()}</span>
+                <div><b>{volunteer.name}</b><small>{volunteer.email}</small></div>
+                <button type="button" aria-label={`Remove ${volunteer.name}`} onClick={() => toggleVolunteer(volunteer.userId)}><X size={13} /></button>
+              </article>)}
+            </div> : null}
+          </> : null}
+          {visibility === 'private' ? selectedVolunteerIds.map((userId) => <input type="hidden" key={userId} name="assignedUserId" value={userId} />) : null}
+          <p className={styles.publishShiftAccessHint}>{visibility === 'private'
+            ? 'This shift will stay out of City/Sync’s public opportunities. Selected volunteers will be notified when it is published.'
+            : 'Eligible Civic Participants can find this shift and claim an open spot. You can still add roster members directly later.'}</p>
+          <label className={styles.onboardingRecurringChoice}><span><input type="checkbox" name="recurring" value="true" /> <Repeat2 size={15} /> Set up as recurring</span><small>City/Sync keeps one active event at a time. If a private recurring shift must wait for a current event to finish, add its roster after that new shift is published.</small></label>
+          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={close}>Cancel</button><button type="submit"><CalendarPlus size={15} /> Publish shift</button></div>
         </form>
+      </section>
+    </div> : null}
+
+    {open && rosterOpen ? <div className={styles.issuerNestedModalBackdrop} role="presentation" onMouseDown={() => setRosterOpen(false)}>
+      <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby="private-shift-roster-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className={styles.issuerCalendarModalHeading}>
+          <div><p className={styles.eyebrow}>Private shift roster</p><h2 id="private-shift-roster-title">Add volunteers.</h2><p>Select up to {capacity} person{capacity === 1 ? '' : 's'} from your organization’s full roster. They will receive the shift after it is published.</p></div>
+          <button type="button" aria-label="Close" onClick={() => setRosterOpen(false)}><X size={18} /></button>
+        </div>
+        <div className={styles.issuerCalendarForm}>
+          <div className={styles.shiftAssignmentSummary}><span>{capacity} spot{capacity === 1 ? '' : 's'} available</span><b>{selectedVolunteerIds.length} selected</b></div>
+          <div className={styles.groupingMemberPicker}>
+            <label className={styles.groupingSearch}><Search size={15} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your roster" /></label>
+            <div className={styles.groupingMemberList}>
+              {filteredVolunteers.length ? filteredVolunteers.map((volunteer) => {
+                const selected = selectedVolunteerSet.has(volunteer.userId)
+                const disabled = !selected && selectedVolunteerIds.length >= capacity
+                return <button type="button" key={volunteer.userId} data-selected={selected ? 'true' : undefined} disabled={disabled} onClick={() => toggleVolunteer(volunteer.userId)}>
+                  <span>{selected ? <Check size={13} /> : volunteer.name.slice(0, 2).toUpperCase()}</span>
+                  <div><b>{volunteer.name}</b><small>{volunteer.email}</small></div>
+                </button>
+              }) : <p>No volunteers match that search.</p>}
+            </div>
+          </div>
+          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setRosterOpen(false)}>Done</button></div>
+        </div>
       </section>
     </div> : null}
   </>

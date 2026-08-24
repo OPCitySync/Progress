@@ -1,30 +1,33 @@
 'use client'
 
 import { type ReactNode, useState } from 'react'
-import { FileText, Repeat2, UsersRound } from 'lucide-react'
+import { FileText, FolderKanban, Repeat2, UsersRound } from 'lucide-react'
 import styles from '../prototype.module.css'
 
-type WorkspaceSection = 'documentation' | 'onboarding' | 'opportunities'
+type WorkspaceSection = 'programs' | 'documentation' | 'onboarding' | 'opportunities'
 
 const sections: Array<{ id: WorkspaceSection; label: string; icon: typeof FileText }> = [
+  { id: 'programs', label: 'Volunteer Programs', icon: FolderKanban },
   { id: 'documentation', label: 'Documentation', icon: FileText },
   { id: 'onboarding', label: 'Onboarding', icon: Repeat2 },
   { id: 'opportunities', label: 'Opportunities', icon: UsersRound },
 ]
 
 export function IssuerWorkspaceMenu({
+  programs,
   documentation,
   onboarding,
   opportunities,
   initialSection = 'documentation',
 }: {
+  programs: ReactNode
   documentation: ReactNode
   onboarding: ReactNode
   opportunities: ReactNode
   initialSection?: WorkspaceSection
 }) {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection)
-  const panels: Record<WorkspaceSection, ReactNode> = { documentation, onboarding, opportunities }
+  const panels: Record<WorkspaceSection, ReactNode> = { programs, documentation, onboarding, opportunities }
 
   return (
     <section className={styles.workspaceSectionShell} aria-label="Workspace sections">

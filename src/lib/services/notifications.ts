@@ -175,6 +175,28 @@ export async function notifyShiftClaimed(userId: string, shiftId: string): Promi
   }
 }
 
+/** A roster member was added directly by an organization. This is deliberately
+ * distinct from a self-service claim, so the notification explains why the
+ * commitment appeared in the participant's workspace. */
+export async function notifyShiftAssigned(userId: string, shiftId: string): Promise<void> {
+  try {
+    const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
+    if (!shift) return
+    const task = (await db.select().from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
+    const org = task ? (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0] : undefined
+    const title = task?.title ?? 'a volunteer shift'
+    await insertNotification(
+      userId,
+      'organization_shift_assignment',
+      `You were added to: ${title}`,
+      `${org?.name ?? 'An organization'} added you to a shift on ${whenText(shift)}.`,
+      task ? `/aesthetic-lab/opportunities/${task.id}` : '/aesthetic-lab',
+    )
+  } catch (error) {
+    console.error('notifyShiftAssigned failed', error)
+  }
+}
+
 /**
  * A future onboarding session was cancelled by its organization. This is an
  * in-app notice only: participants are released from that specific session
@@ -196,6 +218,29 @@ export async function notifyOnboardingSessionCancelled(input: {
       'onboarding_cancelled',
       'Onboarding session cancelled',
       `${input.organizationName} cancelled the onboarding session on ${when}. Please sign up for another session.`,
+      `/aesthetic-lab/opportunities/${input.taskId}`,
+    ),
+  ))
+}
+
+/** A scheduled volunteer event was cancelled by its organization. */
+export async function notifyShiftCancelled(input: {
+  userIds: string[]
+  taskId: string
+  taskTitle: string
+  organizationName: string
+  startsAt: number | null
+}): Promise<void> {
+  const when = input.startsAt
+    ? new Date(input.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'the scheduled date'
+  const recipientIds = Array.from(new Set(input.userIds))
+  await Promise.all(recipientIds.map((userId) =>
+    insertNotification(
+      userId,
+      'shift_cancelled',
+      'Volunteer event cancelled',
+      `${input.organizationName} cancelled “${input.taskTitle}” on ${when}. Please choose another opportunity if you would still like to participate.`,
       `/aesthetic-lab/opportunities/${input.taskId}`,
     ),
   ))

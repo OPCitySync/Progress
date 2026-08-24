@@ -4,11 +4,11 @@ import Link from 'next/link'
 import { useState } from 'react'
 import {
   ArrowLeftRight,
-  Bell,
   ChevronDown,
   CircleHelp,
   FileBarChart2,
   LogOut,
+  Mail,
   MapPinned,
   Settings2,
 } from 'lucide-react'
@@ -73,7 +73,7 @@ export function UserMenu({
           {switchTargets.length > 0 ? <div className={styles.userMenuSection}>
             <p className={styles.eyebrow}>Workspace</p>
             {switchTargets.map((target) => (
-              <form action={switchIdentityAction} key={target.identityId}>
+              <form action={switchIdentityAction} key={target.identityId} onSubmit={() => setIsOpen(false)}>
                 <input type="hidden" name="identityId" value={target.identityId} />
                 <input type="hidden" name="redirectTo" value={labDestination(target.role)} />
                 <button className={styles.workspaceSwitch} type="submit">
@@ -89,7 +89,7 @@ export function UserMenu({
             {isIssuer ? <Link href="/aesthetic-lab/issuer/reports" onClick={() => setIsOpen(false)}><FileBarChart2 size={17} /><span>Reports<small>Impact, exports, and activity</small></span></Link> : null}
             <Link href="/aesthetic-lab/cities" onClick={() => setIsOpen(false)}><MapPinned size={17} /><span>My Cities<small>{city?.name ?? 'Choose a city'}</small></span></Link>
             <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>{isIssuer ? 'Settings' : 'Profile &amp; settings'}{isIssuer ? <small>Organization and account controls</small> : null}</span></Link>
-            {!isIssuer ? <Link href="/aesthetic-lab/notifications" onClick={() => setIsOpen(false)}><Bell size={17} /><span>Notifications</span></Link> : null}
+            {!isIssuer ? <Link href="/aesthetic-lab/messages" onClick={() => setIsOpen(false)}><Mail size={17} /><span>Messages</span></Link> : null}
           </div>
 
           <div className={styles.userMenuSection}>
@@ -100,7 +100,7 @@ export function UserMenu({
           {cities.length > 0 ? <div className={styles.userMenuSection}>
             <p className={styles.eyebrow}>Switch city</p>
             {cities.map((network) => (
-              <form action={switchCityAction} key={network.id}>
+              <form action={switchCityAction} key={network.id} onSubmit={() => setIsOpen(false)}>
                 <input type="hidden" name="cityId" value={network.id} />
                 <input type="hidden" name="redirectTo" value={currentPath} />
                 <button type="submit" disabled={network.id === city?.id}><MapPinned size={17} /><span>{network.name}<small>{network.id === city?.id ? 'Selected city network' : 'Switch to this city'}</small></span></button>
@@ -108,7 +108,7 @@ export function UserMenu({
             ))}
           </div> : null}
 
-          <form action={signOutAction}>
+          <form action={signOutAction} onSubmit={() => setIsOpen(false)}>
             <button className={styles.signOutButton} type="submit"><LogOut size={17} /> Sign out</button>
           </form>
         </section>

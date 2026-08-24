@@ -37,7 +37,7 @@ export default async function IssuerCityEventsPage() {
           .from(shifts)
           .innerJoin(tasks, eq(shifts.taskId, tasks.id))
           .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-          .where(and(eq(tasks.cityId, city.id), eq(shifts.status, 'open'), gte(shifts.startsAt, range.start), lt(shifts.startsAt, range.end)))
+          .where(and(eq(tasks.cityId, city.id), eq(shifts.status, 'open'), eq(shifts.visibility, 'public'), gte(shifts.startsAt, range.start), lt(shifts.startsAt, range.end)))
           .orderBy(asc(shifts.startsAt), asc(orgs.name))
       : Promise.resolve([]),
   ])

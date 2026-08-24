@@ -108,6 +108,8 @@ async function main() {
       label,
       capacity: target.task.slots,
       status: 'closed' as const,
+      visibility: 'public' as const,
+      enrollmentMode: 'open_claims' as const,
       checkInCode: 'DEMO01',
       createdAt: now,
     }

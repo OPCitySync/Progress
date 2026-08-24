@@ -9,7 +9,8 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { claims, orgs, shifts, tasks, users } from '@/lib/db/schema'
+import { claims, organizationQueueAcknowledgements, orgs, shifts, tasks, users } from '@/lib/db/schema'
+import { acknowledgeOrganizationQueueAction } from '@/app/actions'
 import { requireRole } from '@/lib/auth/session'
 import { participantDisplayName } from '@/lib/participant-name'
 import { getUnreadMessageCount } from '@/lib/services/roster'
@@ -60,6 +61,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     unreadNotificationCount,
     unreadMessageCount,
     calendarEntries,
+    acknowledgedQueueRows,
   ] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     city
@@ -90,7 +92,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
           .from(shifts)
           .innerJoin(tasks, eq(shifts.taskId, tasks.id))
           .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-          .where(and(eq(tasks.cityId, city.id), eq(shifts.status, 'open'), gte(shifts.startsAt, today.start), lt(shifts.startsAt, today.end)))
+          .where(and(eq(tasks.cityId, city.id), eq(shifts.status, 'open'), eq(shifts.visibility, 'public'), gte(shifts.startsAt, today.start), lt(shifts.startsAt, today.end)))
           .orderBy(asc(shifts.startsAt), asc(orgs.name))
       : Promise.resolve([]),
     city
@@ -116,6 +118,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     getUnreadNotificationCount(session.sub),
     getUnreadMessageCount(session.sub),
     city ? getOrganizationCalendarEntries(orgId, city.id, schedule.from, schedule.to) : Promise.resolve([]),
+    db.select({ actionKey: organizationQueueAcknowledgements.actionKey }).from(organizationQueueAcknowledgements).where(eq(organizationQueueAcknowledgements.orgId, orgId)),
   ])
   const activeByShift = new Map<string | null, number>()
   for (const { claim } of rosterClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
@@ -154,15 +157,18 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       color: entry.color as 'blue' | 'gold' | 'mint' | 'coral',
     })),
   ]
+  const acknowledgedQueueKeys = new Set(acknowledgedQueueRows.map(({ actionKey }) => actionKey))
   const queue = [
     ...pendingVerificationGroups.map(({ shift, task, participantCount }) => ({
+      key: `verify:${shift.id}`,
       kind: 'verify' as const,
       title: `Verify ${participantCount} attendee${participantCount === 1 ? '' : 's'}`,
       detail: `${task.title} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Completed shift'}`,
       href: `/aesthetic-lab/issuer/shifts/${shift.id}/verify`,
       action: 'Review',
     })),
-    ...pendingVolunteerRows.map(({ task, participant }) => ({
+    ...pendingVolunteerRows.map(({ claim, task, participant }) => ({
+      key: `review:${claim.id}`,
       kind: 'review' as const,
       title: `Review ${participantDisplayName(participant)}’s volunteer request`,
       detail: task.title,
@@ -171,6 +177,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     })),
     ...(unreadUpdates
       ? [{
+          key: `updates:${unreadNotificationCount}:${unreadMessageCount}`,
           kind: 'update' as const,
           title: `${unreadUpdates} unread update${unreadUpdates === 1 ? '' : 's'}`,
           detail: unreadMessageCount ? 'Messages and City/Sync updates need your attention.' : 'A City/Sync update needs your attention.',
@@ -178,7 +185,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
           action: 'Open',
         }]
       : []),
-  ].slice(0, 6)
+  ].filter((item) => !acknowledgedQueueKeys.has(item.key)).slice(0, 6)
 
   return (
     <main className={styles.app}>
@@ -210,14 +217,22 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
           <section className={styles.issuerTaskQueue} aria-label="Organization action queue">
             <div className={styles.issuerPanelHeading}>
               <div><p className={styles.eyebrow}>Action queue</p><h2>What needs attention.</h2></div>
-              <ClipboardList size={19} />
+              <Link className={styles.issuerQueueHistoryLink} href="/aesthetic-lab/issuer/notification-history" aria-label="Open notification history" title="Notification history">
+                <ClipboardList size={19} />
+              </Link>
             </div>
             <p className={styles.issuerQueueIntro}>Verification, volunteer review, and incoming updates are collected here so the next step is always clear.</p>
             <div className={styles.issuerQueueList}>
-              {queue.length ? queue.map((item, index) => <article key={`${item.kind}-${index}`}>
+              {queue.length ? queue.map((item) => <article key={item.key}>
                 <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : item.kind === 'review' ? <UserRoundCheck size={17} /> : <Bell size={17} />}</span>
                 <div><b>{item.title}</b><small>{item.detail}</small></div>
-                <Link href={item.href}>{item.action} <ArrowUpRight size={13} /></Link>
+                <div className={styles.issuerQueueActions}>
+                  <form action={acknowledgeOrganizationQueueAction}>
+                    <input type="hidden" name="actionKey" value={item.key} />
+                    <button type="submit">Acknowledge</button>
+                  </form>
+                  <Link href={item.href}>{item.action} <ArrowUpRight size={13} /></Link>
+                </div>
               </article>) : <p className={styles.issuerQueueEmpty}>You’re caught up. New verifications, volunteer reviews, messages, and notifications will appear here.</p>}
             </div>
           </section>

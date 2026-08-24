@@ -46,6 +46,7 @@ const statements = [
   `CREATE TABLE IF NOT EXISTS waiver_versions (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
+    program_id TEXT,
     version INTEGER NOT NULL,
     title TEXT NOT NULL,
     body TEXT NOT NULL,
@@ -110,6 +111,7 @@ const statements = [
   `CREATE TABLE IF NOT EXISTS organization_documents (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
+    program_id TEXT,
     category TEXT NOT NULL,
     title TEXT NOT NULL,
     body TEXT NOT NULL DEFAULT '',
@@ -122,12 +124,38 @@ const statements = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_programs (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_by_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(org_id, name)
+  )`,
   `CREATE TABLE IF NOT EXISTS organization_document_assignments (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     UNIQUE(document_id, task_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS organization_resource_publications (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    resource_kind TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(org_id, resource_kind, resource_id, destination)
+  )`,
+  `CREATE TABLE IF NOT EXISTS waiver_task_assignments (
+    id TEXT PRIMARY KEY,
+    waiver_version_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(waiver_version_id, task_id)
   )`,
   `CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
@@ -139,6 +167,8 @@ const statements = [
     slots INTEGER NOT NULL DEFAULT 1,
     starts_at TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'open',
+    program_id TEXT,
+    is_onboarding INTEGER NOT NULL DEFAULT 0,
     created_by TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`,
@@ -192,6 +222,8 @@ const statements = [
     label TEXT NOT NULL DEFAULT '',
     capacity INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'open',
+    visibility TEXT NOT NULL DEFAULT 'public',
+    enrollment_mode TEXT NOT NULL DEFAULT 'open_claims',
     check_in_code TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL
   )`,
@@ -215,6 +247,8 @@ const statements = [
     next_starts_at INTEGER NOT NULL,
     duration_minutes INTEGER NOT NULL,
     capacity INTEGER NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'public',
+    enrollment_mode TEXT NOT NULL DEFAULT 'open_claims',
     last_published_shift_id TEXT,
     active INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL,
@@ -433,6 +467,14 @@ const statements = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS organization_queue_acknowledgements (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    action_key TEXT NOT NULL,
+    acknowledged_by_user_id TEXT NOT NULL,
+    acknowledged_at INTEGER NOT NULL,
+    UNIQUE(org_id, action_key)
+  )`,
   `CREATE TABLE IF NOT EXISTS org_profiles (
     org_id TEXT PRIMARY KEY,
     tagline TEXT NOT NULL DEFAULT '',
@@ -563,7 +605,15 @@ const columnMigrations = [
   `ALTER TABLE claims ADD COLUMN shift_id TEXT`,
   `ALTER TABLE claims ADD COLUMN checked_in_at INTEGER`,
   `ALTER TABLE shifts ADD COLUMN check_in_code TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE shifts ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`,
+  `ALTER TABLE shifts ADD COLUMN enrollment_mode TEXT NOT NULL DEFAULT 'open_claims'`,
+  `ALTER TABLE recurring_event_schedules ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`,
+  `ALTER TABLE recurring_event_schedules ADD COLUMN enrollment_mode TEXT NOT NULL DEFAULT 'open_claims'`,
   `ALTER TABLE tasks ADD COLUMN required_credentials TEXT NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE tasks ADD COLUMN is_onboarding INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE tasks ADD COLUMN program_id TEXT`,
+  `ALTER TABLE organization_documents ADD COLUMN program_id TEXT`,
+  `ALTER TABLE waiver_versions ADD COLUMN program_id TEXT`,
   `ALTER TABLE users ADD COLUMN interests TEXT NOT NULL DEFAULT '[]'`,
   `ALTER TABLE users ADD COLUMN neighborhood TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE users ADD COLUMN resume_token TEXT`,
@@ -593,6 +643,9 @@ const columnMigrations = [
   `ALTER TABLE claims ADD COLUMN verification_batch_id TEXT`,
   `ALTER TABLE claims ADD COLUMN verified_by_user_id TEXT`,
   `ALTER TABLE claims ADD COLUMN verified_at INTEGER`,
+  // The existing profile pointer becomes the designated primary series. New
+  // onboarding series are stored directly on their task records.
+  `UPDATE tasks SET is_onboarding = 1 WHERE id IN (SELECT onboarding_task_id FROM org_profiles WHERE onboarding_task_id IS NOT NULL)`,
 ]
 
 const indexes = [
@@ -611,9 +664,16 @@ const indexes = [
   `CREATE INDEX IF NOT EXISTS reminders_due ON reminders (status, send_after)`,
   `CREATE INDEX IF NOT EXISTS organization_calendar_entries_org_city_schedule ON organization_calendar_entries (org_id, city_id, starts_at)`,
   `CREATE INDEX IF NOT EXISTS organization_calendar_entries_due_reminder ON organization_calendar_entries (reminder_at, notified_at)`,
+  `CREATE INDEX IF NOT EXISTS organization_queue_acknowledgements_org ON organization_queue_acknowledgements (org_id, acknowledged_at)`,
   `CREATE INDEX IF NOT EXISTS organization_documents_org ON organization_documents (org_id, category, updated_at)`,
+  `CREATE INDEX IF NOT EXISTS organization_documents_program ON organization_documents (program_id, updated_at)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_programs_org ON volunteer_programs (org_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS tasks_program ON tasks (program_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS organization_document_assignments_document ON organization_document_assignments (document_id)`,
   `CREATE INDEX IF NOT EXISTS organization_document_assignments_task ON organization_document_assignments (task_id)`,
+  `CREATE INDEX IF NOT EXISTS organization_resource_publications_org_destination ON organization_resource_publications (org_id, destination)`,
+  `CREATE INDEX IF NOT EXISTS waiver_task_assignments_waiver ON waiver_task_assignments (waiver_version_id)`,
+  `CREATE INDEX IF NOT EXISTS waiver_task_assignments_task ON waiver_task_assignments (task_id)`,
   `CREATE INDEX IF NOT EXISTS volunteer_eligibility_records_org ON volunteer_eligibility_records (org_id, status)`,
   `CREATE INDEX IF NOT EXISTS volunteer_identity_verifications_org ON volunteer_identity_verifications (org_id, status)`,
   `CREATE INDEX IF NOT EXISTS volunteer_task_eligibility_org ON volunteer_task_eligibility_grants (org_id, user_id, status)`,

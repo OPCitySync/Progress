@@ -14,7 +14,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { orgProfiles, orgs, tasks } from '@/lib/db/schema'
+import { orgs, tasks } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { aggregateOpportunities, type PublicOpportunity } from '@/lib/services/profile'
 import { savedItemIds } from '@/lib/services/saved-items'
@@ -47,7 +47,7 @@ function OpportunityCard({ row, tone, redirectTo }: { row: OpportunityRow; tone:
         <p className={styles.orgLine}><Building2 size={14} /> {row.orgName} <CheckCircle2 size={14} /></p>
         <h3>{row.card.title}</h3>
         <p className={styles.opportunityMeta}><Clock3 size={14} /> {opportunityTime(row.card)} <i /> <MapPin size={14} /> {row.card.location || 'Location to be confirmed'}</p>
-        <p className={styles.capacityLine}><UsersRound size={14} /> {row.card.totalOpenSlots} spot{row.card.totalOpenSlots === 1 ? '' : 's'} open</p>
+        <p className={styles.capacityLine}><UsersRound size={14} /> {row.card.nextEnrollmentMode === 'organization_managed' ? 'Organization-managed enrollment' : `${row.card.totalOpenSlots} spot${row.card.totalOpenSlots === 1 ? '' : 's'} open`}</p>
       </div>
       <div className={styles.labFormActions}><SaveTaskButton taskId={row.card.id} saved={row.savedByMe} redirectTo={redirectTo} /><Link href={`/aesthetic-lab/opportunities/${row.card.id}`} className={styles.cardArrow} aria-label={`View ${row.card.title}`}><ArrowUpRight size={19} /></Link></div>
     </article>
@@ -57,22 +57,18 @@ function OpportunityCard({ row, tone, redirectTo }: { row: OpportunityRow; tone:
 export default async function OpportunitiesLabPage({ searchParams }: { searchParams: { saved?: string } }) {
   const session = await requireRole('participant')
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [rows, onboardingRows] = city
-    ? await Promise.all([
-        db
-          .select({ task: tasks, org: orgs })
-          .from(tasks)
-          .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-          .where(and(eq(tasks.status, 'open'), eq(orgs.status, 'approved'), eq(tasks.cityId, city.id)))
-          .orderBy(desc(tasks.createdAt)),
-        db.select({ taskId: orgProfiles.onboardingTaskId }).from(orgProfiles),
-      ])
-    : [[], []]
-  const onboardingTaskIds = new Set(onboardingRows.flatMap((row) => row.taskId ? [row.taskId] : []))
+  const rows = city
+    ? await db
+        .select({ task: tasks, org: orgs })
+        .from(tasks)
+        .innerJoin(orgs, eq(tasks.orgId, orgs.id))
+        .where(and(eq(tasks.status, 'open'), eq(orgs.status, 'approved'), eq(tasks.cityId, city.id)))
+        .orderBy(desc(tasks.createdAt))
+    : []
   const aggregate = await aggregateOpportunities(rows.map((row) => row.task))
   const savedTaskIds = await savedItemIds(session.sub, 'task', rows.map((row) => row.task.id))
   const cards: OpportunityRow[] = rows
-    .map((row) => ({ card: aggregate.get(row.task.id), orgName: row.org.name, isOnboarding: onboardingTaskIds.has(row.task.id), savedByMe: savedTaskIds.has(row.task.id) }))
+    .map((row) => ({ card: aggregate.get(row.task.id), orgName: row.org.name, isOnboarding: row.task.isOnboarding === 1, savedByMe: savedTaskIds.has(row.task.id) }))
     .filter((row): row is OpportunityRow => !!row.card && row.card.openShiftCount > 0 && row.card.totalOpenSlots > 0)
     .sort((a, b) => (a.card.nextShiftAt ?? Number.MAX_SAFE_INTEGER) - (b.card.nextShiftAt ?? Number.MAX_SAFE_INTEGER))
   const onboarding = cards.filter((row) => row.isOnboarding)

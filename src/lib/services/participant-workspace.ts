@@ -1,6 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, orgProfiles, orgs, tasks } from '@/lib/db/schema'
+import { claims, orgs, tasks } from '@/lib/db/schema'
 
 /**
  * Organizations a participant has joined by claiming the organization's
@@ -19,11 +19,11 @@ export async function getParticipantOrganizations(userId: string) {
     .from(claims)
     .innerJoin(tasks, eq(claims.taskId, tasks.id))
     .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-    .innerJoin(orgProfiles, eq(orgProfiles.onboardingTaskId, tasks.id))
     .where(
       and(
         eq(claims.userId, userId),
         inArray(claims.status, ['claimed', 'submitted', 'verified']),
+        eq(tasks.isOnboarding, 1),
         eq(orgs.status, 'approved'),
       ),
     )

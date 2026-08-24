@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import {
   BadgeCheck,
-  Pencil,
   ShieldCheck,
 } from 'lucide-react'
 import styles from '../prototype.module.css'
@@ -24,7 +23,10 @@ export function IssuerLabSidebar({
           <p className={styles.eyebrow}>Issuer organization</p>
           <h1>{organizationName} <BadgeCheck size={17} /></h1>
           <p>{cityName ? `Issuer Organization · ${cityName}` : 'Issuer Organization'}</p>
-          <Link href="/aesthetic-lab/issuer/profile/edit"><Pencil size={14} /> Edit public profile</Link>
+          <div className={styles.issuerIdentityLinks}>
+            <Link href="/aesthetic-lab/issuer/feed">MyCity Feed</Link>
+            <Link href="/aesthetic-lab/issuer/manage">Manage Organization</Link>
+          </div>
         </div>
       </section>
 

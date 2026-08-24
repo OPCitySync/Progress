@@ -6,6 +6,7 @@ import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { canonicalJson, sha256Hex } from '@/lib/ledger/hash'
 import type { Result } from './identity'
+import { programBelongsToOrganization } from './volunteer-programs'
 
 export type OnboardingWaiverMethod = 'digital' | 'in_person'
 
@@ -15,8 +16,8 @@ function normalizeOnboardingWaiverMethod(value: unknown): OnboardingWaiverMethod
 
 /**
  * Waiver module. Mirrors IssuerWaiverRegistry semantics:
- * versioned waivers, one active version per org, acceptance recorded
- * against the content hash. Only the sha256 of the body would ever go
+ * independently published waivers, all of which can be active for an org,
+ * with acceptance recorded against the content hash. Only the sha256 of the body would ever go
  * on-chain — the document itself stays with the organization.
  */
 
@@ -25,6 +26,7 @@ export async function createWaiverVersion(input: {
   title: string
   body: string
   actorId: string
+  programId?: string | null
   onboardingWaiverMethod?: OnboardingWaiverMethod
   document?: {
     url: string
@@ -33,8 +35,11 @@ export async function createWaiverVersion(input: {
     sha256: string
   }
 }): Promise<Result<{ id: string; version: number; sha256: string }>> {
-  if (!input.title.trim() || !input.body.trim()) {
-    return { ok: false, error: 'Waiver title and body are required.' }
+  if (!input.title.trim() || (!input.body.trim() && !input.document)) {
+    return { ok: false, error: 'Give the waiver a title and add either waiver text or a source file.' }
+  }
+  if (!(await programBelongsToOrganization(input.orgId, input.programId))) {
+    return { ok: false, error: 'Choose a volunteer program belonging to your organization.' }
   }
 
   const latest = await db
@@ -53,12 +58,13 @@ export async function createWaiverVersion(input: {
   )
 
   await db.transaction(async (tx) => {
-    // Atomic rollover: deactivate prior versions, activate the new one.
-    // (Mirrors replaceCurrentWaiverVersion from the audited contracts, S-07.)
-    await tx.update(waiverVersions).set({ active: 0 }).where(eq(waiverVersions.orgId, input.orgId))
+    // A waiver is a distinct requirement, not a replacement for another
+    // waiver. New publications join the organization's active set and are
+    // automatically included with future onboarding reservations.
     await tx.insert(waiverVersions).values({
       id,
       orgId: input.orgId,
+      programId: input.programId || null,
       version,
       title: input.title.trim(),
       body: input.body,
@@ -101,21 +107,28 @@ export async function createWaiverVersion(input: {
 }
 
 export async function getActiveWaiver(orgId: string): Promise<typeof waiverVersions.$inferSelect | null> {
+  const waivers = await getActiveWaivers(orgId)
+  return waivers[0] ?? null
+}
+
+/** All currently required waivers, newest first. */
+export async function getActiveWaivers(orgId: string): Promise<(typeof waiverVersions.$inferSelect)[]> {
   const rows = await db
     .select()
     .from(waiverVersions)
     .where(and(eq(waiverVersions.orgId, orgId), eq(waiverVersions.active, 1)))
-    .limit(1)
-  return rows[0] ?? null
+    .orderBy(desc(waiverVersions.createdAt), desc(waiverVersions.version))
+  return rows
 }
 
-/** The current waiver and collection rule governing a new onboarding reservation. */
+/** The active waiver set and collection rule governing a new onboarding reservation. */
 export async function getOnboardingWaiverSetup(orgId: string): Promise<{
   waiver: Awaited<ReturnType<typeof getActiveWaiver>>
+  waivers: Awaited<ReturnType<typeof getActiveWaivers>>
   method: OnboardingWaiverMethod | null
 }> {
-  const [waiver, profile] = await Promise.all([
-    getActiveWaiver(orgId),
+  const [waivers, profile] = await Promise.all([
+    getActiveWaivers(orgId),
     db
       .select({ onboardingWaiverMethod: orgProfiles.onboardingWaiverMethod })
       .from(orgProfiles)
@@ -124,10 +137,14 @@ export async function getOnboardingWaiverSetup(orgId: string): Promise<{
       .then((rows) => rows[0] ?? null),
   ])
 
-  if (!waiver) return { waiver: null, method: null }
+  if (waivers.length === 0) return { waiver: null, waivers: [], method: null }
   // Existing organizations already used the digital acceptance path. Preserve
   // that behavior until they expressly switch to paper collection.
-  return { waiver, method: normalizeOnboardingWaiverMethod(profile?.onboardingWaiverMethod) ?? 'digital' }
+  return {
+    waiver: waivers[0],
+    waivers,
+    method: normalizeOnboardingWaiverMethod(profile?.onboardingWaiverMethod) ?? 'digital',
+  }
 }
 
 /** Changes only the collection process; the published waiver version remains intact. */
@@ -146,6 +163,35 @@ export async function setOnboardingWaiverMethod(input: {
       target: orgProfiles.orgId,
       set: { onboardingWaiverMethod: input.method, updatedAt: now },
     })
+  return { ok: true }
+}
+
+/** Stops a waiver from being included with future onboarding sessions without
+ * deleting the version or any participant acceptance history. */
+export async function retireWaiverVersion(input: {
+  orgId: string
+  waiverVersionId: string
+  actorId: string
+}): Promise<Result> {
+  const rows = await db
+    .select()
+    .from(waiverVersions)
+    .where(and(eq(waiverVersions.id, input.waiverVersionId), eq(waiverVersions.orgId, input.orgId)))
+    .limit(1)
+  const waiver = rows[0]
+  if (!waiver) return { ok: false, error: 'Waiver not found for this organization.' }
+  if (!waiver.active) return { ok: true }
+
+  await db.transaction(async (tx) => {
+    await tx.update(waiverVersions).set({ active: 0 }).where(eq(waiverVersions.id, waiver.id))
+    await appendEvent(
+      tx,
+      EventTypes.WAIVER_RETIRED,
+      { waiverVersionId: waiver.id, orgId: input.orgId, version: waiver.version, sha256: waiver.sha256 },
+      input.actorId,
+    )
+  })
+
   return { ok: true }
 }
 

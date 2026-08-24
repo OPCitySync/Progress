@@ -15,8 +15,8 @@ export const ORGANIZATION_DOCUMENT_CATEGORY_DETAILS: Record<OrganizationDocument
     description: 'Safety plans, emergency instructions, site procedures, and equipment lists.',
   },
   template: {
-    label: 'Templates',
-    description: 'Reusable checklists, project plans, after-action reports, and team materials.',
+    label: 'Additional Documents',
+    description: 'Reusable checklists, project plans, after-action reports, and other team materials.',
   },
 }
 

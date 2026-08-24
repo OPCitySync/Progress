@@ -50,7 +50,6 @@ export default async function IssuerProfileLabPage() {
         <section className={styles.issuerMain} aria-label="Public Profile">
           <section className={styles.issuerPageHero}>
             <div><p className={styles.eyebrow}>Public profile</p><h1>Let people recognize the work.</h1><p>This is the first page a potential volunteer sees before deciding whether to join your organization.</p></div>
-            <Link href="/aesthetic-lab/issuer/profile/edit" className={styles.issuerPrimaryAction}><Edit3 size={17} /> Edit profile</Link>
           </section>
 
           <section className={styles.profilePreviewCard}>

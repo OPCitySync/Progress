@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, FileText, Plus, Repeat2, UsersRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, FileText, FolderKanban, Plus, Repeat2, UsersRound } from 'lucide-react'
 import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { orgs, tasks } from '@/lib/db/schema'
 import { closeTaskAction, createShiftAction, reopenTaskAction, updateTaskAction } from '@/app/actions'
 import { getShiftsWithCounts } from '@/lib/services/opportunities'
+import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getLabWorkspace } from '../../../lab-workspace'
 import { LabHeader } from '../../../LabHeader'
 import { LabNotice } from '../../../LabNotice'
@@ -25,9 +26,10 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
   const session = await requireRole('issuer')
   const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
-  const [org, task] = await Promise.all([
+  const [org, task, volunteerPrograms] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(tasks).where(and(eq(tasks.id, params.id), eq(tasks.orgId, orgId))).limit(1).then((rows) => rows[0] ?? null),
+    getVolunteerPrograms(orgId),
   ])
   const returnToWorkspace = '/aesthetic-lab/issuer/catalog?workspace=opportunities'
 
@@ -58,6 +60,7 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
           </section>
 
           <nav className={styles.workspaceSectionNav} aria-label="Workspace navigation">
+            <Link href="/aesthetic-lab/issuer/catalog?workspace=programs"><FolderKanban size={15} /> Volunteer Programs</Link>
             <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation"><FileText size={15} /> Documentation</Link>
             <Link href="/aesthetic-lab/issuer/catalog?workspace=onboarding"><Repeat2 size={15} /> Onboarding</Link>
             <Link href={redirectTo} data-active="true" aria-current="page"><UsersRound size={15} /> Opportunities</Link>
@@ -80,6 +83,7 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
                 <label>Opportunity title<input name="title" required defaultValue={task.title} /></label>
                 <label>Default location<input name="location" required defaultValue={task.location} /></label>
               </div>
+              <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={task.programId ?? ''}><option value="">Not assigned to a program</option>{volunteerPrograms.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Keep this template connected to the program it supports.</small></label>
               <label>Description<textarea name="description" required defaultValue={task.description} /></label>
               <div className={styles.labFormActions}>
                 <Link className={`${styles.labLinkButton} ${styles.labLinkButtonSecondary}`} href={returnToWorkspace}>Cancel</Link>
