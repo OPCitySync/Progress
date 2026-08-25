@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, eventChatMessages, eventChats, orgs, shifts, tasks, users } from '@/lib/db/schema'
+import { claims, eventChatMessages, eventChatReads, eventChats, orgs, shifts, tasks, users } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { participantDisplayName } from '@/lib/participant-name'
@@ -79,6 +79,7 @@ async function deleteChats(chats: ChatWithShift[], now: number) {
   await db.transaction(async (tx) => {
     for (const item of chats) {
       await tx.delete(eventChatMessages).where(eq(eventChatMessages.chatId, item.chat.id))
+      await tx.delete(eventChatReads).where(eq(eventChatReads.chatId, item.chat.id))
       await tx.delete(eventChats).where(eq(eventChats.id, item.chat.id))
       // The audit states only that the archive retention period elapsed;
       // message contents and participant lists never leave the organization database.
@@ -276,11 +277,12 @@ export async function getEventChatForOrg(chatId: string, orgId: string, now = Da
 export async function getEventChatsForParticipant(userId: string, now = Date.now()) {
   await cleanupExpiredEventChats(now)
   const rows = await db
-    .select({ chat: eventChats, shift: shifts, task: tasks })
+    .select({ chat: eventChats, shift: shifts, task: tasks, lastReadAt: eventChatReads.lastReadAt })
     .from(claims)
     .innerJoin(eventChats, eq(claims.shiftId, eventChats.shiftId))
     .innerJoin(shifts, eq(eventChats.shiftId, shifts.id))
     .innerJoin(tasks, eq(eventChats.taskId, tasks.id))
+    .leftJoin(eventChatReads, and(eq(eventChatReads.chatId, eventChats.id), eq(eventChatReads.userId, userId)))
     .where(and(eq(claims.userId, userId), inArray(claims.status, [...CHAT_CLAIM_STATUSES]), eq(eventChats.status, 'open')))
     .orderBy(asc(shifts.startsAt))
   return rows.filter((row) => !isExpired(row.chat, row.shift, now))
@@ -333,6 +335,32 @@ export async function getEventChatForParticipant(chatId: string, userId: string,
   const chat = await getChatWithMessages(chatId)
   if (!chat || isExpired(chat.chat, chat.shift, now)) return null
   return chat
+}
+
+/** Record that a signed-up participant has opened the current state of a live chat. */
+export async function markEventChatRead(chatId: string, userId: string): Promise<Result<{}>> {
+  const now = Date.now()
+  await cleanupExpiredEventChats(now)
+  const allowed = (await db
+    .select({ chatId: eventChats.id, status: eventChats.status, closesAt: eventChats.closesAt, shiftEndsAt: shifts.endsAt, shiftStatus: shifts.status })
+    .from(eventChats)
+    .innerJoin(claims, eq(eventChats.shiftId, claims.shiftId))
+    .innerJoin(shifts, eq(eventChats.shiftId, shifts.id))
+    .where(and(eq(eventChats.id, chatId), eq(claims.userId, userId), inArray(claims.status, [...CHAT_CLAIM_STATUSES])))
+    .limit(1))[0]
+
+  if (!allowed || allowed.status !== 'open' || allowed.closesAt <= now || allowed.shiftStatus !== 'open' || (allowed.shiftEndsAt !== null && allowed.shiftEndsAt <= now)) {
+    return { ok: false, error: 'That event chat is no longer available.' }
+  }
+
+  await db
+    .insert(eventChatReads)
+    .values({ id: randomUUID(), chatId, userId, lastReadAt: now })
+    .onConflictDoUpdate({
+      target: [eventChatReads.chatId, eventChatReads.userId],
+      set: { lastReadAt: now },
+    })
+  return { ok: true }
 }
 
 /** Add a message only if the actor is an authorized issuer or an active participant for this shift. */

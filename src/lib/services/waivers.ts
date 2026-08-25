@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { orgProfiles, waiverVersions, waiverAcceptances } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
@@ -195,21 +195,45 @@ export async function retireWaiverVersion(input: {
   return { ok: true }
 }
 
-export async function hasAcceptedWaiver(userId: string, waiverVersionId: string): Promise<boolean> {
+/** Returns the private signing receipts for the requested waiver versions. */
+export async function getWaiverSignatures(userId: string, waiverVersionIds: string[]) {
+  const ids = Array.from(new Set(waiverVersionIds.filter(Boolean)))
+  if (!ids.length) return new Map<string, { signerName: string | null; signedAt: number | null }>()
   const rows = await db
-    .select({ id: waiverAcceptances.id })
+    .select({
+      waiverVersionId: waiverAcceptances.waiverVersionId,
+      signerName: waiverAcceptances.signerName,
+      signedAt: waiverAcceptances.signedAt,
+      signatureMethod: waiverAcceptances.signatureMethod,
+      electronicConsentAt: waiverAcceptances.electronicConsentAt,
+    })
     .from(waiverAcceptances)
-    .where(
-      and(eq(waiverAcceptances.userId, userId), eq(waiverAcceptances.waiverVersionId, waiverVersionId)),
-    )
-    .limit(1)
-  return rows.length > 0
+    .where(and(eq(waiverAcceptances.userId, userId), inArray(waiverAcceptances.waiverVersionId, ids)))
+
+  return new Map(rows
+    .filter((row) => row.signatureMethod === 'typed_electronic' && Boolean(row.signerName?.trim()) && Boolean(row.electronicConsentAt) && Boolean(row.signedAt))
+    .map((row) => [row.waiverVersionId, { signerName: row.signerName, signedAt: row.signedAt }]))
 }
 
-export async function acceptWaiver(input: {
+/** A waiver is claim-ready only after its explicit typed electronic signature. */
+export async function hasSignedWaiver(userId: string, waiverVersionId: string): Promise<boolean> {
+  const signatures = await getWaiverSignatures(userId, [waiverVersionId])
+  return signatures.has(waiverVersionId)
+}
+
+export async function signWaiver(input: {
   waiverVersionId: string
   userId: string
+  signerName: string
+  electronicConsent: boolean
 }): Promise<Result> {
+  const signerName = input.signerName.trim().replace(/\s+/g, ' ')
+  if (signerName.length < 2 || signerName.length > 160) {
+    return { ok: false, error: 'Enter the name you intend to use as your electronic signature.' }
+  }
+  if (!input.electronicConsent) {
+    return { ok: false, error: 'Confirm that you intend to sign this waiver electronically.' }
+  }
   const rows = await db
     .select()
     .from(waiverVersions)
@@ -219,23 +243,40 @@ export async function acceptWaiver(input: {
   if (!waiver) return { ok: false, error: 'Waiver version not found.' }
   if (!waiver.active) return { ok: false, error: 'This waiver version is no longer active.' }
 
-  if (await hasAcceptedWaiver(input.userId, input.waiverVersionId)) {
+  if (await hasSignedWaiver(input.userId, input.waiverVersionId)) {
     return { ok: true }
   }
 
+  const now = Date.now()
   await db.transaction(async (tx) => {
-    await tx.insert(waiverAcceptances).values({
-      id: randomUUID(),
-      waiverVersionId: waiver.id,
-      orgId: waiver.orgId,
-      userId: input.userId,
+    const existing = (await tx
+      .select({ id: waiverAcceptances.id })
+      .from(waiverAcceptances)
+      .where(and(eq(waiverAcceptances.userId, input.userId), eq(waiverAcceptances.waiverVersionId, waiver.id)))
+      .limit(1))[0]
+    const signature = {
+      signatureMethod: 'typed_electronic' as const,
+      signerName,
+      electronicConsentAt: now,
+      signedAt: now,
+      acceptedAt: now,
       sha256: waiver.sha256,
-      acceptedAt: Date.now(),
-    })
+    }
+    if (existing) {
+      await tx.update(waiverAcceptances).set(signature).where(eq(waiverAcceptances.id, existing.id))
+    } else {
+      await tx.insert(waiverAcceptances).values({
+        id: randomUUID(),
+        waiverVersionId: waiver.id,
+        orgId: waiver.orgId,
+        userId: input.userId,
+        ...signature,
+      })
+    }
     await appendEvent(
       tx,
       EventTypes.WAIVER_ACCEPTED,
-      { waiverVersionId: waiver.id, orgId: waiver.orgId, version: waiver.version, sha256: waiver.sha256 },
+      { waiverVersionId: waiver.id, orgId: waiver.orgId, version: waiver.version, sha256: waiver.sha256, signatureMethod: 'typed_electronic' },
       input.userId,
     )
   })

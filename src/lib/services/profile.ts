@@ -175,6 +175,7 @@ export type PublicOpportunity = {
   title: string
   description: string
   location: string
+  isOnboarding: boolean
   credits: number
   status: 'open' | 'closed'
   openShiftCount: number
@@ -223,6 +224,7 @@ export async function aggregateOpportunities(taskRows: TaskRow[]): Promise<Map<s
       title: t.title,
       description: t.description,
       location: t.location,
+      isOnboarding: t.isOnboarding === 1,
       credits: t.credits,
       status: t.status,
       openShiftCount: sh.length,
@@ -342,8 +344,10 @@ export async function getPublicProfileBySlug(slug: string): Promise<PublicProfil
 export type DirectoryEntry = {
   org: OrgRow
   tagline: string
+  mission: string
   logoUrl: string
   causes: string[]
+  onboardingTaskId: string | null
   openCount: number
 }
 
@@ -388,8 +392,10 @@ export async function listPublicIssuers(opts: { search?: string; cause?: string;
   let entries: DirectoryEntry[] = rows.map(({ org, profile }) => ({
     org,
     tagline: profile?.tagline ?? '',
+    mission: profile?.mission ?? org.description ?? '',
     logoUrl: profile?.logoUrl ?? '',
     causes: profile ? jsonStringArray(profile.causes) : [],
+    onboardingTaskId: profile?.onboardingTaskId ?? null,
     openCount: openByOrg.get(org.id) ?? 0,
   }))
 

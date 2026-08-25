@@ -3,19 +3,22 @@ import { redirect } from 'next/navigation'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import {
   ArrowUpRight,
+  Bell,
   Bookmark,
   Building2,
   CalendarDays,
   ChevronDown,
+  ClipboardList,
   Heart,
-  MapPin,
   Sparkles,
 } from 'lucide-react'
 import { claims, orgs, shifts, tasks } from '@/lib/db/schema'
 import { db } from '@/lib/db/client'
+import { markNotificationReadAction } from '@/app/actions'
 import { requireSession } from '@/lib/auth/session'
 import { getFeed } from '@/lib/services/feed'
 import { getCityImpact } from '@/lib/services/leaderboard'
+import { getNotifications } from '@/lib/services/notifications'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
 import { getMyResume } from '@/lib/services/resume'
 import { savedItemIds } from '@/lib/services/saved-items'
@@ -31,6 +34,13 @@ function shortTime(timestamp: number | null) {
   return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
+function labNotificationLink(link: string, notificationId: string) {
+  if (link.startsWith('/participant/opportunities/')) return link.replace('/participant/opportunities/', '/aesthetic-lab/opportunities/')
+  if (link.startsWith('/participant')) return '/aesthetic-lab'
+  if (link.startsWith('/feed')) return '/aesthetic-lab'
+  return link || `/aesthetic-lab/messages?pane=inbox&item=${encodeURIComponent(notificationId)}`
+}
+
 /** The participant Home experience using the same session and records as the functional application. */
 export default async function AestheticLabPage() {
   const session = await requireSession('/aesthetic-lab')
@@ -38,7 +48,7 @@ export default async function AestheticLabPage() {
   if (session.role !== 'participant') redirect('/participant')
 
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [resume, joinedOrganizations, feed, impact, claimRows, cityEvents] = await Promise.all([
+  const [resume, joinedOrganizations, feed, impact, claimRows, cityEvents, notifications] = await Promise.all([
     getMyResume(session.sub),
     getParticipantOrganizations(session.sub),
     getFeed(session.sub),
@@ -63,6 +73,7 @@ export default async function AestheticLabPage() {
           .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
           .limit(3)
       : Promise.resolve([]),
+    getNotifications(session.sub, 20),
   ])
   const savedPostIds = await savedItemIds(session.sub, 'post', feed.map(({ post }) => post.id))
 
@@ -87,6 +98,7 @@ export default async function AestheticLabPage() {
   }))
   const participation = city?.participation?.status
   const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
+  const actionQueue = notifications.filter((notification) => notification.readAt === null)
 
   return (
     <main className={styles.app}>
@@ -94,38 +106,6 @@ export default async function AestheticLabPage() {
 
       <div className={styles.layout}>
         <aside className={styles.leftRail}>
-          <section className={styles.cityCard}>
-            <div className={styles.cityCardTop}>
-              <span className={styles.cityOverline}>My City is:</span>
-            </div>
-            <div className={styles.cityName}><MapPin size={17} /><span>{cityLabel}</span></div>
-            <p>{city ? 'This is your active City/Sync network.' : 'Choose a City/Sync network to find local opportunities.'}</p>
-            <Link href="/aesthetic-lab/cities">Explore other cities <ArrowUpRight size={14} /></Link>
-          </section>
-
-          <section className={styles.cityPulse}>
-            <div className={styles.sectionHeading}><p className={styles.eyebrow}>{city?.name ?? 'City'} Pulse</p><span>Live</span></div>
-            {[
-              { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
-              { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
-              { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
-            ].map((note) => <div key={note.label} className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span></div>)}
-          </section>
-
-          <section className={styles.quickLinks}>
-            <Link href="/aesthetic-lab/organizations"><Building2 size={17} /> Discover organizations</Link>
-            <Link href="/aesthetic-lab/opportunities?saved=1"><Heart size={17} /> Saved opportunities</Link>
-          </section>
-        </aside>
-
-        <section className={styles.feed} aria-label="MyCity Feed">
-          <section className={`${styles.issuerHero} ${styles.participantFeedHero}`}>
-            <div><p className={styles.eyebrow}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
-          </section>
-          <MyCityFeedContent posts={feedPosts} commitments={commitments} />
-        </section>
-
-        <aside className={styles.rightRail}>
           <section className={styles.profileCard}>
             <div className={styles.profileCover}><i /><i /><i /></div>
             <div className={styles.profileBody}>
@@ -140,14 +120,11 @@ export default async function AestheticLabPage() {
             </div>
           </section>
 
-          <section className={styles.todayEventsCard}>
-            <div className={styles.sectionHeading}><p className={styles.eyebrow}>My Calendar</p><CalendarDays size={17} /></div>
-            <div className={styles.todayEventList}>
-              {cityEvents.length === 0 ? <p className={styles.emptyCopy}>No upcoming public shifts are scheduled yet.</p> : cityEvents.map(({ task, org, shift }) => (
-                <Link href={`/aesthetic-lab/opportunities/${task.id}`} key={shift.id}><span>{shortTime(shift.startsAt)}</span><div><b>{task.title}</b><p>{task.location || org.name}</p></div><ArrowUpRight size={14} /></Link>
-              ))}
-            </div>
-            <Link className={styles.viewEventsLink} href="/aesthetic-lab/opportunities">View city calendar <ArrowUpRight size={14} /></Link>
+          <section className={styles.quickLinks}>
+            <p className={styles.eyebrow}>Quick Actions</p>
+            <Link href="/aesthetic-lab/commitments"><CalendarDays size={17} /> My Commitments</Link>
+            <Link href="/aesthetic-lab/organizations"><Building2 size={17} /> Discover organizations</Link>
+            <Link href="/aesthetic-lab/opportunities?saved=1"><Heart size={17} /> Saved opportunities</Link>
           </section>
 
           <section className={styles.impactCard}>
@@ -159,6 +136,65 @@ export default async function AestheticLabPage() {
             </div>
             <Link href="/aesthetic-lab/history"><Bookmark size={15} /> View service history</Link>
           </section>
+        </aside>
+
+        <section className={styles.feed} aria-label="MyCity Feed">
+          <section className={`${styles.issuerHero} ${styles.participantFeedHero}`}>
+            <div><p className={styles.eyebrow}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
+          </section>
+          <section className={`${styles.issuerTaskQueue} ${styles.participantActionQueue}`} aria-label="Your action queue">
+            <div className={styles.issuerPanelHeading}>
+              <div><p className={styles.eyebrow}>Action queue</p><h2>What needs your attention.</h2></div>
+              <Link className={styles.issuerQueueHistoryLink} href="/aesthetic-lab/messages?pane=inbox" aria-label="Open Messages" title="Open Messages">
+                <ClipboardList size={19} />
+              </Link>
+            </div>
+            <p className={styles.issuerQueueIntro}>Your City/Sync updates are collected here, so the next step is always clear.</p>
+            <div className={styles.issuerQueueList}>
+              {actionQueue.length ? actionQueue.map((notification) => <article key={notification.id}>
+                <span className={`${styles.issuerQueueIcon} ${styles.issuerQueueUpdate}`}><Bell size={17} /></span>
+                <div><b>{notification.title}</b><small>{notification.body || 'A City/Sync update is ready for you.'}</small></div>
+                <div className={styles.issuerQueueActions}>
+                  <form action={markNotificationReadAction}>
+                    <input type="hidden" name="notificationId" value={notification.id} />
+                    <input type="hidden" name="redirectTo" value="/aesthetic-lab" />
+                    <button type="submit">Acknowledge</button>
+                  </form>
+                  <Link href={labNotificationLink(notification.link, notification.id)}>Open <ArrowUpRight size={13} /></Link>
+                </div>
+              </article>) : <p className={styles.issuerQueueEmpty}>You’re caught up. New City/Sync updates will appear here.</p>}
+            </div>
+          </section>
+          <MyCityFeedContent posts={feedPosts} commitments={commitments} />
+        </section>
+
+        <aside className={styles.rightRail}>
+          <section className={styles.issuerFeedCityCard}>
+            <p className={styles.eyebrow}>Your City Network</p>
+            <h2>{cityLabel}</h2>
+            <p>{city ? 'This is the active network where you can discover opportunities, contribute, and stay connected.' : 'Choose an active City Network to find local opportunities.'}</p>
+            <Link href="/aesthetic-lab/cities">View City Network <ArrowUpRight size={14} /></Link>
+          </section>
+
+          <section className={styles.todayEventsCard}>
+            <div className={styles.sectionHeading}><p className={styles.eyebrow}>My Calendar</p><CalendarDays size={17} /></div>
+            <div className={styles.todayEventList}>
+              {cityEvents.length === 0 ? <p className={styles.emptyCopy}>No upcoming public shifts are scheduled yet.</p> : cityEvents.map(({ task, org, shift }) => (
+                <Link href={`/aesthetic-lab/opportunities/${task.id}`} key={shift.id}><span>{shortTime(shift.startsAt)}</span><div><b>{task.title}</b><p>{task.location || org.name}</p></div><ArrowUpRight size={14} /></Link>
+              ))}
+            </div>
+            <Link className={styles.viewEventsLink} href="/aesthetic-lab/opportunities">View city calendar <ArrowUpRight size={14} /></Link>
+          </section>
+
+          <section className={styles.cityPulse}>
+            <div className={styles.sectionHeading}><p className={styles.eyebrow}>{city?.name ?? 'City'} Pulse</p><span>Live</span></div>
+            {[
+              { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
+              { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
+              { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
+            ].map((note) => <div key={note.label} className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span></div>)}
+          </section>
+
         </aside>
       </div>
     </main>

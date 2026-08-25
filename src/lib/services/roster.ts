@@ -71,7 +71,10 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
     const acceptances = await db
       .select({ userId: waiverAcceptances.userId, waiverVersionId: waiverAcceptances.waiverVersionId })
       .from(waiverAcceptances)
-      .where(inArray(waiverAcceptances.waiverVersionId, waivers.map((waiver) => waiver.id)))
+      .where(and(
+        inArray(waiverAcceptances.waiverVersionId, waivers.map((waiver) => waiver.id)),
+        eq(waiverAcceptances.signatureMethod, 'typed_electronic'),
+      ))
     const acceptedByUser = new Map<string, Set<string>>()
     for (const acceptance of acceptances) {
       const set = acceptedByUser.get(acceptance.userId) ?? new Set<string>()

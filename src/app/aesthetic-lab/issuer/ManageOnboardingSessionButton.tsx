@@ -22,7 +22,7 @@ export function ManageOnboardingSessionButton({
   weeklyCapacity,
   programs,
 }: {
-  task: { id: string; title: string; description: string; location: string; credits: number; programId: string | null }
+  task: { id: string; title: string; description: string; location: string; beforeSession: string; bringItems: string; credits: number; programId: string | null }
   nextStartsAt: number | null
   durationMinutes: number
   weeklyCapacity: number
@@ -45,6 +45,8 @@ export function ManageOnboardingSessionButton({
           <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={task.programId ?? ''}><option value="">Not assigned to a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select></label>
           <label>Location<input name="location" required defaultValue={task.location} placeholder="Address or meeting point" /></label>
           <label>Description<textarea name="description" required defaultValue={task.description} /></label>
+          <label>Before the session <span>(optional)</span><textarea name="beforeSession" defaultValue={task.beforeSession} placeholder="List anything participants should complete or review before they arrive." /></label>
+          <label>What to bring <span>(optional)</span><textarea name="bringItems" defaultValue={task.bringItems} placeholder="e.g. Photo ID, comfortable shoes, water bottle" /></label>
           <div className={styles.issuerCalendarDateGrid}><label>Weekly capacity<input type="number" name="weeklyCapacity" min="1" required defaultValue={weeklyCapacity} /></label><label>Duration (minutes)<input type="number" name="durationMinutes" min="30" required defaultValue={durationMinutes} /></label></div>
           <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="submit"><Edit3 size={15} /> Save session</button></div>
         </form>

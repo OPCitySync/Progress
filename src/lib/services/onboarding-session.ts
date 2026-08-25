@@ -38,6 +38,8 @@ export async function createRecurringOnboardingSession(input: {
   title: string
   description: string
   location: string
+  beforeSession?: string
+  bringItems?: string
   credits: number
   firstStartsAt: number | null
   durationMinutes: number
@@ -47,9 +49,14 @@ export async function createRecurringOnboardingSession(input: {
   const title = input.title.trim()
   const description = input.description.trim()
   const location = normalizeOrganizationLocation(input.location)
+  const beforeSession = input.beforeSession?.trim() ?? ''
+  const bringItems = input.bringItems?.trim() ?? ''
 
   if (!title || title.length > 120) return { ok: false, error: 'Enter an onboarding session name of up to 120 characters.' }
   if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
+  if (beforeSession.length > 3_000 || bringItems.length > 1_000) {
+    return { ok: false, error: 'Keep preparation guidance under 3,000 characters and the bring-items list under 1,000 characters.' }
+  }
   if (!input.firstStartsAt || input.firstStartsAt < Date.now() - 5 * MINUTE_MS) {
     return { ok: false, error: 'Choose a first onboarding session that is now or in the future.' }
   }
@@ -96,6 +103,8 @@ export async function createRecurringOnboardingSession(input: {
       title,
       description,
       location,
+      beforeSession,
+      bringItems,
       credits: input.credits,
       slots: input.weeklyCapacity,
       startsAt: weeklyLabel,
@@ -154,6 +163,8 @@ export async function updateRecurringOnboardingSession(input: {
   title: string
   description: string
   location: string
+  beforeSession?: string
+  bringItems?: string
   credits: number
   nextStartsAt: number | null
   durationMinutes: number
@@ -163,8 +174,13 @@ export async function updateRecurringOnboardingSession(input: {
   const title = input.title.trim()
   const description = input.description.trim()
   const location = normalizeOrganizationLocation(input.location)
+  const beforeSession = input.beforeSession?.trim() ?? ''
+  const bringItems = input.bringItems?.trim() ?? ''
   if (!title || title.length > 120) return { ok: false, error: 'Enter an onboarding session name of up to 120 characters.' }
   if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
+  if (beforeSession.length > 3_000 || bringItems.length > 1_000) {
+    return { ok: false, error: 'Keep preparation guidance under 3,000 characters and the bring-items list under 1,000 characters.' }
+  }
   if (input.nextStartsAt && input.nextStartsAt < Date.now() - 5 * MINUTE_MS) {
     return { ok: false, error: 'Choose a next onboarding session that is now or in the future.' }
   }
@@ -229,6 +245,8 @@ export async function updateRecurringOnboardingSession(input: {
         title,
         description,
         location,
+        beforeSession,
+        bringItems,
         credits: input.credits,
         slots: input.weeklyCapacity,
         programId,

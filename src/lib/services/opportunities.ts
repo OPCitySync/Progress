@@ -4,7 +4,7 @@ import { db } from '@/lib/db/client'
 import { tasks, shifts, claims, orgs, users, verificationBatches } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
-import { getOnboardingWaiverSetup, hasAcceptedWaiver } from './waivers'
+import { getOnboardingWaiverSetup, hasSignedWaiver } from './waivers'
 import {
   notifyShiftClaimed,
   notifyShiftAssigned,
@@ -505,7 +505,7 @@ export async function checkClaimGate(shiftId: string, userId: string): Promise<C
   if (isOnboarding) {
     const unacceptedWaiverIds = (
       await Promise.all(waiverSetup.waivers.map(async (waiver) => (
-        (await hasAcceptedWaiver(userId, waiver.id)) ? null : waiver.id
+        (await hasSignedWaiver(userId, waiver.id)) ? null : waiver.id
       )))
     ).filter((id): id is string => Boolean(id))
     if (unacceptedWaiverIds.length > 0) {
@@ -525,7 +525,7 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
   if (!gate.ok) {
     let error: string
     if (gate.reason === 'waiver_required') {
-      error = 'You must accept the organization’s liability waiver before signing up.'
+      error = 'You must digitally sign the organization’s liability waiver before signing up.'
     } else if (gate.reason === 'credentials_required') {
       error = `This opportunity requires: ${gate.missing.map(credentialLabel).join(', ')}. Contact the organization to get verified.`
     } else {

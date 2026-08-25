@@ -4,11 +4,11 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { tasks, orgs, claims, orgProfiles } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
-import { getActiveWaiver, hasAcceptedWaiver } from '@/lib/services/waivers'
+import { getActiveWaiver, hasSignedWaiver } from '@/lib/services/waivers'
 import { getShiftsWithCounts, checkInOpen, type ShiftRow } from '@/lib/services/opportunities'
 import { getHeldCredentials } from '@/lib/services/credentials'
 import { parseCredentialList, credentialLabel } from '@/lib/credentials'
-import { claimShiftAction, selfCheckInAction } from '@/app/actions'
+import { claimShiftAction, selfCheckInAction, signWaiverAction } from '@/app/actions'
 import { Card, PageHeader, Badge, Button, Input, Flash, Mono, statusBadge } from '@/components/ui'
 import { fmtDateTime } from '@/lib/format'
 import { getActiveCity } from '@/lib/services/city-networks'
@@ -67,8 +67,8 @@ export default async function OpportunityDetail({
   const claimByShift = new Map(myClaims.filter((c) => c.status !== 'unclaimed').map((c) => [c.shiftId, c]))
 
   const waiver = await getActiveWaiver(org.id)
-  const waiverAccepted = waiver ? await hasAcceptedWaiver(session.sub, waiver.id) : true
-  const needsWaiver = !!waiver && !waiverAccepted
+  const waiverSigned = waiver ? await hasSignedWaiver(session.sub, waiver.id) : true
+  const needsWaiver = !!waiver && !waiverSigned
 
   const required = parseCredentialList(task.requiredCredentials)
   const held = required.length ? await getHeldCredentials(session.sub) : new Set<string>()
@@ -169,7 +169,14 @@ export default async function OpportunityDetail({
           <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-line rounded-xl border border-ink-200 bg-ink-50 p-4 text-xs leading-relaxed text-ink-600">
             {waiver!.body}
           </div>
-          <p className="mt-2 text-xs text-ink-400">You’ll accept this when you reserve your first shift below.</p>
+          <form action={signWaiverAction} className="mt-4 space-y-3 border-t border-ink-100 pt-4">
+            <input type="hidden" name="taskId" value={task.id} />
+            <input type="hidden" name="waiverVersionId" value={waiver!.id} />
+            <input type="hidden" name="redirectTo" value={`/participant/opportunities/${task.id}`} />
+            <label className="block text-xs font-semibold text-ink-700">Typed signature<Input name="signerName" required minLength={2} maxLength={160} autoComplete="name" defaultValue={session.name} className="mt-1" /></label>
+            <label className="flex items-start gap-2 text-xs leading-relaxed text-ink-600"><input type="checkbox" name="electronicConsent" value="yes" className="mt-0.5" required /><span>I have reviewed this waiver and intend my typed name to serve as my electronic signature for this version.</span></label>
+            <Button type="submit">Sign waiver</Button>
+          </form>
         </Card>
       ) : null}
 
@@ -188,6 +195,7 @@ export default async function OpportunityDetail({
               slotsLeft > 0 &&
               !myClaim &&
               !credBlocked &&
+              !needsWaiver &&
               !needsCityOnboarding &&
               !participationRestricted
             return (
@@ -229,6 +237,8 @@ export default async function OpportunityDetail({
                           ? 'Complete onboarding first'
                           : participationRestricted
                             ? 'Participation restricted'
+                          : needsWaiver
+                            ? 'Sign waiver first'
                             : credBlocked
                           ? 'Requirements needed'
                           : task.status !== 'open' || shift.status !== 'open'
@@ -240,16 +250,11 @@ export default async function OpportunityDetail({
                         <input type="hidden" name="shiftId" value={shift.id} />
                         <input type="hidden" name="taskId" value={task.id} />
                         <input type="hidden" name="redirectTo" value={`/participant/opportunities/${task.id}`} />
-                        {needsWaiver ? (
-                          <>
-                            <input type="hidden" name="acceptWaiverVersionId" value={waiver!.id} />
-                            <label className="flex items-start gap-2 text-xs text-ink-600">
-                              <input type="checkbox" name="waiverAgree" className="mt-0.5" />
-                              <span>I accept the liability waiver above.</span>
-                            </label>
-                          </>
-                        ) : null}
-                        <Button type="submit">{isOnboarding ? 'Reserve onboarding spot' : 'Reserve spot'}</Button>
+                        <label className="flex items-start gap-2 text-xs text-ink-600">
+                          <input type="checkbox" name="attendanceAcknowledgement" value="yes" className="mt-0.5" required />
+                          <span>I intend to attend. If my plans change, I will cancel before the 24-hour cancellation cutoff.</span>
+                        </label>
+                        <Button type="submit">{isOnboarding ? 'Reserve a spot' : 'Sign up'}</Button>
                       </form>
                     )}
                   </div>

@@ -41,7 +41,7 @@ import {
 import { parseCredentialList } from '@/lib/credentials'
 import { setInterests, setNeighborhood, notifyMatchingParticipants } from '@/lib/services/interests'
 import { setResumePublic } from '@/lib/services/resume'
-import { createWaiverVersion, acceptWaiver, retireWaiverVersion, setOnboardingWaiverMethod } from '@/lib/services/waivers'
+import { createWaiverVersion, retireWaiverVersion, setOnboardingWaiverMethod, signWaiver } from '@/lib/services/waivers'
 import {
   ALLOWED_ORGANIZATION_DOCUMENT_TYPES,
   ALLOWED_WAIVER_DOCUMENT_TYPES,
@@ -75,7 +75,7 @@ import {
   sendRosterMessage,
   updateVolunteerGroupMembers,
 } from '@/lib/services/roster'
-import { createEventChat, postEventChatMessage } from '@/lib/services/event-chat'
+import { createEventChat, markEventChatRead, postEventChatMessage } from '@/lib/services/event-chat'
 import { getActiveCity, joinCityNetwork, setActiveCity } from '@/lib/services/city-networks'
 import { participantDisplayName } from '@/lib/participant-name'
 import {
@@ -602,6 +602,8 @@ export async function createOnboardingSessionAction(formData: FormData) {
     title: str(formData, 'title'),
     description: str(formData, 'description'),
     location: str(formData, 'location'),
+    beforeSession: str(formData, 'beforeSession'),
+    bringItems: str(formData, 'bringItems'),
     credits: int(formData, 'credits'),
     firstStartsAt: parseDateTime(formData, 'firstStartsAt'),
     durationMinutes: int(formData, 'durationMinutes'),
@@ -623,6 +625,8 @@ export async function updateOnboardingSessionAction(formData: FormData) {
     title: str(formData, 'title'),
     description: str(formData, 'description'),
     location: str(formData, 'location'),
+    beforeSession: str(formData, 'beforeSession'),
+    bringItems: str(formData, 'bringItems'),
     credits: int(formData, 'credits'),
     nextStartsAt: parseDateTime(formData, 'firstStartsAt'),
     durationMinutes: int(formData, 'durationMinutes'),
@@ -1513,6 +1517,26 @@ export async function postParticipantEventChatMessageAction(formData: FormData) 
   )
 }
 
+/** Persist a participant's live event-chat read position without changing routes. */
+export async function markParticipantEventChatReadAction(formData: FormData) {
+  const session = await requireActor('participant')
+  return markEventChatRead(str(formData, 'chatId'), session.sub)
+}
+
+/** Mark a participant inbox item as read without navigating away from Messages. */
+export async function markParticipantInboxItemReadAction(formData: FormData) {
+  const session = await requireActor('participant')
+  const itemId = str(formData, 'itemId')
+  if (!itemId) return
+
+  if (str(formData, 'kind') === 'organization-message') {
+    await markMessageRead(itemId, session.sub)
+  } else {
+    await markNotificationRead(itemId, session.sub)
+  }
+  revalidatePath('/aesthetic-lab/messages')
+}
+
 export async function createVolunteerGroupAction(formData: FormData) {
   const session = await requireActor('issuer', 'participants.manage')
   if (!session.orgId) redirect('/issuer')
@@ -1760,25 +1784,77 @@ export async function setVolunteerTaskEligibilityAction(formData: FormData) {
 // participant
 // ---------------------------------------------------------------------------
 
+/**
+ * Records an explicit, private electronic waiver signature before a volunteer
+ * can reserve a digitally-waivered onboarding session. The typed signing name
+ * is intentionally kept out of participant profiles and public/city ledgers.
+ */
+export async function signWaiverAction(formData: FormData) {
+  const session = await requireActor('participant')
+  const taskId = str(formData, 'taskId')
+  const waiverVersionId = str(formData, 'waiverVersionId')
+  const requestedDestination = str(formData, 'redirectTo').trim()
+  const destination = requestedDestination.startsWith('/') && !requestedDestination.startsWith('//')
+    ? requestedDestination
+    : `/participant/opportunities/${taskId}`
+
+  if (!taskId || !waiverVersionId) {
+    back(formData, destination, { error: 'The waiver signature request is incomplete.' })
+  }
+
+  // A participant may sign only a currently active waiver owned by the
+  // organization that issued this opportunity.
+  const task = (await db.select({ orgId: tasks.orgId }).from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
+  const waiver = task
+    ? (await db
+      .select({ id: waiverVersions.id })
+      .from(waiverVersions)
+      .where(and(eq(waiverVersions.id, waiverVersionId), eq(waiverVersions.orgId, task.orgId), eq(waiverVersions.active, 1)))
+      .limit(1))[0]
+    : null
+  if (!waiver) back(formData, destination, { error: 'That waiver is no longer available for this opportunity.' })
+
+  const result = await signWaiver({
+    waiverVersionId,
+    userId: session.sub,
+    signerName: str(formData, 'signerName'),
+    electronicConsent: str(formData, 'electronicConsent') === 'yes',
+  })
+  back(formData, destination, result.ok
+    ? { ok: 'Waiver signed. You can now reserve a session.' }
+    : { error: result.error })
+}
+
 export async function claimShiftAction(formData: FormData) {
   const session = await requireActor('participant')
   const shiftId = str(formData, 'shiftId')
   const taskId = str(formData, 'taskId') // for redirect back to the opportunity
-  const dest = `/participant/opportunities/${taskId}`
+  const requestedDestination = str(formData, 'redirectTo').trim()
+  const dest = requestedDestination.startsWith('/') && !requestedDestination.startsWith('//')
+    ? requestedDestination
+    : `/participant/opportunities/${taskId}`
+  const requestedSuccessDestination = str(formData, 'successRedirectTo').trim()
+  const successDestination = requestedSuccessDestination.startsWith('/') && !requestedSuccessDestination.startsWith('//')
+    ? requestedSuccessDestination
+    : null
 
-  // Each currently active waiver must be accepted before a digital onboarding
-  // reservation can be completed.
-  const waiverVersionIds = Array.from(new Set(strList(formData, 'acceptWaiverVersionId')))
-  for (const waiverVersionId of waiverVersionIds) {
-    if (!formData.has(`waiverAgree:${waiverVersionId}`)) {
-      back(formData, dest, { error: 'Please accept every liability waiver before reserving this shift.' })
-    }
-    const accepted = await acceptWaiver({ waiverVersionId, userId: session.sub })
-    if (!accepted.ok) back(formData, dest, { error: accepted.error })
+  // A reservation is intentionally lightweight, but it must be deliberate.
+  // This remains server-enforced so a client cannot reserve a capacity-limited
+  // shift without affirming their intent to attend and cancel responsibly.
+  if (str(formData, 'attendanceAcknowledgement') !== 'yes') {
+    back(formData, dest, { error: 'Please acknowledge your attendance commitment before reserving a spot.' })
   }
 
   const result = await claimShift(shiftId, session.sub)
-  back(formData, dest, result.ok ? { ok: 'You’re signed up for the shift.' } : { error: result.error })
+  const task = taskId
+    ? (await db.select({ isOnboarding: tasks.isOnboarding }).from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
+    : null
+  if (result.ok && successDestination) {
+    back(formData, successDestination, { ok: task?.isOnboarding === 1 ? 'Your spot is reserved. Here is everything you need for this session.' : 'You’re signed up for the shift.' }, false)
+  }
+  back(formData, dest, result.ok
+    ? { ok: task?.isOnboarding === 1 ? 'Your spot is reserved.' : 'You’re signed up for the shift.' }
+    : { error: result.error })
 }
 
 export async function selfCheckInAction(formData: FormData) {

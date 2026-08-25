@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Archive, Bell, CalendarDays, Inbox, Mail, MessageCircle, Search, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { markNotificationReadAction, markOrganizationMessageReadAction, postParticipantEventChatMessageAction } from '@/app/actions'
+import { markParticipantEventChatReadAction, markParticipantInboxItemReadAction, postParticipantEventChatMessageAction } from '@/app/actions'
 import styles from './prototype.module.css'
 
 type EventMessage = {
@@ -22,10 +22,11 @@ type EventChat = {
   endsAt: number | null
   closesAt: number
   messageCount: number
+  unreadCount: number
   messages: EventMessage[]
 }
 
-type ArchivedEventChat = Omit<EventChat, 'closesAt'> & {
+type ArchivedEventChat = Omit<EventChat, 'closesAt' | 'unreadCount'> & {
   archivedAt: number
   deleteAt: number
 }
@@ -85,6 +86,8 @@ export function ParticipantMessageWorkspace({
   const [selectedChatId, setSelectedChatId] = useState(() => chats.some((chat) => chat.id === initialChatId) ? initialChatId! : chats[0]?.id ?? '')
   const [selectedInboxId, setSelectedInboxId] = useState(() => inbox.some((item) => item.id === initialInboxId) ? initialInboxId! : inbox[0]?.id ?? '')
   const [selectedArchiveId, setSelectedArchiveId] = useState(() => archivedChats[0]?.id ?? '')
+  const [readEventChatIds, setReadEventChatIds] = useState<Set<string>>(() => new Set())
+  const [readInboxItemIds, setReadInboxItemIds] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     if (initialPane === 'inbox') {
@@ -105,6 +108,32 @@ export function ParticipantMessageWorkspace({
   const selectedChat = chats.find((chat) => chat.id === selectedChatId) ?? chats[0] ?? null
   const selectedInbox = inbox.find((item) => item.id === selectedInboxId) ?? inbox[0] ?? null
   const selectedArchive = archivedChats.find((chat) => chat.id === selectedArchiveId) ?? archivedChats[0] ?? null
+  const unreadInboxCount = inbox.filter((item) => item.unread && !readInboxItemIds.has(item.id)).length
+  const unreadEventChatCount = chats.reduce((count, chat) => count + (readEventChatIds.has(chat.id) ? 0 : chat.unreadCount), 0)
+
+  useEffect(() => {
+    if (pane !== 'events' || !selectedChat || selectedChat.unreadCount === 0) return
+
+    setReadEventChatIds((current) => {
+      if (current.has(selectedChat.id)) return current
+      return new Set(current).add(selectedChat.id)
+    })
+
+    const formData = new FormData()
+    formData.set('chatId', selectedChat.id)
+    void markParticipantEventChatReadAction(formData)
+  }, [pane, selectedChat])
+
+  function openInboxItem(item: InboxItem) {
+    setSelectedInboxId(item.id)
+    if (!item.unread || readInboxItemIds.has(item.id)) return
+
+    setReadInboxItemIds((current) => new Set(current).add(item.id))
+    const formData = new FormData()
+    formData.set('itemId', item.id)
+    formData.set('kind', item.kind)
+    void markParticipantInboxItemReadAction(formData)
+  }
 
   const searchPlaceholder = pane === 'events'
     ? 'Search event chats'
@@ -121,8 +150,8 @@ export function ParticipantMessageWorkspace({
       <aside className={styles.issuerEventChatEventPane} aria-label="Message views">
         <label className={styles.issuerEventChatSearch}><Search size={14} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} /></label>
         <div className={styles.issuerEventChatTabs} role="tablist" aria-label="Messages views">
-          <button type="button" role="tab" aria-selected={pane === 'events'} data-active={pane === 'events' ? 'true' : undefined} onClick={() => setPane('events')}><MessageCircle size={13} /> Event chats</button>
-          <button type="button" role="tab" aria-selected={pane === 'inbox'} data-active={pane === 'inbox' ? 'true' : undefined} onClick={() => setPane('inbox')}><Inbox size={13} /> Inbox</button>
+          <button type="button" role="tab" aria-selected={pane === 'inbox'} data-active={pane === 'inbox' ? 'true' : undefined} onClick={() => setPane('inbox')}><Inbox size={13} /> Inbox{unreadInboxCount ? <span className={styles.issuerEventChatTabBadge} aria-label={`${unreadInboxCount} unread inbox message${unreadInboxCount === 1 ? '' : 's'}`}>{unreadInboxCount > 99 ? '99+' : unreadInboxCount}</span> : null}</button>
+          <button type="button" role="tab" aria-selected={pane === 'events'} data-active={pane === 'events' ? 'true' : undefined} onClick={() => setPane('events')}><MessageCircle size={13} /> Event chats{unreadEventChatCount ? <span className={styles.issuerEventChatTabBadge} aria-label={`${unreadEventChatCount} unread event-chat message${unreadEventChatCount === 1 ? '' : 's'}`}>{unreadEventChatCount > 99 ? '99+' : unreadEventChatCount}</span> : null}</button>
           <button type="button" role="tab" aria-selected={pane === 'archive'} data-active={pane === 'archive' ? 'true' : undefined} onClick={() => setPane('archive')}><Archive size={13} /> Archive</button>
         </div>
         <div className={styles.issuerEventChatEventList}>
@@ -135,9 +164,9 @@ export function ParticipantMessageWorkspace({
           }) : null}
           {pane === 'events' && !filteredChats.length ? <div className={styles.issuerEventChatNoEvents}><CalendarDays size={19} /><b>{chats.length ? 'No event chats match that search.' : 'No event chats are open.'}</b><p>{chats.length ? 'Try another event title or schedule detail.' : 'When an organization opens a chat for a shift you joined, it will appear here.'}</p></div> : null}
 
-          {pane === 'inbox' && filteredInbox.length ? filteredInbox.map((item) => <button type="button" key={item.id} className={styles.issuerOutboundMessageRow} data-active={selectedInbox?.id === item.id ? 'true' : undefined} onClick={() => setSelectedInboxId(item.id)}>
+          {pane === 'inbox' && filteredInbox.length ? filteredInbox.map((item) => <button type="button" key={item.id} className={styles.issuerOutboundMessageRow} data-active={selectedInbox?.id === item.id ? 'true' : undefined} onClick={() => openInboxItem(item)}>
             <span className={styles.issuerOutboundMessageIcon}>{item.kind === 'organization-message' ? <Mail size={14} /> : <Bell size={14} />}</span>
-            <div><span>{item.kind === 'organization-message' ? item.source : 'City/Sync update'}{item.unread ? ' · New' : ''}</span><b>{item.title}</b><small>{item.body || 'An update from City/Sync.'}</small><em>{shortDate(item.createdAt)}</em></div>
+            <div><span>{item.kind === 'organization-message' ? item.source : 'City/Sync update'}{item.unread && !readInboxItemIds.has(item.id) ? ' · New' : ''}</span><b>{item.title}</b><small>{item.body || 'An update from City/Sync.'}</small><em>{shortDate(item.createdAt)}</em></div>
           </button>) : null}
           {pane === 'inbox' && !filteredInbox.length ? <div className={styles.issuerEventChatNoEvents}><Inbox size={19} /><b>{inbox.length ? 'No messages match that search.' : 'Your Inbox is clear.'}</b><p>{inbox.length ? 'Try a message subject, organization, or phrase.' : 'Messages from your organizations and City/Sync updates will appear here.'}</p></div> : null}
 
@@ -176,11 +205,7 @@ export function ParticipantMessageWorkspace({
             <div><p className={styles.eyebrow}>{selectedInbox.kind === 'organization-message' ? `From ${selectedInbox.source}` : 'City/Sync update'}</p><h3>{selectedInbox.title}</h3><small>{fullDate(selectedInbox.createdAt)}</small></div>
           </header>
           <div className={styles.issuerOutboundMessageBody}><p>{selectedInbox.body || 'An update from City/Sync.'}</p></div>
-          <footer>{selectedInbox.unread ? <form action={selectedInbox.kind === 'organization-message' ? markOrganizationMessageReadAction : markNotificationReadAction}>
-            <input type="hidden" name={selectedInbox.kind === 'organization-message' ? 'messageId' : 'notificationId'} value={selectedInbox.id} />
-            <input type="hidden" name="redirectTo" value={`/aesthetic-lab/messages?pane=inbox&item=${encodeURIComponent(selectedInbox.id)}`} />
-            <button className={styles.labLinkButton} type="submit">Mark read</button>
-          </form> : <span><Inbox size={14} /> Read</span>}{selectedInbox.link ? <Link className={styles.labLinkButton} href={selectedInbox.link}>Open related item</Link> : null}</footer>
+          {selectedInbox.link ? <footer><div className={styles.participantMessageActions}><Link className={`${styles.participantMessageAction} ${styles.participantMessageActionPrimary}`} href={selectedInbox.link}>Open Related Item</Link></div></footer> : null}
         </> : null}
 
         {pane === 'archive' && selectedArchive ? <>

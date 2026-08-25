@@ -176,6 +176,7 @@ async function main() {
 
   for (const signup of participation) {
     const userId = byKey(signup.volunteer)
+    const volunteer = volunteers.find((candidate) => candidate.key === signup.volunteer)
     const signedAt = Math.min(now, (signup.shift.startsAt ?? now) - DAY)
     await db.insert(claims).values({
       id: randomUUID(),
@@ -200,6 +201,10 @@ async function main() {
         orgId: target.org.id,
         userId,
         sha256: activeWaiver.sha256,
+        signatureMethod: 'typed_electronic',
+        signerName: volunteer?.name ?? signup.volunteer,
+        electronicConsentAt: signedAt,
+        signedAt,
         acceptedAt: signedAt,
       }).onConflictDoNothing()
     }

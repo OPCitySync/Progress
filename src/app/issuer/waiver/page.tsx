@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { waiverVersions, waiverAcceptances, orgs } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
@@ -24,7 +24,7 @@ export default async function WaiverPage({
   const acceptCounts = await db
     .select({ waiverVersionId: waiverAcceptances.waiverVersionId, n: sql<number>`count(*)` })
     .from(waiverAcceptances)
-    .where(eq(waiverAcceptances.orgId, orgId))
+    .where(and(eq(waiverAcceptances.orgId, orgId), eq(waiverAcceptances.signatureMethod, 'typed_electronic')))
     .groupBy(waiverAcceptances.waiverVersionId)
   const countByVersion = new Map(acceptCounts.map((c) => [c.waiverVersionId, Number(c.n)]))
 
@@ -35,7 +35,7 @@ export default async function WaiverPage({
       <Card className="mb-6">
         <PageHeader
           title="Liability waiver"
-          subtitle="Participants must accept your active waiver before claiming an opportunity. Acceptance is recorded against the document hash — chain-ready by design."
+          subtitle="Participants must sign your active waiver before claiming an opportunity. Each private electronic signature is recorded against the document hash."
         />
 
         {active ? (
@@ -49,7 +49,7 @@ export default async function WaiverPage({
                   Document hash (sha256): <Mono>{active.sha256}</Mono>
                 </p>
                 <p className="mt-1 text-xs text-ink-400">
-                  {countByVersion.get(active.id) ?? 0} acceptance
+                  {countByVersion.get(active.id) ?? 0} electronic signature
                   {(countByVersion.get(active.id) ?? 0) === 1 ? '' : 's'} · created {fmtDateTime(active.createdAt)}
                 </p>
                 {active.documentUrl ? (
@@ -87,7 +87,7 @@ export default async function WaiverPage({
         <h2 className="font-semibold text-ink-900">Publish a New Waiver</h2>
         <p className="mt-1 text-sm text-ink-500">
           Publishing a new version deactivates the previous one (atomic rollover). Participants who
-          accepted an older version will be asked to accept the new one on their next claim.
+          signed an older version will be asked to sign the new one before their next claim.
         </p>
         <form action={createWaiverAction} encType="multipart/form-data" className="mt-5 space-y-4">
           <input type="hidden" name="redirectTo" value="/issuer/waiver" />
@@ -139,7 +139,7 @@ export default async function WaiverPage({
                       {v.title} · v{v.version}
                     </p>
                     <p className="text-xs text-ink-400">
-                      <Mono>{v.sha256.slice(0, 24)}…</Mono> · {countByVersion.get(v.id) ?? 0} acceptances
+                      <Mono>{v.sha256.slice(0, 24)}…</Mono> · {countByVersion.get(v.id) ?? 0} signatures
                     </p>
                   </div>
                   <Badge tone="gray">retired</Badge>

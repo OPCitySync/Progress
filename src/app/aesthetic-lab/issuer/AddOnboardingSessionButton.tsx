@@ -32,6 +32,8 @@ export function AddOnboardingSessionButton({ defaultLocation = '', programs = []
           <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={defaultProgramId ?? ''}><option value="">Not assigned to a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Connect this session to the area of work it welcomes volunteers into.</small></label>
           <label>Location<input name="location" required defaultValue={defaultLocation} placeholder="Address or meeting point" /></label>
           <label>Description<textarea name="description" required defaultValue="A welcoming local orientation for people beginning with our organization." /></label>
+          <label>Before the session <span>(optional)</span><textarea name="beforeSession" placeholder="List anything participants should complete or review before they arrive." /></label>
+          <label>What to bring <span>(optional)</span><textarea name="bringItems" placeholder="e.g. Photo ID, comfortable shoes, water bottle" /></label>
           <label>First session<input name="firstStartsAt" type="datetime-local" required defaultValue={suggestedDateTime()} /></label>
           <div className={styles.issuerCalendarDateGrid}><label>Capacity<input type="number" name="weeklyCapacity" min="1" required defaultValue="20" /></label><label>Duration (minutes)<input type="number" name="durationMinutes" min="30" required defaultValue="45" /></label></div>
           <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="submit"><Plus size={15} /> Add session</button></div>

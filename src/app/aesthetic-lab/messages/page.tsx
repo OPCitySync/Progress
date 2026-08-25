@@ -37,6 +37,7 @@ export default async function ParticipantMessagesPage({ searchParams }: { search
     closesAt: item.chat.closesAt,
     messageCount: detailsById.get(item.chat.id)?.messages.length ?? 0,
     messages: detailsById.get(item.chat.id)?.messages ?? [],
+    unreadCount: (detailsById.get(item.chat.id)?.messages ?? []).filter((message) => message.senderUserId !== session.sub && (item.lastReadAt === null || message.createdAt > item.lastReadAt)).length,
   }))
   const archive = archivedChats.map((item) => ({
     id: item.chat.id,

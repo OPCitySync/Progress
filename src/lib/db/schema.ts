@@ -331,6 +331,15 @@ export const waiverAcceptances = sqliteTable(
     orgId: text('org_id').notNull(),
     userId: text('user_id').notNull(),
     sha256: text('sha256').notNull(),
+    // Typed signatures are private to the issuing organization. Public
+    // profiles and city-ledger events never expose a participant's signing
+    // name or the underlying waiver content.
+    signatureMethod: text('signature_method', { enum: ['acknowledgement', 'typed_electronic'] })
+      .notNull()
+      .default('acknowledgement'),
+    signerName: text('signer_name'),
+    electronicConsentAt: integer('electronic_consent_at'),
+    signedAt: integer('signed_at'),
     acceptedAt: integer('accepted_at').notNull(),
   },
   (t) => ({
@@ -521,6 +530,11 @@ export const tasks = sqliteTable('tasks', {
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
   location: text('location').notNull().default(''),
+  // Organization-authored preparation guidance shown on a participant's
+  // reserved-session page. These are intentionally plain text so each
+  // organization can describe forms, preparation, and supplies in its own way.
+  beforeSession: text('before_session').notNull().default(''),
+  bringItems: text('bring_items').notNull().default(''),
   credits: integer('credits').notNull(),
   slots: integer('slots').notNull().default(1),
   startsAt: text('starts_at').notNull().default(''),
@@ -878,6 +892,22 @@ export const eventChatMessages = sqliteTable(
   },
   (t) => ({
     byChat: index('event_chat_messages_chat_created').on(t.chatId, t.createdAt),
+  }),
+)
+
+// Per-participant read position for a temporary event chat. This is private
+// inbox state: it never becomes part of the public or organizational ledger.
+export const eventChatReads = sqliteTable(
+  'event_chat_reads',
+  {
+    id: text('id').primaryKey(),
+    chatId: text('chat_id').notNull(),
+    userId: text('user_id').notNull(),
+    lastReadAt: integer('last_read_at').notNull(),
+  },
+  (t) => ({
+    oneReadPositionPerParticipant: uniqueIndex('event_chat_reads_chat_user').on(t.chatId, t.userId),
+    byParticipant: index('event_chat_reads_user').on(t.userId, t.lastReadAt),
   }),
 )
 

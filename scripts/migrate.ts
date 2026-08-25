@@ -64,6 +64,10 @@ const statements = [
     org_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     sha256 TEXT NOT NULL,
+    signature_method TEXT NOT NULL DEFAULT 'acknowledgement',
+    signer_name TEXT,
+    electronic_consent_at INTEGER,
+    signed_at INTEGER,
     accepted_at INTEGER NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS waiver_acceptances_user_version
@@ -163,6 +167,8 @@ const statements = [
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     location TEXT NOT NULL DEFAULT '',
+    before_session TEXT NOT NULL DEFAULT '',
+    bring_items TEXT NOT NULL DEFAULT '',
     credits INTEGER NOT NULL,
     slots INTEGER NOT NULL DEFAULT 1,
     starts_at TEXT NOT NULL DEFAULT '',
@@ -330,6 +336,13 @@ const statements = [
     sender_user_id TEXT NOT NULL,
     body TEXT NOT NULL,
     created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS event_chat_reads (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    last_read_at INTEGER NOT NULL,
+    UNIQUE(chat_id, user_id)
   )`,
   `CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY,
@@ -610,6 +623,8 @@ const columnMigrations = [
   `ALTER TABLE recurring_event_schedules ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`,
   `ALTER TABLE recurring_event_schedules ADD COLUMN enrollment_mode TEXT NOT NULL DEFAULT 'open_claims'`,
   `ALTER TABLE tasks ADD COLUMN required_credentials TEXT NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE tasks ADD COLUMN before_session TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE tasks ADD COLUMN bring_items TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE tasks ADD COLUMN is_onboarding INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE tasks ADD COLUMN program_id TEXT`,
   `ALTER TABLE organization_documents ADD COLUMN program_id TEXT`,
@@ -643,6 +658,10 @@ const columnMigrations = [
   `ALTER TABLE claims ADD COLUMN verification_batch_id TEXT`,
   `ALTER TABLE claims ADD COLUMN verified_by_user_id TEXT`,
   `ALTER TABLE claims ADD COLUMN verified_at INTEGER`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN signature_method TEXT NOT NULL DEFAULT 'acknowledgement'`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN signer_name TEXT`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN electronic_consent_at INTEGER`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN signed_at INTEGER`,
   // The existing profile pointer becomes the designated primary series. New
   // onboarding series are stored directly on their task records.
   `UPDATE tasks SET is_onboarding = 1 WHERE id IN (SELECT onboarding_task_id FROM org_profiles WHERE onboarding_task_id IS NOT NULL)`,
@@ -688,6 +707,8 @@ const indexes = [
   `CREATE INDEX IF NOT EXISTS event_chats_org_status ON event_chats (org_id, status, closes_at)`,
   `CREATE INDEX IF NOT EXISTS event_chats_expiry ON event_chats (status, closes_at)`,
   `CREATE INDEX IF NOT EXISTS event_chat_messages_chat_created ON event_chat_messages (chat_id, created_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS event_chat_reads_chat_user ON event_chat_reads (chat_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS event_chat_reads_user ON event_chat_reads (user_id, last_read_at)`,
   `CREATE INDEX IF NOT EXISTS verification_batches_shift ON verification_batches (shift_id, verified_at)`,
   `CREATE INDEX IF NOT EXISTS verification_batches_org ON verification_batches (org_id, verified_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_reflections_claim ON volunteer_reflections (claim_id)`,

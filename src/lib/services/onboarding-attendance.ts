@@ -86,7 +86,11 @@ export async function getOnboardingSessionParticipants(input: {
       ? db
           .select({ userId: waiverAcceptances.userId, waiverVersionId: waiverAcceptances.waiverVersionId })
           .from(waiverAcceptances)
-          .where(and(eq(waiverAcceptances.orgId, input.orgId), inArray(waiverAcceptances.waiverVersionId, waiverVersionIds)))
+          .where(and(
+            eq(waiverAcceptances.orgId, input.orgId),
+            inArray(waiverAcceptances.waiverVersionId, waiverVersionIds),
+            eq(waiverAcceptances.signatureMethod, 'typed_electronic'),
+          ))
       : Promise.resolve([]),
   ])
 
