@@ -2,7 +2,7 @@
 
 import { Check, Copy, Link2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import styles from '../../prototype.module.css'
+import styles from '../prototype.module.css'
 
 export function VolunteerRosterInviteLink({ code }: { code: string }) {
   const path = `/volunteer-invite?code=${encodeURIComponent(code)}`
