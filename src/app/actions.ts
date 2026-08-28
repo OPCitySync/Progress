@@ -70,6 +70,8 @@ import { createPost, toggleHeart } from '@/lib/services/feed'
 import { toggleSavedItem, type SavedItemKind } from '@/lib/services/saved-items'
 import {
   createVolunteerGroup,
+  createVolunteerRosterInvite,
+  acceptVolunteerRosterInvite,
   markAllMessagesRead,
   markMessageRead,
   sendRosterMessage,
@@ -140,6 +142,13 @@ function safeNext(formData: FormData): string | null {
   return null
 }
 
+/** Extract the invite code only from City/Sync's own volunteer-invite path. */
+function volunteerRosterInviteFromPath(path: string | null): string {
+  if (!path) return ''
+  const url = new URL(path, 'http://local')
+  return url.pathname === '/volunteer-invite' ? (url.searchParams.get('code') ?? '').trim() : ''
+}
+
 function back(
   formData: FormData,
   fallback: string,
@@ -194,8 +203,13 @@ export async function signInAction(formData: FormData) {
 
   const session = await defaultSessionForUser(user.id)
   if (!session) back(formData, '/login', { error: 'Your account is missing an active identity. Contact support.' })
+  const rosterInvite = volunteerRosterInviteFromPath(safeNext(formData))
+  if (rosterInvite && session.role === 'participant') {
+    const inviteResult = await acceptVolunteerRosterInvite({ userId: user.id, code: rosterInvite })
+    if (!inviteResult.ok) back(formData, '/login', { error: inviteResult.error })
+  }
   await createSession(session)
-  redirect(safeNext(formData) ?? aestheticHomeFor(session.role))
+  redirect(rosterInvite ? aestheticHomeFor(session.role) : safeNext(formData) ?? aestheticHomeFor(session.role))
 }
 
 export async function signUpAction(formData: FormData) {
@@ -207,6 +221,11 @@ export async function signUpAction(formData: FormData) {
   if (kind === 'participant') {
     const result = await registerParticipant({ name, email, password, homeCityId: str(formData, 'cityId') })
     if (!result.ok) back(formData, '/signup', { error: result.error })
+    const rosterInvite = str(formData, 'rosterInvite')
+    if (rosterInvite) {
+      const inviteResult = await acceptVolunteerRosterInvite({ userId: result.userId, code: rosterInvite })
+      if (!inviteResult.ok) back(formData, '/signup', { error: inviteResult.error })
+    }
     const session = await defaultSessionForUser(result.userId)
     if (!session) back(formData, '/signup', { error: 'We could not provision your participant identity.' })
     await createSession(session)
@@ -1567,6 +1586,31 @@ export async function updateVolunteerGroupMembersAction(formData: FormData) {
     '/issuer/volunteers',
     result.ok ? { ok: 'Volunteer grouping updated.' } : { error: result.error },
   )
+}
+
+/** Create a one-time public link that adds a Civic Participant to this roster. */
+export async function createVolunteerRosterInviteAction(formData: FormData) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) redirect('/aesthetic-lab/issuer/volunteers')
+  const result = await createVolunteerRosterInvite({ orgId: session.orgId, actorId: session.sub })
+  back(
+    formData,
+    '/aesthetic-lab/issuer/volunteers',
+    result.ok
+      ? { rosterInvite: result.code, ok: 'Volunteer invite link created. It expires after 30 days and can be used once.' }
+      : { error: result.error },
+  )
+}
+
+/** Accepting this link only adds a person to a volunteer roster; it grants no staff access. */
+export async function acceptVolunteerRosterInviteAction(formData: FormData) {
+  const session = await requireActor('participant')
+  const code = str(formData, 'code')
+  const result = await acceptVolunteerRosterInvite({ userId: session.sub, code })
+  if (!result.ok) back(formData, '/volunteer-invite', { error: result.error })
+  revalidatePath('/aesthetic-lab/issuer/volunteers')
+  revalidatePath('/aesthetic-lab')
+  redirect(`${aestheticHomeFor(session.role)}?ok=${encodeURIComponent(result.alreadyMember ? `You are already on ${result.organizationName}'s volunteer roster.` : `You joined ${result.organizationName}'s volunteer roster.`)}`)
 }
 
 /**

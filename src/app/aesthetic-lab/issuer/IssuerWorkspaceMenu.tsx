@@ -18,7 +18,7 @@ export function IssuerWorkspaceMenu({
   documentation,
   onboarding,
   opportunities,
-  initialSection = 'documentation',
+  initialSection = 'programs',
 }: {
   programs: ReactNode
   documentation: ReactNode
@@ -28,30 +28,36 @@ export function IssuerWorkspaceMenu({
 }) {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection)
   const panels: Record<WorkspaceSection, ReactNode> = { programs, documentation, onboarding, opportunities }
+  const activeLabel = sections.find((section) => section.id === activeSection)?.label ?? 'Workspace'
 
   return (
-    <section className={styles.workspaceSectionShell} aria-label="Workspace sections">
-      <div className={styles.workspaceSectionNav} role="tablist" aria-label="Workspace navigation">
-        {sections.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={activeSection === id}
-            aria-controls={`workspace-${id}`}
-            data-active={activeSection === id}
-            onClick={() => setActiveSection(id)}
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
-      {sections.map(({ id }) => (
-        <div key={id} id={`workspace-${id}`} role="tabpanel" hidden={activeSection !== id}>
-          {panels[id]}
+    <>
+      <section className={styles.issuerPageHero}>
+        <div><p className={styles.eyebrow}>{activeLabel}</p></div>
+      </section>
+      <section className={styles.workspaceSectionShell} aria-label="Workspace sections">
+        <div className={styles.workspaceSectionNav} role="tablist" aria-label="Workspace navigation">
+          {sections.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={activeSection === id}
+              aria-controls={`workspace-${id}`}
+              data-active={activeSection === id}
+              onClick={() => setActiveSection(id)}
+            >
+              <Icon size={15} />
+              {label}
+            </button>
+          ))}
         </div>
-      ))}
-    </section>
+        {sections.map(({ id }) => (
+          <div key={id} id={`workspace-${id}`} role="tabpanel" hidden={activeSection !== id}>
+            {panels[id]}
+          </div>
+        ))}
+      </section>
+    </>
   )
 }

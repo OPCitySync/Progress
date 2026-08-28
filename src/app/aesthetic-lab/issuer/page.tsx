@@ -1,12 +1,11 @@
 import Link from 'next/link'
-import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 import {
   ArrowUpRight,
   Bell,
   CheckCircle2,
   ClipboardList,
   UserRoundCheck,
-  UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { claims, organizationQueueAcknowledgements, orgs, shifts, tasks, users } from '@/lib/db/schema'
@@ -25,14 +24,6 @@ import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-function dayBounds() {
-  const start = new Date()
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(start)
-  end.setDate(end.getDate() + 1)
-  return { start: start.getTime(), end: end.getTime() }
-}
-
 function scheduleBounds() {
   const now = new Date()
   const from = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -48,16 +39,13 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
   const orgId = session.orgId!
   const { city, cities, contexts } = await getLabWorkspace(session)
   const now = Date.now()
-  const today = dayBounds()
   const schedule = scheduleBounds()
   const [
     org,
     scheduledShifts,
     rosterClaimRows,
-    verifiedStats,
-    cityEvents,
     pendingShiftClaimRows,
-    pendingVolunteerRows,
+    newSignupRows,
     unreadNotificationCount,
     unreadMessageCount,
     calendarEntries,
@@ -81,22 +69,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       : Promise.resolve([]),
     city
       ? db
-          .select({ verified: sql<number>`count(*)` })
-          .from(claims)
-          .innerJoin(tasks, eq(claims.taskId, tasks.id))
-          .where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id), eq(claims.status, 'verified')))
-      : Promise.resolve([]),
-    city
-      ? db
-          .select({ shift: shifts, task: tasks, org: orgs })
-          .from(shifts)
-          .innerJoin(tasks, eq(shifts.taskId, tasks.id))
-          .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-          .where(and(eq(tasks.cityId, city.id), eq(shifts.status, 'open'), eq(shifts.visibility, 'public'), gte(shifts.startsAt, today.start), lt(shifts.startsAt, today.end)))
-          .orderBy(asc(shifts.startsAt), asc(orgs.name))
-      : Promise.resolve([]),
-    city
-      ? db
           .select({ claim: claims, shift: shifts, task: tasks })
           .from(claims)
           .innerJoin(tasks, eq(claims.taskId, tasks.id))
@@ -106,7 +78,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       : Promise.resolve([]),
     city
       ? db
-          .select({ claim: claims, task: tasks, participant: users })
+          .select({ claim: claims, shift: shifts, task: tasks, participant: users })
           .from(claims)
           .innerJoin(tasks, eq(claims.taskId, tasks.id))
           .innerJoin(users, eq(claims.userId, users.id))
@@ -122,8 +94,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
   ])
   const activeByShift = new Map<string | null, number>()
   for (const { claim } of rosterClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
-  const rosterVolunteerCount = new Set(rosterClaimRows.map(({ claim }) => claim.userId)).size
-  const verifiedCount = Number(verifiedStats[0]?.verified ?? 0)
   const unreadUpdates = unreadNotificationCount + unreadMessageCount
   const pendingVerificationGroups = Array.from(
     pendingShiftClaimRows.reduce((groups, row) => {
@@ -167,14 +137,17 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       href: `/aesthetic-lab/issuer/shifts/${shift.id}/verify`,
       action: 'Review',
     })),
-    ...pendingVolunteerRows.map(({ claim, task, participant }) => ({
-      key: `review:${claim.id}`,
-      kind: 'review' as const,
-      title: `Review ${participantDisplayName(participant)}’s volunteer request`,
-      detail: task.title,
-      href: '/aesthetic-lab/issuer/volunteers',
-      action: 'Review',
-    })),
+    ...newSignupRows.map(({ claim, shift, task, participant }) => {
+      const isOnboarding = task.isOnboarding === 1
+      return {
+        key: `signup:${claim.id}`,
+        kind: 'signup' as const,
+        title: `${participantDisplayName(participant)} signed up`,
+        detail: `${isOnboarding ? 'Onboarding session' : 'Volunteer shift'} · ${task.title}${shift.startsAt ? ` · ${new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`,
+        href: isOnboarding ? '/aesthetic-lab/issuer/catalog?workspace=onboarding' : '/aesthetic-lab/issuer/catalog?workspace=opportunities',
+        action: isOnboarding ? 'View session' : 'View shift',
+      }
+    }),
     ...(unreadUpdates
       ? [{
           key: `updates:${unreadNotificationCount}:${unreadMessageCount}`,
@@ -186,6 +159,21 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
         }]
       : []),
   ].filter((item) => !acknowledgedQueueKeys.has(item.key)).slice(0, 6)
+  const actionItems = queue.filter((item) => item.kind === 'verify')
+  const notificationItems = queue.filter((item) => item.kind !== 'verify')
+  const renderQueueItem = (item: typeof queue[number]) => (
+    <article key={item.key} data-queue-kind={item.kind}>
+      <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : item.kind === 'signup' ? <UserRoundCheck size={17} /> : <Bell size={17} />}</span>
+      <div><b>{item.title}</b><small>{item.detail}</small></div>
+      <div className={styles.issuerQueueActions}>
+        <form action={acknowledgeOrganizationQueueAction}>
+          <input type="hidden" name="actionKey" value={item.key} />
+          <button type="submit">Acknowledge</button>
+        </form>
+        <Link href={item.href}>{item.action} <ArrowUpRight size={13} /></Link>
+      </div>
+    </article>
+  )
 
   return (
     <main className={styles.app}>
@@ -197,7 +185,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
         <section className={styles.issuerMain} id="overview" aria-label="Organization workspace">
           <section className={styles.issuerHero}>
             <div>
-              <p className={styles.eyebrow}>Organization workspace</p>
+              <p className={styles.eyebrow}>{org?.name ?? 'Your organization'}</p>
               <h2>Keep today’s work moving.</h2>
               <p>{scheduledShifts.length ? `${scheduledShifts.length} scheduled volunteer event${scheduledShifts.length === 1 ? '' : 's'} are ready for your organization.` : 'Start by creating an opportunity your community can join.'}</p>
             </div>
@@ -208,12 +196,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
 
           <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 
-          <section className={styles.issuerMetricGrid} aria-label="Organization metrics">
-            <article><span>{rosterVolunteerCount}</span><div><b>Volunteers</b><small>People in your organization’s roster</small></div><UsersRound size={16} /></article>
-            <article><span>{verifiedCount}</span><div><b>Verified contributions</b><small>Recognized in this city</small></div><CheckCircle2 size={16} /></article>
-            <Link href="/aesthetic-lab/issuer/events" className={styles.issuerMetricLink}><span>{cityEvents.length}</span><div><b>Events today</b><small>Across every organization in {city?.name ?? 'your city'}</small></div><ArrowUpRight size={16} /></Link>
-          </section>
-
           <section className={styles.issuerTaskQueue} aria-label="Organization action queue">
             <div className={styles.issuerPanelHeading}>
               <div><p className={styles.eyebrow}>Action queue</p><h2>What needs attention.</h2></div>
@@ -221,19 +203,12 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
                 <ClipboardList size={19} />
               </Link>
             </div>
-            <p className={styles.issuerQueueIntro}>Verification, volunteer review, and incoming updates are collected here so the next step is always clear.</p>
+            <p className={styles.issuerQueueIntro}>Verification, new sign-ups, and incoming updates are collected here so the next step is always clear.</p>
             <div className={styles.issuerQueueList}>
-              {queue.length ? queue.map((item) => <article key={item.key}>
-                <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : item.kind === 'review' ? <UserRoundCheck size={17} /> : <Bell size={17} />}</span>
-                <div><b>{item.title}</b><small>{item.detail}</small></div>
-                <div className={styles.issuerQueueActions}>
-                  <form action={acknowledgeOrganizationQueueAction}>
-                    <input type="hidden" name="actionKey" value={item.key} />
-                    <button type="submit">Acknowledge</button>
-                  </form>
-                  <Link href={item.href}>{item.action} <ArrowUpRight size={13} /></Link>
-                </div>
-              </article>) : <p className={styles.issuerQueueEmpty}>You’re caught up. New verifications, volunteer reviews, messages, and notifications will appear here.</p>}
+              {queue.length ? <>
+                {actionItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action items</b><span>{actionItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{actionItems.map(renderQueueItem)}</div></section> : null}
+                {notificationItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="notification"><div className={styles.issuerQueueGroupHeading}><b>Notifications</b><span>{notificationItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{notificationItems.map(renderQueueItem)}</div></section> : null}
+              </> : <p className={styles.issuerQueueEmpty}>You’re caught up. New sign-ups, verifications, messages, and notifications will appear here.</p>}
             </div>
           </section>
 

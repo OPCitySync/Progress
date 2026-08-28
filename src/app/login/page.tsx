@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { signInAction } from '@/app/actions'
 import { aestheticHomeFor, getSession } from '@/lib/auth/session'
+import { validateActiveSession } from '@/lib/services/identity-access'
 import { Logo } from '@/components/brand/Logo'
 import { Card, Input, Label, Button, Flash } from '@/components/ui'
 
@@ -11,7 +12,13 @@ export default async function LoginPage({
   searchParams: { error?: string; ok?: string; next?: string }
 }) {
   const session = await getSession()
-  if (session) redirect(aestheticHomeFor(session.role))
+  if (session) {
+    const activeSession = await validateActiveSession(session)
+    if (activeSession) redirect(aestheticHomeFor(activeSession.role))
+
+    const loginPath = '/login?error=' + encodeURIComponent('This identity is no longer authorized to act.')
+    redirect('/logout?next=' + encodeURIComponent(loginPath))
+  }
 
   const next = searchParams.next?.startsWith('/') ? searchParams.next : ''
   const loginRedirect = next ? `/login?next=${encodeURIComponent(next)}` : '/login'

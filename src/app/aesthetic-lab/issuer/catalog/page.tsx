@@ -172,7 +172,7 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
     {
       id: null,
       name: 'Organization',
-      description: 'Onboarding sessions that welcome volunteers into your organization as a whole.',
+      description: '',
       sessions: onboardingSeriesViews.filter((series) => !series.task.programId),
     },
     ...volunteerPrograms.map((program) => ({
@@ -224,7 +224,7 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
     {
       id: null,
       name: 'Organization',
-      description: 'Templates that have not yet been tagged to a volunteer program.',
+      description: '',
       templates: opportunityTemplates.filter(({ task }) => !task.programId),
     },
     ...volunteerPrograms.map((program) => ({
@@ -257,7 +257,7 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
   })
   const initialWorkspaceSection = searchParams.workspace === 'programs' || searchParams.workspace === 'onboarding' || searchParams.workspace === 'opportunities'
     ? searchParams.workspace
-    : 'documentation'
+    : 'programs'
   const documentationLibrary = [
     ...waiverSetup.waivers.map((waiver) => ({
       id: waiver.id,
@@ -306,15 +306,11 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
         <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
 
           <section className={styles.issuerMain} aria-label="Workspace">
-          <section className={styles.issuerPageHero}>
-            <div><p className={styles.eyebrow}>Workspace</p><h1>Make it easy to say yes.</h1><p>Turn repeatable work into clear, shareable opportunities your volunteers can confidently claim.</p></div>
-          </section>
-
           <IssuerWorkspaceMenu
             initialSection={initialWorkspaceSection}
             programs={<>
               <section className={styles.volunteerProgramsOverview}>
-                <div><p className={styles.eyebrow}>Volunteer programs</p><h2>Organize the work around your mission.</h2><p>Programs are flexible areas of coordination. Use them for a mission area, location, project family, task group, or any structure that helps your team see the work together.</p></div>
+                <div><p className={styles.eyebrow}>Program areas</p><h2>Organize the work around your mission.</h2></div>
                 <VolunteerProgramCreateButton />
               </section>
               {volunteerProgramViews.length ? <div className={styles.volunteerProgramGrid}>{volunteerProgramViews.map(({ program, opportunityTemplates: programTemplates, onboarding: programOnboarding, documents: programDocuments, waivers: programWaivers, pastEvents: programPastEvents }) => <section key={program.id} className={styles.volunteerProgramCard}>
@@ -331,23 +327,24 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
                   <section><h3>Program history</h3>{programPastEvents.length ? <ul>{programPastEvents.slice(0, 3).map(({ task, shift }) => <li key={shift.id}><b>{task.title}</b><small>{shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Completed session'}</small></li>)}</ul> : <p>Completed events will collect here as this program grows.</p>}</section>
                 </div>
               </section>)}</div> : <section className={styles.volunteerProgramsEmpty}><FolderKanban size={22} /><div><h2>Start with an area of work.</h2><p>Create a volunteer program when you want to organize a set of opportunities, onboarding sessions, and documents around the same purpose.</p></div></section>}
-              <p className={styles.volunteerProgramsFootnote}>Existing documents, sessions, and opportunities remain unassigned until your organization chooses to tag them to a program.</p>
             </>}
             documentation={<>
-              <section className={styles.workspaceSetupCard}>
-              <div className={styles.workspaceSetupHeading}><div><p className={styles.eyebrow}>Organization setup</p><h2>Keep participant documentation ready.</h2><p>Use liability waivers whenever they fit your program, alongside the guides and operational resources your team needs.</p></div></div>
-              <div className={styles.workspaceSetupSteps}>
-                <article className={hasWaiver ? styles.workspaceSetupStepComplete : undefined}><span>{hasWaiver ? <CheckCircle2 size={18} /> : <FileText size={18} />}</span><div><p>Liability waivers</p><h3>{hasWaiver ? `${waiverSetup.waivers.length} active waiver${waiverSetup.waivers.length === 1 ? '' : 's'} ready` : 'Add a liability waiver'}</h3><small>{hasWaiver ? 'Each active waiver is included automatically with future onboarding sessions.' : 'This is optional. Add one whenever your organization needs participant acknowledgement.'}</small></div><Link className={styles.catalogWorkspaceAction} href="/aesthetic-lab/issuer/waiver">{hasWaiver ? 'Manage waivers' : 'Add waiver'}</Link></article>
-                {ORGANIZATION_DOCUMENT_CATEGORIES.map((category) => {
-                  const details = ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[category]
-                  const count = documents.filter((document) => document.category === category).length
-                  const itemName = category === 'guide' ? 'guide' : category === 'safety' ? 'safety plan' : 'additional document'
-                  return <article key={category} className={count > 0 ? styles.workspaceSetupStepComplete : undefined}><span>{count > 0 ? <CheckCircle2 size={18} /> : <FileText size={18} />}</span><div><p>{details.label}</p><h3>{count > 0 ? `${count} ${count === 1 ? 'document' : 'documents'} saved` : `Add a ${itemName}`}</h3><small>{details.description}</small></div><DocumentCreateButton category={category} tasks={taskRows.map(({ id, title }) => ({ id, title }))} programs={volunteerPrograms} /></article>
-                })}
-              </div>
+              <section className={`${styles.workspaceSetupCard} ${styles.documentationInfoCard}`}>
+                <div className={styles.workspaceSetupHeading}><div><p className={styles.eyebrow}>Organization setup</p><h2>Keep participant documentation ready.</h2><p>Use liability waivers whenever they fit your program, alongside the guides and operational resources your team needs.</p></div></div>
+              </section>
+              <section className={`${styles.workspaceSetupCard} ${styles.uploadDocumentsCard}`}>
+                <div className={styles.workspaceSetupHeading}><div><h2>Upload Documents</h2></div></div>
+                <div className={styles.workspaceSetupSteps}>
+                  <article className={hasWaiver ? styles.workspaceSetupStepComplete : undefined}><span>{hasWaiver ? <CheckCircle2 size={18} /> : <FileText size={18} />}</span><div><p>Liability waivers</p><h3>{hasWaiver ? `${waiverSetup.waivers.length} active waiver${waiverSetup.waivers.length === 1 ? '' : 's'} ready` : 'Add a liability waiver'}</h3><small>{hasWaiver ? 'Each active waiver is included automatically with future onboarding sessions.' : 'This is optional. Add one whenever your organization needs participant acknowledgement.'}</small></div><Link className={styles.catalogWorkspaceAction} href="/aesthetic-lab/issuer/waiver">{hasWaiver ? 'Manage waivers' : 'Add waiver'}</Link></article>
+                  {ORGANIZATION_DOCUMENT_CATEGORIES.map((category) => {
+                    const details = ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[category]
+                    const count = documents.filter((document) => document.category === category).length
+                    const itemName = category === 'guide' ? 'guide' : category === 'safety' ? 'safety plan' : 'additional document'
+                    return <article key={category} className={count > 0 ? styles.workspaceSetupStepComplete : undefined}><span>{count > 0 ? <CheckCircle2 size={18} /> : <FileText size={18} />}</span><div><p>{details.label}</p><h3>{count > 0 ? `${count} ${count === 1 ? 'document' : 'documents'} saved` : `Add a ${itemName}`}</h3><small>{details.description}</small></div><DocumentCreateButton category={category} tasks={taskRows.map(({ id, title }) => ({ id, title }))} programs={volunteerPrograms} /></article>
+                  })}
+                </div>
               </section>
               <section className={styles.workspaceDocumentWorkspace}>
-                <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Your documents</p><h2>Everything your team has added.</h2></div></div>
                 {documentProgramAreas.map((program) => <section key={program.id ?? 'organization'} className={styles.opportunityProgramSection}>
                   <div className={styles.opportunityProgramHeading}><div><p className={styles.eyebrow}>Program area</p><h2>{program.name}</h2><p>{program.description}</p></div></div>
                   {program.documents.length ? <div className={styles.workspaceDocumentProgramList}>{program.documents.map((document) => <article key={document.id}>
@@ -369,19 +366,19 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
               <section className={`${styles.onboardingWorkspaceCard} ${styles.onboardingSessionsOverviewCard}`}>
                 <div className={styles.onboardingWorkspaceHeading}>
                   <span><Repeat2 size={20} /></span>
-                  <div><p className={styles.eyebrow}>Onboarding sessions</p><h2>Build a welcome around each volunteer program.</h2><p>Create a distinct onboarding session for the programs, locations, or volunteer pathways your organization runs. Each one can have its own recurring schedule and participant history.</p></div>
+                  <div><p className={styles.eyebrow}>Onboarding sessions</p><h2>Build a welcome around each volunteer program.</h2></div>
                   <div className={styles.onboardingWorkspaceActions}><AddOnboardingSessionButton defaultLocation={profile?.location || ''} programs={volunteerPrograms} /></div>
                 </div>
                 <div className={styles.onboardingSeriesList}>
                   {onboardingSeriesViews.length ? onboardingSeriesViews.map((series) => <article key={series.task.id}>
                     <span><Repeat2 size={15} /></span><div><b>{series.task.title}</b><small>{series.upcomingSessions.length ? `${series.upcomingSessions.length} upcoming session${series.upcomingSessions.length === 1 ? '' : 's'}` : 'No upcoming dates published'}</small></div>
-                  </article>) : <p>No onboarding sessions yet. Add one whenever a volunteer program would benefit from a clear first step.</p>}
+                  </article>) : null}
                 </div>
               </section>
 
               {onboardingProgramAreas.map((program) => <section key={program.id ?? 'organization'} className={styles.opportunityProgramSection}>
                 <div className={styles.opportunityProgramHeading}>
-                  <div><p className={styles.eyebrow}>Program area</p><h2>{program.name}</h2><p>{program.description}</p></div>
+                  <div><p className={styles.eyebrow}>Program area</p><h2>{program.name}</h2>{program.description ? <p>{program.description}</p> : null}</div>
                   <AddOnboardingSessionButton defaultLocation={profile?.location || ''} programs={volunteerPrograms} defaultProgramId={program.id} />
                 </div>
                 {program.sessions.length ? <div className={styles.onboardingProgramSeriesList}>{program.sessions.map((series) => <section key={series.task.id} className={`${styles.onboardingWorkspaceCard} ${styles.onboardingSeriesCard}`}>
@@ -425,7 +422,7 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
 
               {opportunityProgramViews.map((program) => <section key={program.id ?? 'organization'} className={styles.opportunityProgramSection}>
                 <div className={styles.opportunityProgramHeading}>
-                  <div><p className={styles.eyebrow}>Program area</p><h2>{program.name}</h2><p>{program.description}</p></div>
+                  <div><p className={styles.eyebrow}>Program area</p><h2>{program.name}</h2>{program.description ? <p>{program.description}</p> : null}</div>
                   <CreateOpportunityTemplateButton programId={program.id} programName={program.name} defaultLocation={profile?.location || ''} />
                 </div>
                 {program.templates.length ? <div className={styles.opportunityTemplateList}>{program.templates.map(({ task, sessions }) => {

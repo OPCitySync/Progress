@@ -134,6 +134,10 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
       return `${l.who(actorId)} removed their heart from a MyCity post.`
     case 'MESSAGE_SENT':
       return `${l.orgName(p.orgId)} messaged ${String(p.recipientCount ?? '?')} volunteer(s): “${String(p.subject ?? '')}”.`
+    case 'VOLUNTEER_ROSTER_INVITE_CREATED':
+      return `${l.orgName(p.orgId)} created a volunteer roster invitation.`
+    case 'VOLUNTEER_ROSTER_INVITE_ACCEPTED':
+      return `${l.who(p.userId)} joined ${l.orgName(p.orgId)}’s volunteer roster.`
     case 'POST_REMOVED':
       return `An administrator removed a MyCity post by ${l.orgName(p.orgId)} (reason: ${String(p.reason ?? 'unspecified')}).`
     case 'USER_DISABLED':

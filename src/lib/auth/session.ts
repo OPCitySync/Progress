@@ -60,6 +60,11 @@ export function clearSession() {
   cookies().delete(COOKIE)
 }
 
+function expiredSessionRedirect() {
+  const loginPath = '/login?error=' + encodeURIComponent('This identity is no longer authorized to act.')
+  return '/logout?next=' + encodeURIComponent(loginPath)
+}
+
 export async function requireSession(next?: string): Promise<Session> {
   const session = await getSession()
   if (!session) {
@@ -68,8 +73,10 @@ export async function requireSession(next?: string): Promise<Session> {
   }
   const active = await validateActiveSession(session)
   if (!active) {
-    clearSession()
-    redirect('/login?error=' + encodeURIComponent('This identity is no longer authorized to act.'))
+    // Server components may redirect, but Next.js only permits cookie writes
+    // from Server Actions and Route Handlers. The logout route clears this
+    // stale cookie before returning the user to sign-in.
+    redirect(expiredSessionRedirect())
   }
   return active
 }

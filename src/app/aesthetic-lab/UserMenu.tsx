@@ -88,7 +88,7 @@ export function UserMenu({
             <p className={styles.eyebrow}>{isIssuer ? 'Organization' : 'Account'}</p>
             {isIssuer ? <Link href="/aesthetic-lab/issuer/reports" onClick={() => setIsOpen(false)}><FileBarChart2 size={17} /><span>Reports<small>Impact, exports, and activity</small></span></Link> : null}
             <Link href="/aesthetic-lab/cities" onClick={() => setIsOpen(false)}><MapPinned size={17} /><span>My Cities<small>{city?.name ?? 'Choose a city'}</small></span></Link>
-            <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>{isIssuer ? 'Settings' : 'Profile &amp; settings'}{isIssuer ? <small>Organization and account controls</small> : null}</span></Link>
+            <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>{isIssuer ? 'Settings' : 'Profile'}{isIssuer ? <small>Organization and account controls</small> : null}</span></Link>
             {!isIssuer ? <Link href="/aesthetic-lab/messages" onClick={() => setIsOpen(false)}><Mail size={17} /><span>Messages</span></Link> : null}
           </div>
 

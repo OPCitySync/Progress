@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { Check, ChevronDown, Crown, KeyRound, Plus, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react'
+import { Check, ChevronDown, Crown, KeyRound, Plus, ShieldCheck, UsersRound } from 'lucide-react'
 import {
   createOrganizationInviteAction,
   createOrganizationRoleAction,
@@ -149,7 +149,6 @@ export default async function ManageOrganizationLabPage({
   const owner = delegations.find(({ delegation }) => delegation.userId === org.ownerUserId)
     ?? delegations.find(({ delegation }) => delegation.role === 'owner')
   const members = delegations.filter(({ delegation }) => delegation.id !== owner?.delegation.id)
-  const activeMembers = members.filter(({ delegation }) => delegation.status === 'active')
 
   return (
     <main className={styles.app}>
@@ -158,16 +157,11 @@ export default async function ManageOrganizationLabPage({
         <IssuerLabSidebar organizationId={org.id} organizationName={org.name} cityName={city?.name} />
         <section className={styles.issuerMain} aria-label="Manage organization permissions">
           <section className={styles.issuerPageHero}>
-            <div><p className={styles.eyebrow}>Manage organization</p><h1>Give the right people the right access.</h1><p>Roles define the work someone can do. Invite links add a person to your organization in this City Network without sharing a login.</p></div>
-          </section>
-
-          <section className={styles.manageOrganizationSummary}>
-            <div><span><UsersRound size={19} /></span><p className={styles.eyebrow}>Organization access</p><h2>{activeMembers.length + (owner ? 1 : 0)} active account{activeMembers.length + (owner ? 1 : 0) === 1 ? '' : 's'}</h2><small>{roles.length} role{roles.length === 1 ? '' : 's'} currently define how work is delegated.</small></div>
-            <div className={styles.manageSummaryFacts}><span><UserRoundCheck size={15} /> {activeMembers.length} delegated account{activeMembers.length === 1 ? '' : 's'}</span><span><ShieldCheck size={15} /> {isOwner ? 'You can manage access' : 'Your access is view-only'}</span></div>
+            <div><p className={styles.eyebrow}>Manage organization</p></div>
           </section>
 
           <section className={styles.manageOrganizationCard}>
-            <div className={styles.manageSectionHeading}><div><p className={styles.eyebrow}>Authorized people</p><h2>Who can operate this organization</h2><span>Every person has their own accountable organizational identity and can be removed at any time.</span></div><UsersRound size={19} /></div>
+            <div className={styles.manageSectionHeading}><div><p className={styles.eyebrow}>Organization access</p><h2>Who can operate this organization</h2><span>Every person has their own accountable organizational identity and can be removed at any time.</span></div><UsersRound size={19} /></div>
             <div className={styles.managePeopleList}>
               {owner ? <article className={styles.managePerson}><span className={styles.managePersonAvatar}>{participantDisplayName(owner.user).slice(0, 2).toUpperCase()}</span><div><p><b>{participantDisplayName(owner.user)}</b><em>Organization owner</em></p><small>{owner.role?.name ?? 'Owner'} · All organizational powers</small></div><Crown size={16} /></article> : null}
               {members.length ? members.map(({ delegation, user, role }) => {
@@ -176,7 +170,7 @@ export default async function ManageOrganizationLabPage({
                   <summary><span className={styles.managePersonAvatar}>{participantDisplayName(user).slice(0, 2).toUpperCase()}</span><div><p><b>{participantDisplayName(user)}</b><em data-status={delegation.status}>{delegation.status}</em></p><small>{role?.name ?? delegation.role} · {memberPowers.length} functional power{memberPowers.length === 1 ? '' : 's'}</small></div><ChevronDown size={16} /></summary>
                   <div><p><b>Role:</b> {role?.name ?? delegation.role}</p><ul>{memberPowers.map((permission) => <li key={permission.key}><Check size={13} /> {permission.label}</li>)}</ul>{isOwner && delegation.status === 'active' ? <form action={revokeOrganizationDelegationAction}><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/manage" /><input type="hidden" name="delegationId" value={delegation.id} /><button type="submit">Revoke access</button></form> : null}</div>
                 </details>
-              }) : <p className={styles.manageNoMembers}>No delegated accounts yet. Create an invite from the role you want to assign.</p>}
+              }) : null}
             </div>
           </section>
 

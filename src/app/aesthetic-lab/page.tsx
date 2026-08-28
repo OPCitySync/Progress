@@ -41,6 +41,17 @@ function labNotificationLink(link: string, notificationId: string) {
   return link || `/aesthetic-lab/messages?pane=inbox&item=${encodeURIComponent(notificationId)}`
 }
 
+function needsParticipantAction(kind: string) {
+  return kind === 'onboarding_cancelled' || kind === 'shift_cancelled' || kind === 'verified_shift_reflection'
+}
+
+function participantNotificationActionLabel(kind: string) {
+  if (kind === 'onboarding_cancelled') return 'Choose a session'
+  if (kind === 'shift_cancelled') return 'Explore opportunities'
+  if (kind === 'verified_shift_reflection') return 'Share a note'
+  return 'Open'
+}
+
 /** The participant Home experience using the same session and records as the functional application. */
 export default async function AestheticLabPage() {
   const session = await requireSession('/aesthetic-lab')
@@ -99,6 +110,22 @@ export default async function AestheticLabPage() {
   const participation = city?.participation?.status
   const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
   const actionQueue = notifications.filter((notification) => notification.readAt === null)
+  const actionItems = actionQueue.filter((notification) => needsParticipantAction(notification.kind))
+  const notificationItems = actionQueue.filter((notification) => !needsParticipantAction(notification.kind))
+  const renderQueueItem = (notification: typeof actionQueue[number], actionItem: boolean) => (
+    <article key={notification.id} data-queue-kind={actionItem ? 'action' : 'notification'}>
+      <span className={`${styles.issuerQueueIcon} ${actionItem ? styles.issuerQueueAction : styles.issuerQueueUpdate}`}>{actionItem ? <ClipboardList size={17} /> : <Bell size={17} />}</span>
+      <div><b>{notification.title}</b><small>{notification.body || 'A City/Sync update is ready for you.'}</small></div>
+      <div className={styles.issuerQueueActions}>
+        <form action={markNotificationReadAction}>
+          <input type="hidden" name="notificationId" value={notification.id} />
+          <input type="hidden" name="redirectTo" value="/aesthetic-lab" />
+          <button type="submit">Acknowledge</button>
+        </form>
+        <Link href={labNotificationLink(notification.link, notification.id)}>{actionItem ? participantNotificationActionLabel(notification.kind) : 'Open'} <ArrowUpRight size={13} /></Link>
+      </div>
+    </article>
+  )
 
   return (
     <main className={styles.app}>
@@ -149,20 +176,12 @@ export default async function AestheticLabPage() {
                 <ClipboardList size={19} />
               </Link>
             </div>
-            <p className={styles.issuerQueueIntro}>Your City/Sync updates are collected here, so the next step is always clear.</p>
+            <p className={styles.issuerQueueIntro}>Actions that need you and the latest City/Sync updates are collected here.</p>
             <div className={styles.issuerQueueList}>
-              {actionQueue.length ? actionQueue.map((notification) => <article key={notification.id}>
-                <span className={`${styles.issuerQueueIcon} ${styles.issuerQueueUpdate}`}><Bell size={17} /></span>
-                <div><b>{notification.title}</b><small>{notification.body || 'A City/Sync update is ready for you.'}</small></div>
-                <div className={styles.issuerQueueActions}>
-                  <form action={markNotificationReadAction}>
-                    <input type="hidden" name="notificationId" value={notification.id} />
-                    <input type="hidden" name="redirectTo" value="/aesthetic-lab" />
-                    <button type="submit">Acknowledge</button>
-                  </form>
-                  <Link href={labNotificationLink(notification.link, notification.id)}>Open <ArrowUpRight size={13} /></Link>
-                </div>
-              </article>) : <p className={styles.issuerQueueEmpty}>You’re caught up. New City/Sync updates will appear here.</p>}
+              {actionQueue.length ? <>
+                {actionItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action items</b><span>{actionItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{actionItems.map((notification) => renderQueueItem(notification, true))}</div></section> : null}
+                {notificationItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="notification"><div className={styles.issuerQueueGroupHeading}><b>Notifications</b><span>{notificationItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{notificationItems.map((notification) => renderQueueItem(notification, false))}</div></section> : null}
+              </> : <p className={styles.issuerQueueEmpty}>You’re caught up. New City/Sync updates will appear here.</p>}
             </div>
           </section>
           <MyCityFeedContent posts={feedPosts} commitments={commitments} />

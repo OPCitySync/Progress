@@ -297,6 +297,26 @@ const statements = [
     created_at INTEGER NOT NULL,
     UNIQUE(group_id, user_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_roster_members (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'invite',
+    invited_by_user_id TEXT,
+    joined_at INTEGER NOT NULL,
+    UNIQUE(org_id, user_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_roster_invites (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    code_hash TEXT NOT NULL UNIQUE,
+    issued_by_user_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    accepted_by_user_id TEXT,
+    accepted_at INTEGER,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS org_messages (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
@@ -702,6 +722,11 @@ const indexes = [
   `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_group_members_group_user ON volunteer_group_members (group_id, user_id)`,
   `CREATE INDEX IF NOT EXISTS volunteer_group_members_group ON volunteer_group_members (group_id)`,
   `CREATE INDEX IF NOT EXISTS volunteer_group_members_user ON volunteer_group_members (user_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_roster_members_org_user ON volunteer_roster_members (org_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_roster_members_org ON volunteer_roster_members (org_id, joined_at)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_roster_members_user ON volunteer_roster_members (user_id, joined_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_roster_invites_code_hash ON volunteer_roster_invites (code_hash)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_roster_invites_org ON volunteer_roster_invites (org_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS org_messages_group ON org_messages (group_id)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS event_chats_shift ON event_chats (shift_id)`,
   `CREATE INDEX IF NOT EXISTS event_chats_org_status ON event_chats (org_id, status, closes_at)`,

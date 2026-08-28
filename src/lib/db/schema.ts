@@ -830,6 +830,47 @@ export const volunteerGroupMembers = sqliteTable(
   }),
 )
 
+// A roster can include people who were invited directly by an organization,
+// before they claim their first opportunity. Claims continue to add people to
+// a roster implicitly; this table preserves the explicit relationship.
+export const volunteerRosterMembers = sqliteTable(
+  'volunteer_roster_members',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    source: text('source', { enum: ['invite'] }).notNull().default('invite'),
+    invitedByUserId: text('invited_by_user_id'),
+    joinedAt: integer('joined_at').notNull(),
+  },
+  (t) => ({
+    organizationUserUniq: uniqueIndex('volunteer_roster_members_org_user').on(t.orgId, t.userId),
+    byOrganization: index('volunteer_roster_members_org').on(t.orgId, t.joinedAt),
+    byUser: index('volunteer_roster_members_user').on(t.userId, t.joinedAt),
+  }),
+)
+
+// A single-use enrollment link. Only its hash is stored, so the link itself
+// remains a bearer secret that can safely be shown once to the issuer.
+export const volunteerRosterInvites = sqliteTable(
+  'volunteer_roster_invites',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    codeHash: text('code_hash').notNull(),
+    issuedByUserId: text('issued_by_user_id').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    acceptedByUserId: text('accepted_by_user_id'),
+    acceptedAt: integer('accepted_at'),
+    revokedAt: integer('revoked_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    codeHashUniq: uniqueIndex('volunteer_roster_invites_code_hash').on(t.codeHash),
+    byOrganization: index('volunteer_roster_invites_org').on(t.orgId, t.createdAt),
+  }),
+)
+
 export const orgMessages = sqliteTable('org_messages', {
   id: text('id').primaryKey(),
   orgId: text('org_id').notNull(),

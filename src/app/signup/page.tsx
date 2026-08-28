@@ -9,7 +9,7 @@ import { getAvailableCities } from '@/lib/services/city-networks'
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: { error?: string; type?: string; next?: string }
+  searchParams: { error?: string; type?: string; next?: string; rosterInvite?: string }
 }) {
   const session = await getSession()
   if (session) redirect(aestheticHomeFor(session.role))
@@ -19,6 +19,7 @@ export default async function SignupPage({
     : 'participant') as 'participant' | 'issuer' | 'redeemer'
   const isOrg = type !== 'participant'
   const next = searchParams.next?.startsWith('/') ? searchParams.next : ''
+  const rosterInvite = searchParams.rosterInvite?.trim() ?? ''
   const nextParam = next ? `&next=${encodeURIComponent(next)}` : ''
   const cities = await getAvailableCities()
   const signupCopy =
@@ -52,6 +53,7 @@ export default async function SignupPage({
           <input type="hidden" name="kind" value={type} />
           <input type="hidden" name="redirectTo" value={`/signup?type=${type}${nextParam}`} />
           {next ? <input type="hidden" name="next" value={next} /> : null}
+          {type === 'participant' && rosterInvite ? <input type="hidden" name="rosterInvite" value={rosterInvite} /> : null}
 
           {isOrg ? (
             <>
