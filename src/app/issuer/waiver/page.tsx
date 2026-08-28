@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth/session'
 import { createWaiverAction } from '@/app/actions'
 import { Card, PageHeader, Flash, Input, Label, Textarea, Button, Badge, Mono } from '@/components/ui'
 import { fmtDateTime } from '@/lib/format'
+import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 
 export default async function WaiverPage({
   searchParams,
@@ -55,7 +56,7 @@ export default async function WaiverPage({
                 {active.documentUrl ? (
                   <p className="mt-2 text-xs">
                     <a
-                      href={active.documentUrl}
+                      href={organizationFileUrl('waiver', active.id)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold text-brand-600 hover:text-brand-500"

@@ -3,6 +3,7 @@ import { ArrowUpRight, Building2, FileText, MapPin } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { listPublicIssuers } from '@/lib/services/profile'
 import { getPublishedOrganizationResources } from '@/lib/services/organization-resources'
+import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
 import styles from '../prototype.module.css'
@@ -31,7 +32,7 @@ export default async function VolunteerResourcesPage() {
             const organization = organizationById.get(resource.orgId)
             return <article className={styles.labChoice} key={`${resource.kind}-${resource.id}`}>
               <div><p><strong><FileText size={15} /> {resource.title}</strong></p><small>{organization?.name ?? 'Local organization'} · {resource.kind === 'waiver' ? 'Liability waiver' : 'Volunteer resource'}</small>{resource.body ? <details><summary>Read guidance</summary><p>{resource.body}</p></details> : null}</div>
-              <div className={styles.resourceCardActions}>{organization ? <Link className={styles.issuerTextButton} href={`/aesthetic-lab/organizations/${organization.slug}`}><Building2 size={14} /> Organization</Link> : null}{resource.documentUrl ? <a className={styles.issuerTextButton} href={resource.documentUrl} target="_blank" rel="noreferrer">Open document</a> : null}</div>
+              <div className={styles.resourceCardActions}>{organization ? <Link className={styles.issuerTextButton} href={`/aesthetic-lab/organizations/${organization.slug}`}><Building2 size={14} /> Organization</Link> : null}{resource.documentUrl ? <a className={styles.issuerTextButton} href={organizationFileUrl(resource.kind, resource.id)} target="_blank" rel="noreferrer">Open document</a> : null}</div>
             </article>
           })}</div> : <p className={styles.emptyCopy}>No organizations have shared resources in this city yet. Check back as local partners add materials.</p>}
         </section>

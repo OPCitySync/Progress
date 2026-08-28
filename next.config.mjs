@@ -7,6 +7,11 @@
 const nextConfig = (phase) => ({
   reactStrictMode: true,
   distDir: phase === 'phase-development-server' ? '.next-dev' : '.next',
+  experimental: {
+    // Organization documents are deliberately capped at 10 MB in the upload
+    // actions, so permit that same request size before an action is invoked.
+    serverActions: { bodySizeLimit: '10mb' },
+  },
 })
 
 export default nextConfig

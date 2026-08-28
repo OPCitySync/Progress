@@ -13,6 +13,7 @@ import { getCityImpact } from '@/lib/services/leaderboard'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
 import { getMyResume } from '@/lib/services/resume'
 import { getProfile } from '@/lib/services/profile'
+import { organizationFileDownloadUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../../../lab-workspace'
 import { LabHeader } from '../../../../LabHeader'
 import { LabNotice } from '../../../../LabNotice'
@@ -173,7 +174,7 @@ export default async function ReservedSessionPage({
               <ClipboardCheck size={20} />
             </div>
             <div className={styles.sessionPrepChecklist}>
-              {unsignedWaivers.map((waiver) => <article data-state="action" key={waiver.id}><span><ShieldCheck size={17} /></span><div><b>Sign {waiver.title}</b><p>Review the current waiver version and add your electronic signature before attending.</p></div><DigitalWaiverSignature taskId={record.task.id} waiver={waiver} redirectTo={sessionUrl} defaultSigningName={session.name} organizationName={record.organization.name} /></article>)}
+              {unsignedWaivers.map((waiver) => <article data-state="action" key={waiver.id}><span><ShieldCheck size={17} /></span><div><b>Sign {waiver.title}</b><p>Review the current waiver version and add your electronic signature before attending.</p></div><DigitalWaiverSignature taskId={record.task.id} waiver={{ id: waiver.id, title: waiver.title, version: waiver.version, body: waiver.body, hasDocument: Boolean(waiver.documentUrl), documentName: waiver.documentName }} redirectTo={sessionUrl} defaultSigningName={session.name} organizationName={record.organization.name} /></article>)}
               {usesPaperWaiver && waivers.length ? <article data-state="action"><span><ShieldCheck size={17} /></span><div><b>Complete the waiver at check-in</b><p>This organization collects its active waiver{waivers.length === 1 ? '' : 's'} in person. Review the document below and bring any required signed copy.</p></div><em>At session</em></article> : null}
               {record.task.beforeSession.trim() ? <article data-state="action"><span><ClipboardCheck size={17} /></span><div><b>Review the session notes</b><p>The organization has shared preparation instructions for this session.</p></div><a href="#session-details">Review</a></article> : null}
               {record.task.bringItems.trim() ? <article data-state="action"><span><UsersRound size={17} /></span><div><b>Bring the listed items</b><p>{record.task.bringItems.trim()}</p></div><a href="#session-details">View list</a></article> : null}
@@ -205,11 +206,11 @@ export default async function ReservedSessionPage({
           <div className={styles.onboardingResourceList}>
             {waivers.map((waiver) => <details className={styles.onboardingResourceItem} key={waiver.id}>
               <summary><span className={styles.onboardingResourceIcon}><ShieldCheck size={16} /></span><div><b>{waiver.title}</b><small>{usesPaperWaiver ? 'Required at check-in' : signatures.has(waiver.id) ? `Signed electronically ${signatureDate(signatures.get(waiver.id)?.signedAt ?? null)}.` : 'Digital signature still needed.'}</small></div><ChevronDown size={16} /></summary>
-              <div className={styles.onboardingResourcePreview}>{waiver.body ? <p>{waiver.body}</p> : <p>This waiver is provided as a source document.</p>}{waiver.documentUrl ? <a href={waiver.documentUrl} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}{!usesPaperWaiver && !signatures.has(waiver.id) ? <DigitalWaiverSignature taskId={record.task.id} waiver={waiver} redirectTo={sessionUrl} defaultSigningName={session.name} organizationName={record.organization.name} /> : null}</div>
+              <div className={styles.onboardingResourcePreview}>{waiver.body ? <p>{waiver.body}</p> : <p>This waiver is provided as a source document.</p>}{waiver.documentUrl ? <a href={organizationFileDownloadUrl('waiver', waiver.id, record.task.id)} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}{!usesPaperWaiver && !signatures.has(waiver.id) ? <DigitalWaiverSignature taskId={record.task.id} waiver={{ id: waiver.id, title: waiver.title, version: waiver.version, body: waiver.body, hasDocument: Boolean(waiver.documentUrl), documentName: waiver.documentName }} redirectTo={sessionUrl} defaultSigningName={session.name} organizationName={record.organization.name} /> : null}</div>
             </details>)}
             {documents.map((document) => <details className={styles.onboardingResourceItem} key={document.id}>
               <summary><span className={styles.onboardingResourceIcon}><FileText size={16} /></span><div><b>{document.title}</b><small>{ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label}</small></div><ChevronDown size={16} /></summary>
-              <div className={styles.onboardingResourcePreview}>{document.body ? <p>{document.body}</p> : <p>This document is available through its source file.</p>}{document.documentUrl ? <a href={document.documentUrl} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}</div>
+              <div className={styles.onboardingResourcePreview}>{document.body ? <p>{document.body}</p> : <p>This document is available through its source file.</p>}{document.documentUrl ? <a href={organizationFileDownloadUrl('document', document.id, record.task.id)} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}</div>
             </details>)}
             {!waivers.length && !documents.length ? <p className={styles.sessionPrepDocumentsEmpty}>No related documents have been added to this session.</p> : null}
           </div>

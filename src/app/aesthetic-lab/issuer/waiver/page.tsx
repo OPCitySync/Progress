@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth/session'
 import { retireWaiverAction, setWaiverProgramAction } from '@/app/actions'
 import { getOnboardingWaiverSetup } from '@/lib/services/waivers'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
+import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
 import { LabNotice } from '../../LabNotice'
@@ -55,7 +56,7 @@ export default async function IssuerWaiverLabPage({ searchParams }: { searchPara
                     <label>Volunteer program<select name="programId" defaultValue={waiver.programId ?? ''}><option value="">Applies across the organization</option>{volunteerPrograms.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select></label>
                     <button className={styles.catalogWorkspaceAction} type="submit">Save program</button>
                   </form>
-                  <div className={styles.waiverPreviewActions}>{waiver.documentUrl ? <a className={styles.catalogWorkspaceAction} href={waiver.documentUrl} target="_blank" rel="noreferrer">View source document</a> : null}<form action={retireWaiverAction}><input type="hidden" name="waiverVersionId" value={waiver.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/waiver" /><button className={styles.catalogWorkspaceAction} type="submit"><Trash2 size={15} /> Delete Waiver</button></form></div>
+                  <div className={styles.waiverPreviewActions}>{waiver.documentUrl ? <a className={styles.catalogWorkspaceAction} href={organizationFileUrl('waiver', waiver.id)} target="_blank" rel="noreferrer">View source document</a> : null}<form action={retireWaiverAction}><input type="hidden" name="waiverVersionId" value={waiver.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/waiver" /><button className={styles.catalogWorkspaceAction} type="submit"><Trash2 size={15} /> Delete Waiver</button></form></div>
                 </div>
               </details>)}
             </div>

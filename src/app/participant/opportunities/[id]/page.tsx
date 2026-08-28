@@ -11,6 +11,7 @@ import { parseCredentialList, credentialLabel } from '@/lib/credentials'
 import { claimShiftAction, selfCheckInAction, signWaiverAction } from '@/app/actions'
 import { Card, PageHeader, Badge, Button, Input, Flash, Mono, statusBadge } from '@/components/ui'
 import { fmtDateTime } from '@/lib/format'
+import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getActiveCity } from '@/lib/services/city-networks'
 
 export const dynamic = 'force-dynamic'
@@ -158,7 +159,7 @@ export default async function OpportunityDetail({
           </p>
           {waiver!.documentUrl ? (
             <a
-              href={waiver!.documentUrl}
+              href={organizationFileUrl('waiver', waiver!.id, task.id)}
               target="_blank"
               rel="noreferrer"
               className="mt-2 inline-block text-xs font-semibold text-brand-600 hover:text-brand-500"

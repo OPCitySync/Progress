@@ -21,6 +21,7 @@ import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from
 import { getWaiversAttachedToTask } from '@/lib/services/organization-resources'
 import { getShiftsWithCounts } from '@/lib/services/opportunities'
 import { savedItemIds } from '@/lib/services/saved-items'
+import { organizationFileDownloadUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
 import { LabNotice } from '../../LabNotice'
@@ -140,8 +141,8 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                 </summary>
                 <div className={styles.onboardingResourcePreview}>
                   {waiver.body ? <p>{waiver.body}</p> : <p>This waiver is provided as a source document.</p>}
-                  {waiver.documentUrl ? <a href={waiver.documentUrl} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}
-                  {!usesPaperWaiver ? signature ? <p className={styles.onboardingSignatureReceipt}><CheckCircle2 size={15} /> Signed electronically on {signatureDate(signature.signedAt)}. This receipt is private to you and {org.name}.</p> : <DigitalWaiverSignature taskId={task.id} waiver={waiver} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} defaultSigningName={session.name} organizationName={org.name} /> : null}
+                  {waiver.documentUrl ? <a href={organizationFileDownloadUrl('waiver', waiver.id, task.id)} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}
+                  {!usesPaperWaiver ? signature ? <p className={styles.onboardingSignatureReceipt}><CheckCircle2 size={15} /> Signed electronically on {signatureDate(signature.signedAt)}. This receipt is private to you and {org.name}.</p> : <DigitalWaiverSignature taskId={task.id} waiver={{ id: waiver.id, title: waiver.title, version: waiver.version, body: waiver.body, hasDocument: Boolean(waiver.documentUrl), documentName: waiver.documentName }} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} defaultSigningName={session.name} organizationName={org.name} /> : null}
                 </div>
               </details>
               }) : isOnboarding ? <div className={styles.onboardingResourceEmpty}><ShieldCheck size={17} /><p><b>No waiver has been added.</b><br />This organization has not attached a liability waiver to this onboarding opportunity.</p></div> : null}
@@ -153,7 +154,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                 </summary>
                 <div className={styles.onboardingResourcePreview}>
                   {document.body ? <p>{document.body}</p> : <p>A preview is available for written guidance created in City/Sync. Attached source files can be downloaded below.</p>}
-                  {document.documentUrl ? <a href={document.documentUrl} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}
+                  {document.documentUrl ? <a href={organizationFileDownloadUrl('document', document.id, task.id)} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}
                 </div>
               </details>)}
               {!waivers.length && !includedDocuments.length ? <div className={styles.onboardingResourceEmpty}><FileText size={17} /><p><b>No materials have been added yet.</b><br />The organization will provide any relevant materials before the session.</p></div> : null}

@@ -45,7 +45,7 @@ import { createWaiverVersion, retireWaiverVersion, setOnboardingWaiverMethod, si
 import {
   ALLOWED_ORGANIZATION_DOCUMENT_TYPES,
   ALLOWED_WAIVER_DOCUMENT_TYPES,
-  getStorageAdapter,
+  getPrivateStorageAdapter,
   MAX_ORGANIZATION_DOCUMENT_BYTES,
   MAX_WAIVER_DOCUMENT_BYTES,
 } from '@/lib/storage/storage'
@@ -965,7 +965,7 @@ export async function createWaiverAction(formData: FormData) {
     }
     try {
       const bytes = Buffer.from(await file.arrayBuffer())
-      const stored = await getStorageAdapter().put({
+      const stored = await getPrivateStorageAdapter().put({
         key: `waivers/${session.orgId}/${randomUUID()}.${ext}`,
         bytes,
         contentType: file.type,
@@ -1081,7 +1081,7 @@ export async function createOrganizationDocumentAction(formData: FormData) {
     }
     try {
       const bytes = Buffer.from(await file.arrayBuffer())
-      const stored = await getStorageAdapter().put({
+      const stored = await getPrivateStorageAdapter().put({
         key: `organization-documents/${session.orgId}/${randomUUID()}.${ext}`,
         bytes,
         contentType: file.type,

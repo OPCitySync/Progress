@@ -12,6 +12,7 @@ import {
   type OrganizationDocumentCategory,
 } from '@/lib/services/organization-documents'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
+import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
 import { LabNotice } from '../../LabNotice'
@@ -120,7 +121,7 @@ export default async function IssuerDocumentsLabPage({
                 <div className={styles.documentCategoryHeading}><span>{category === 'guide' ? <FolderOpen size={18} /> : category === 'safety' ? <ShieldCheck size={18} /> : <FileText size={18} />}</span><div><p>{details.label}</p><small>{details.description}</small></div></div>
                 {categoryDocuments.length > 0 ? <div className={styles.documentEntries}>{categoryDocuments.map((document) => <article key={document.id}>
                   <div><b>{document.title}</b><small>Updated {when(document.updatedAt)}</small>{document.taskIds.length > 0 ? <em>Attached to {document.taskIds.map((taskId) => taskTitles.get(taskId) ?? 'an opportunity').join(', ')}</em> : <em>Organization library only</em>}</div>
-                  <div className={styles.documentEntryActions}>{document.documentUrl ? <a href={document.documentUrl} target="_blank" rel="noreferrer" aria-label={`Open ${document.title}`}><FileText size={15} /></a> : null}<form action={archiveOrganizationDocumentAction}><input type="hidden" name="documentId" value={document.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/documents" /><button type="submit" aria-label={`Archive ${document.title}`}><Archive size={15} /></button></form></div>
+                  <div className={styles.documentEntryActions}>{document.documentUrl ? <a href={organizationFileUrl('document', document.id)} target="_blank" rel="noreferrer" aria-label={`Open ${document.title}`}><FileText size={15} /></a> : null}<form action={archiveOrganizationDocumentAction}><input type="hidden" name="documentId" value={document.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/documents" /><button type="submit" aria-label={`Archive ${document.title}`}><Archive size={15} /></button></form></div>
                 </article>)}</div> : <p className={styles.documentEmpty}>No {details.label.toLowerCase()} yet.</p>}
                 <Link className={styles.catalogWorkspaceAction} href={`/aesthetic-lab/issuer/documents?category=${category}`}>Add {details.label.slice(0, -1)}</Link>
               </article>

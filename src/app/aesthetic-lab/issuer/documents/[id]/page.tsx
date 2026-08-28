@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth/session'
 import { archiveOrganizationDocumentAction, setOrganizationDocumentProgramAction } from '@/app/actions'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
+import { organizationFileDownloadUrl, organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../../lab-workspace'
 import { LabHeader } from '../../../LabHeader'
 import { IssuerLabSidebar } from '../../IssuerLabSidebar'
@@ -24,6 +25,8 @@ export default async function IssuerDocumentDetailLabPage({ params }: { params: 
   const category = ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category]
   const canPreviewPdf = document.documentMimeType === 'application/pdf' && Boolean(document.documentUrl)
   const sourceFileLabel = canPreviewPdf ? 'Open Source File' : 'Download Source File'
+  const sourceFileUrl = organizationFileUrl('document', document.id)
+  const sourceFileDownloadUrl = organizationFileDownloadUrl('document', document.id)
 
   return <main className={styles.app}>
     <LabHeader activeSection="issuer-catalog" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
@@ -35,14 +38,14 @@ export default async function IssuerDocumentDetailLabPage({ params }: { params: 
           <Link href="/aesthetic-lab/issuer/catalog" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
         </section>
         <section className={`${styles.labPanel} ${styles.documentPreviewCard}`}>
-          <div className={styles.documentPreviewHeading}><span>{document.category === 'safety' ? <ShieldCheck size={20} /> : document.category === 'guide' ? <FolderOpen size={20} /> : <FileText size={20} />}</span><div><p className={styles.eyebrow}>Document preview</p><h2>{document.title}</h2><p>{category.description}</p></div><div className={styles.documentPreviewActions}>{document.documentUrl ? <a className={styles.catalogWorkspaceAction} href={document.documentUrl} target="_blank" rel="noreferrer" download={canPreviewPdf ? undefined : document.documentName ?? true}><FileText size={15} /> {sourceFileLabel}</a> : null}<form action={archiveOrganizationDocumentAction}><input type="hidden" name="documentId" value={document.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=documentation" /><button className={styles.catalogWorkspaceAction} type="submit"><Trash2 size={15} /> Delete Document</button></form></div></div>
+          <div className={styles.documentPreviewHeading}><span>{document.category === 'safety' ? <ShieldCheck size={20} /> : document.category === 'guide' ? <FolderOpen size={20} /> : <FileText size={20} />}</span><div><p className={styles.eyebrow}>Document preview</p><h2>{document.title}</h2><p>{category.description}</p></div><div className={styles.documentPreviewActions}>{document.documentUrl ? <a className={styles.catalogWorkspaceAction} href={canPreviewPdf ? sourceFileUrl : sourceFileDownloadUrl} target="_blank" rel="noreferrer"><FileText size={15} /> {sourceFileLabel}</a> : null}<form action={archiveOrganizationDocumentAction}><input type="hidden" name="documentId" value={document.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=documentation" /><button className={styles.catalogWorkspaceAction} type="submit"><Trash2 size={15} /> Delete Document</button></form></div></div>
           <form action={setOrganizationDocumentProgramAction} className={styles.documentProgramAssignment}>
             <input type="hidden" name="documentId" value={document.id} />
             <input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/documents/${document.id}`} />
             <label>Volunteer program<select name="programId" defaultValue={document.programId ?? ''}><option value="">Organization-wide / not assigned</option>{volunteerPrograms.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select></label>
             <button className={styles.catalogWorkspaceAction} type="submit">Save program</button>
           </form>
-          {canPreviewPdf ? <iframe className={styles.documentPdfPreview} src={document.documentUrl!} title={`Preview of ${document.title}`} /> : document.documentUrl ? <div className={styles.documentPreviewEmpty}><strong>Attached file: {document.documentName || 'Source document'}</strong><p>City/Sync can preview PDF files and written guidance created directly in the app. This file is available through Download Source File.</p></div> : document.body ? <div className={styles.documentPreviewBody}>{document.body.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div> : <p className={styles.documentPreviewEmpty}>Add written guidance to create an in-app preview for this resource.</p>}
+          {canPreviewPdf ? <iframe className={styles.documentPdfPreview} src={sourceFileUrl} title={`Preview of ${document.title}`} /> : document.documentUrl ? <div className={styles.documentPreviewEmpty}><strong>Attached file: {document.documentName || 'Source document'}</strong><p>City/Sync can preview PDF files and written guidance created directly in the app. This file is available through Download Source File.</p></div> : document.body ? <div className={styles.documentPreviewBody}>{document.body.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div> : <p className={styles.documentPreviewEmpty}>Add written guidance to create an in-app preview for this resource.</p>}
         </section>
       </section>
     </div>

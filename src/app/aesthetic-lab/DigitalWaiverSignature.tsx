@@ -3,6 +3,7 @@
 import { Download, PenLine, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { signWaiverAction } from '@/app/actions'
+import { organizationFileDownloadUrl } from '@/lib/storage/organization-file-url'
 import styles from './prototype.module.css'
 
 type DigitalWaiverSignatureProps = {
@@ -12,7 +13,7 @@ type DigitalWaiverSignatureProps = {
     title: string
     version: number
     body: string
-    documentUrl: string | null
+    hasDocument: boolean
     documentName: string | null
   }
   redirectTo: string
@@ -46,7 +47,7 @@ export function DigitalWaiverSignature({ taskId, waiver, redirectTo, defaultSign
         <div className={styles.waiverSignatureDocument}>
           <div><ShieldCheck size={16} /><span>Waiver version {waiver.version}</span></div>
           {waiver.body ? <p>{waiver.body}</p> : <p>This waiver is provided as a source file. Download and review it before signing.</p>}
-          {waiver.documentUrl ? <a href={waiver.documentUrl} target="_blank" rel="noreferrer"><Download size={14} /> Download {waiver.documentName || 'source file'}</a> : null}
+          {waiver.hasDocument ? <a href={organizationFileDownloadUrl('waiver', waiver.id, taskId)} target="_blank" rel="noreferrer"><Download size={14} /> Download {waiver.documentName || 'source file'}</a> : null}
         </div>
 
         <form action={signWaiverAction} className={`${styles.issuerCalendarForm} ${styles.waiverSignatureForm}`} onSubmit={() => setOpen(false)}>

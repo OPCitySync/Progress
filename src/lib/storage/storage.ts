@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'fs/promises'
 import path from 'path'
+import { put } from '@vercel/blob'
 
 /**
  * Storage port. Same shape as the anchoring port in lib/protocol/anchor.ts:
@@ -53,21 +54,14 @@ class LocalStorageAdapter implements StorageAdapter {
   }
 }
 
+type BlobAccess = 'private' | 'public'
+
 class BlobStorageAdapter implements StorageAdapter {
   backend = 'vercel-blob'
+  constructor(private readonly access: BlobAccess) {}
   async put({ key, bytes, contentType }: { key: string; bytes: Buffer; contentType: string }) {
-    // @vercel/blob is an optional, production-only dependency. Loaded via a
-    // non-literal specifier so dev type-checking/builds don't require it.
-    const spec = '@vercel/blob'
-    const blob = (await import(spec)) as {
-      put: (
-        k: string,
-        body: Buffer,
-        opts: { access: 'public'; contentType?: string; token?: string; addRandomSuffix?: boolean },
-      ) => Promise<{ url: string }>
-    }
-    const { url } = await blob.put(key, bytes, {
-      access: 'public',
+    const { url } = await put(key, bytes, {
+      access: this.access,
       contentType,
       token: process.env.BLOB_READ_WRITE_TOKEN,
     })
@@ -76,5 +70,14 @@ class BlobStorageAdapter implements StorageAdapter {
 }
 
 export function getStorageAdapter(): StorageAdapter {
-  return process.env.STORAGE_MODE === 'blob' ? new BlobStorageAdapter() : new LocalStorageAdapter()
+  return process.env.STORAGE_MODE === 'blob' ? new BlobStorageAdapter('public') : new LocalStorageAdapter()
+}
+
+/**
+ * Private source files for waivers and organization documents. The stored URL
+ * is never rendered directly; `/api/organization-files/...` authorizes and
+ * streams it to an allowed reader.
+ */
+export function getPrivateStorageAdapter(): StorageAdapter {
+  return process.env.STORAGE_MODE === 'blob' ? new BlobStorageAdapter('private') : new LocalStorageAdapter()
 }
