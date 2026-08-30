@@ -119,7 +119,6 @@ export default async function CommitmentsPage() {
           <div className={styles.cityCardTop}><span className={styles.cityOverline}>Your city membership</span><CheckCircle2 size={17} /></div>
           <div className={styles.cityName}><MapPin size={17} /><span>{city?.name ?? 'Choose a city'}</span></div>
           <p>Your active City Network determines which local opportunities and records you see first.</p>
-          <Link href="/aesthetic-lab/cities">Explore your city <ArrowUpRight size={14} /></Link>
         </section>
         <section className={styles.historyAsideCard}><p className={styles.eyebrow}>Keep going</p><strong>{participation === 'active' ? 'You are a City Member' : 'Start with onboarding'}</strong><span>{participation === 'active' ? 'Your verified participation opens local opportunities.' : 'One local onboarding session is all that is needed to become a City Member.'}</span><Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link></section>
       </aside>

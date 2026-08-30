@@ -1,12 +1,11 @@
 import Link from 'next/link'
 import { desc, eq } from 'drizzle-orm'
-import { ArrowLeft, Bell, BookOpenCheck, CheckCheck } from 'lucide-react'
+import { ArrowLeft, Bell, CheckCheck } from 'lucide-react'
 import { markIssuerNotificationReadAction } from '@/app/actions'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { notifications, organizationQueueAcknowledgements, orgs, users } from '@/lib/db/schema'
 import { participantDisplayName } from '@/lib/participant-name'
-import { listOrganizationActivity } from '@/lib/services/organization-activity'
 import { LabHeader } from '../../LabHeader'
 import { getLabWorkspace } from '../../lab-workspace'
 import { IssuerLabSidebar } from '../IssuerLabSidebar'
@@ -28,44 +27,6 @@ function isInternalPath(path: string) {
   return path.startsWith('/') && !path.startsWith('//')
 }
 
-function actionLabel(type: string) {
-  return type
-    .toLowerCase()
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-function detailLabel(key: string) {
-  return key
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/Id$/i, ' ID')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
-    .replace(/^./, (character) => character.toUpperCase())
-}
-
-function ledgerPayloadEntries(payload: string) {
-  try {
-    const parsed: unknown = JSON.parse(payload)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
-    return Object.entries(parsed as Record<string, unknown>)
-  } catch {
-    return []
-  }
-}
-
-function ledgerValue(key: string, value: unknown) {
-  if (value === null || value === undefined || value === '') return 'Not recorded'
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  if (typeof value === 'number' && /(?:at|timestamp)$/i.test(key) && value > 1_000_000_000_000) return formattedDate(value)
-  if (typeof value === 'string') return value.replace(/_/g, ' ')
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
 function acknowledgementLabel(actionKey: string) {
   const [kind] = actionKey.split(':', 1)
   if (kind === 'verify') return 'Attendance verification acknowledged'
@@ -74,12 +35,11 @@ function acknowledgementLabel(actionKey: string) {
   return 'Organization action acknowledged'
 }
 
-export default async function IssuerNotificationHistoryPage({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function IssuerNotificationHistoryPage() {
   const session = await requireRole('issuer')
   const orgId = session.orgId!
-  const activeTab = searchParams.tab === 'ledger' ? 'ledger' : 'notifications'
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [org, history, acknowledgements, activity] = await Promise.all([
+  const [org, history, acknowledgements] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     db
       .select()
@@ -92,7 +52,6 @@ export default async function IssuerNotificationHistoryPage({ searchParams }: { 
       .innerJoin(users, eq(organizationQueueAcknowledgements.acknowledgedByUserId, users.id))
       .where(eq(organizationQueueAcknowledgements.orgId, orgId))
       .orderBy(desc(organizationQueueAcknowledgements.acknowledgedAt)),
-    activeTab === 'ledger' ? listOrganizationActivity(orgId) : Promise.resolve([]),
   ])
   const notificationHistory = [
     ...history.map((notice) => ({
@@ -124,19 +83,12 @@ export default async function IssuerNotificationHistoryPage({ searchParams }: { 
           <section className={styles.issuerNotificationHistory}>
             <div className={styles.issuerNotificationHistoryHeading}>
               <div>
-                <p className={styles.eyebrow}>Organization record</p>
-                <h1>{activeTab === 'ledger' ? 'Organizational ledger' : 'Notification history'}</h1>
-                <p>{activeTab === 'ledger' ? 'A permanent record of actions taken for this organization, newest first.' : 'Every in-app notice and acknowledged action for this organization, including completed work, newest first.'}</p>
+                <p className={styles.eyebrow}>Notification history</p>
               </div>
               <Link className={styles.issuerHistoryBack} href="/aesthetic-lab/issuer"><ArrowLeft size={15} />Home</Link>
             </div>
 
-            <nav className={styles.issuerRecordTabs} aria-label="Organization record views">
-              <Link href="/aesthetic-lab/issuer/notification-history" data-active={activeTab === 'notifications'}><Bell size={15} />Notification history</Link>
-              <Link href="/aesthetic-lab/issuer/notification-history?tab=ledger" data-active={activeTab === 'ledger'}><BookOpenCheck size={15} />Organizational ledger</Link>
-            </nav>
-
-            {activeTab === 'notifications' ? <div className={styles.issuerNotificationHistoryList}>
+            <div className={styles.issuerNotificationHistoryList}>
               {notificationHistory.length ? notificationHistory.map((notice) => {
                 const canOpen = isInternalPath(notice.link)
                 return <article key={notice.id}>
@@ -162,37 +114,7 @@ export default async function IssuerNotificationHistoryPage({ searchParams }: { 
                 <Bell size={18} />
                 <div><b>No notifications yet.</b><p>Internal updates, reminders, and volunteer insights will appear here as they arrive.</p></div>
               </div>}
-            </div> : <div className={styles.issuerOrganizationLedgerList}>
-              {activity.length ? activity.map((entry) => {
-                const details = ledgerPayloadEntries(entry.payload)
-                return <article key={entry.hash}>
-                  <span><BookOpenCheck size={16} /></span>
-                  <div>
-                    <b>{actionLabel(entry.type)}</b>
-                    <p>Action taken by <strong>{entry.actorName}</strong></p>
-                    <time dateTime={new Date(entry.ts).toISOString()}>{formattedDate(entry.ts)} · Ledger record #{entry.seq}</time>
-                  </div>
-                  <details className={styles.issuerLedgerDetails}>
-                    <summary>View recorded details</summary>
-                    <div className={styles.issuerLedgerDetailBody}>
-                      {details.length ? <dl className={styles.issuerLedgerPayload}>
-                        {details.map(([key, value]) => <div key={key}>
-                          <dt>{detailLabel(key)}</dt>
-                          <dd>{ledgerValue(key, value)}</dd>
-                        </div>)}
-                      </dl> : <p className={styles.issuerLedgerNoPayload}>No additional action fields were recorded for this entry.</p>}
-                      <dl className={styles.issuerLedgerIntegrity}>
-                        <div><dt>Ledger record</dt><dd>#{entry.seq}</dd></div>
-                        <div><dt>Record hash</dt><dd><code>{entry.hash}</code></dd></div>
-                      </dl>
-                    </div>
-                  </details>
-                </article>
-              }) : <div className={styles.issuerNotificationHistoryEmpty}>
-                <BookOpenCheck size={18} />
-                <div><b>No organizational actions recorded yet.</b><p>Actions such as publishing opportunities, managing sessions, and updating organization records will appear here.</p></div>
-              </div>}
-            </div>}
+            </div>
           </section>
         </section>
       </div>

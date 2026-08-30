@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { and, asc, eq, gte, lt } from 'drizzle-orm'
-import { ArrowUpRight, CalendarDays, UsersRound } from 'lucide-react'
+import { ArrowUpRight, CalendarDays } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { orgs, shifts, tasks } from '@/lib/db/schema'
@@ -53,6 +53,7 @@ export default async function IssuerMyCityFeedPage() {
   const posts: LabFeedPost[] = feed.map(({ post, org: postOrganization, hearts, heartedByMe }) => ({
     id: post.id,
     body: post.body,
+    imageUrl: post.imageUrl,
     createdAt: post.createdAt,
     organization: postOrganization.name,
     organizationType: postOrganization.type,
@@ -64,21 +65,14 @@ export default async function IssuerMyCityFeedPage() {
   return <main className={styles.app}>
     <LabHeader activeSection="issuer-utility" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
     <div className={`${styles.issuerLayout} ${styles.issuerFeedLayout}`}>
-      <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
+      <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} isMyCityFeed />
       <section className={styles.feed} aria-label="MyCity Feed">
         <section className={`${styles.issuerHero} ${styles.issuerFeedHero}`}>
-          <div><p className={styles.eyebrow}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
+          <div><p className={`${styles.eyebrow} ${styles.myCityFeedLabel}`}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
         </section>
         <MyCityFeedContent posts={posts} commitments={[]} redirectTo="/aesthetic-lab/issuer/feed" composer={<IssuerFeedComposer organizationName={org?.name ?? 'City/Sync'} />} />
       </section>
       <aside className={styles.issuerFeedRightRail} aria-label="City context">
-        <section className={styles.issuerFeedCityCard}>
-          <p className={styles.eyebrow}>Your City Network</p>
-          <h2>{city?.name ?? 'Choose a city'}</h2>
-          <p>{city ? 'This is the active network where your organization is coordinating and contributing.' : 'Choose an active City Network to see local context.'}</p>
-          <Link href="/aesthetic-lab/cities">View City Network <ArrowUpRight size={14} /></Link>
-        </section>
-
         <section className={styles.issuerFeedTodayCard}>
           <div className={styles.issuerFeedRailHeading}><div><p className={styles.eyebrow}>Today’s Events</p><h2>Across {city?.name ?? 'your city'}</h2></div><CalendarDays size={18} /></div>
           <div className={styles.issuerFeedTodayList}>
@@ -88,14 +82,13 @@ export default async function IssuerMyCityFeedPage() {
         </section>
 
         <section className={styles.issuerFeedPulseCard}>
-          <div className={styles.issuerFeedRailHeading}><div><p className={styles.eyebrow}>City Pulse</p><h2>Shared impact</h2></div><span>Live</span></div>
+          <div className={styles.issuerFeedRailHeading}><div><p className={styles.eyebrow}>City Pulse</p><h2>Collective Impact</h2></div><span>Live</span></div>
           <div className={styles.issuerFeedPulseList}>
             <div><i className={styles.blue} /><span><b>Verified volunteers</b><small>{impact.volunteers} people have completed local work</small></span><strong>{impact.volunteers}</strong></div>
             <div><i className={styles.sun} /><span><b>Verified contributions</b><small>Recognized across the network</small></span><strong>{impact.contributions}</strong></div>
             <div><i className={styles.coral} /><span><b>Local organizations</b><small>Current City Network partners</small></span><strong>{impact.organizations}</strong></div>
             <div><i className={styles.mint} /><span><b>Service hours</b><small>Documented by local teams</small></span><strong>{impact.hours}h</strong></div>
           </div>
-          <p><UsersRound size={14} /> Your organization is part of this shared local record.</p>
         </section>
       </aside>
     </div>

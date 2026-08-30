@@ -17,6 +17,7 @@ export async function createPost(input: {
   orgId: string
   actorId: string
   body: string
+  imageUrl?: string
 }): Promise<Result<{ id: string }>> {
   const body = input.body.trim()
   if (!body) return { ok: false, error: 'Write something first.' }
@@ -35,6 +36,7 @@ export async function createPost(input: {
       orgId: input.orgId,
       authorUserId: input.actorId,
       body,
+      imageUrl: input.imageUrl || null,
       createdAt: Date.now(),
     })
     await appendEvent(tx, EventTypes.POST_CREATED, { postId: id, orgId: input.orgId }, input.actorId)

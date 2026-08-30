@@ -9,7 +9,6 @@ import { OrgStatusBanner } from '@/components/OrgStatusBanner'
 import { fmtDateTime } from '@/lib/format'
 import { getActiveCity } from '@/lib/services/city-networks'
 import { participantDisplayName } from '@/lib/participant-name'
-import { IssuerOpportunityStatusControl } from '@/components/organization/IssuerOpportunityStatusControl'
 import { WeeklyShiftCalendar } from '@/components/organization/WeeklyShiftCalendar'
 
 export default async function IssuerDashboard({
@@ -151,7 +150,6 @@ export default async function IssuerDashboard({
               </div>
               <div className="flex items-center gap-3">
                 {statusBadge(task.status)}
-                <IssuerOpportunityStatusControl taskId={task.id} taskTitle={task.title} status={task.status} />
               </div>
             </div>
           ))}

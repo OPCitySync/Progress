@@ -15,7 +15,7 @@ import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { claims, orgs, tasks } from '@/lib/db/schema'
-import { claimShiftAction, unclaimClaimAction } from '@/app/actions'
+import { claimShiftAction } from '@/app/actions'
 import { getOnboardingWaiverSetup, getWaiverSignatures } from '@/lib/services/waivers'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
 import { getWaiversAttachedToTask } from '@/lib/services/organization-resources'
@@ -27,6 +27,7 @@ import { LabHeader } from '../../LabHeader'
 import { LabNotice } from '../../LabNotice'
 import { SaveTaskButton } from '../../SaveTaskButton'
 import { DigitalWaiverSignature } from '../../DigitalWaiverSignature'
+import { WithdrawCommitmentButton } from '../../WithdrawCommitmentButton'
 import styles from '../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -63,7 +64,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
 
   const [sessions, waiverSetup, myClaims, savedTaskIds, organizationDocuments, attachedWaivers] = await Promise.all([
     getShiftsWithCounts(task.id),
-    getOnboardingWaiverSetup(org.id),
+    getOnboardingWaiverSetup(org.id, task),
     db.select().from(claims).where(and(eq(claims.taskId, task.id), eq(claims.userId, session.sub))),
     savedItemIds(session.sub, 'task', [task.id]),
     getOrganizationDocuments(org.id),
@@ -74,9 +75,12 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
   const visibleSessions = sessions.filter(({ shift }) => shift.visibility === 'public' || Boolean(claimByShift.get(shift.id) && claimByShift.get(shift.id)?.status !== 'unclaimed'))
   const isOnboarding = task.isOnboarding === 1
   const waivers = isOnboarding ? waiverSetup.waivers : attachedWaivers
-  const usesPaperWaiver = isOnboarding && waiverSetup.method === 'in_person'
+  const waiverCollectionMethod = isOnboarding ? (waiverSetup.method ?? 'digital') : 'digital'
+  const usesPaperWaiver = isOnboarding && waiverCollectionMethod === 'in_person'
+  const allowsDigitalWaiver = !isOnboarding || waiverCollectionMethod !== 'in_person'
+  const allowsPaperWaiver = isOnboarding && (waiverCollectionMethod === 'in_person' || waiverCollectionMethod === 'either')
   const waiverSignatures = await getWaiverSignatures(session.sub, waivers.map((waiver) => waiver.id))
-  const unsignedWaivers = isOnboarding && !usesPaperWaiver
+  const unsignedWaivers = isOnboarding && waiverCollectionMethod === 'digital'
     ? waivers.filter((waiver) => !waiverSignatures.has(waiver.id))
     : []
   const includedDocuments = organizationDocuments.filter((document) => document.taskIds.includes(task.id))
@@ -127,7 +131,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
 
           <section className={styles.onboardingResourceCard}>
             <div className={styles.onboardingCardHeading}>
-              <div><p className={styles.eyebrow}>Before you reserve</p><h2>Resources and requirements</h2><p>Read or download the materials from {org.name}. Any required digital waiver is accepted when you reserve a session below.</p></div>
+              <div><p className={styles.eyebrow}>Before you reserve</p><h2>Resources and requirements</h2><p>Read or download the materials from {org.name}. The organization&apos;s waiver and check-in requirements are shown below.</p></div>
               <FileText size={20} />
             </div>
             <div className={styles.onboardingResourceList}>
@@ -136,16 +140,17 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                 return <details className={styles.onboardingResourceItem} id={`waiver-${waiver.id}`} key={waiver.id}>
                 <summary>
                   <span className={styles.onboardingResourceIcon}><ShieldCheck size={16} /></span>
-                  <div><b>{waiver.title}</b><small>{usesPaperWaiver ? 'Signature is collected in person at check-in.' : signature ? `Digitally signed ${signatureDate(signature.signedAt)}.` : 'Required · review and sign before reserving a session.'}</small></div>
+                  <div><b>{waiver.title}</b><small>{usesPaperWaiver ? 'Bring a signed copy; the organization records receipt at check-in.' : signature ? `Digitally signed ${signatureDate(signature.signedAt)}.` : waiverCollectionMethod === 'either' ? 'Choose digital signing or a paper copy when you reserve.' : 'Required · review and sign before reserving a session.'}</small></div>
                   <ChevronDown size={16} />
                 </summary>
                 <div className={styles.onboardingResourcePreview}>
                   {waiver.body ? <p>{waiver.body}</p> : <p>This waiver is provided as a source document.</p>}
                   {waiver.documentUrl ? <a href={organizationFileDownloadUrl('waiver', waiver.id, task.id)} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}
-                  {!usesPaperWaiver ? signature ? <p className={styles.onboardingSignatureReceipt}><CheckCircle2 size={15} /> Signed electronically on {signatureDate(signature.signedAt)}. This receipt is private to you and {org.name}.</p> : <DigitalWaiverSignature taskId={task.id} waiver={{ id: waiver.id, title: waiver.title, version: waiver.version, body: waiver.body, hasDocument: Boolean(waiver.documentUrl), documentName: waiver.documentName }} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} defaultSigningName={session.name} organizationName={org.name} /> : null}
+                  {allowsDigitalWaiver ? signature ? <p className={styles.onboardingSignatureReceipt}><CheckCircle2 size={15} /> Signed electronically on {signatureDate(signature.signedAt)}. This receipt is private to you and {org.name}.</p> : <DigitalWaiverSignature taskId={task.id} waiver={{ id: waiver.id, title: waiver.title, version: waiver.version, body: waiver.body, hasDocument: Boolean(waiver.documentUrl), documentName: waiver.documentName }} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} defaultSigningName={session.name} organizationName={org.name} /> : null}
                 </div>
               </details>
               }) : isOnboarding ? <div className={styles.onboardingResourceEmpty}><ShieldCheck size={17} /><p><b>No waiver has been added.</b><br />This organization has not attached a liability waiver to this onboarding opportunity.</p></div> : null}
+              {isOnboarding && waiverSetup.identityCheck === 'staff_attested' ? <div className={styles.onboardingResourceEmpty}><UsersRound size={17} /><p><b>Identity confirmation at check-in.</b><br />Organization staff will confirm that the person who arrives matches the City/Sync account used for this reservation. City/Sync does not retain identity documents.</p></div> : null}
               {includedDocuments.map((document) => <details className={styles.onboardingResourceItem} key={document.id}>
                 <summary>
                   <span className={styles.onboardingResourceIcon}><FileText size={16} /></span>
@@ -181,7 +186,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                     {alreadyReserved ? <div className={styles.onboardingReservationState}>
                       <span><CheckCircle2 size={17} /></span>
                       <div><b>{existing?.status === 'claimed' ? (isOnboarding ? 'Your spot is reserved.' : 'You’re signed up.') : existing?.status}</b><p>{isOnboarding ? 'Arrive ready to check in with the organization. Completed onboarding is then verified by their team.' : 'Your attendance will be confirmed by the organization after the shift.'}</p><Link className={styles.onboardingSessionDetailsLink} href={`/aesthetic-lab/opportunities/${task.id}/sessions/${shift.id}`}>View session details</Link></div>
-                      {existing?.status === 'claimed' ? <form action={unclaimClaimAction}><input type="hidden" name="claimId" value={existing.id} /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/opportunities/${task.id}`} /><button type="submit">Cancel reservation</button></form> : null}
+                      {existing?.status === 'claimed' ? <WithdrawCommitmentButton claimId={existing.id} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} organizationName={org.name} label={isOnboarding ? 'Cancel reservation' : 'Withdraw sign-up'} /> : null}
                     </div> : shift.enrollmentMode === 'organization_managed' ? <p className={styles.onboardingReservationUnavailable}>This session’s roster is managed directly by the organization.</p>
                       : slotsLeft <= 0 ? <p className={styles.onboardingReservationUnavailable}>This session is currently full. Check back if another place opens.</p>
                         : unsignedWaivers.length > 0 ? <div className={styles.onboardingSignatureRequired}>
@@ -193,7 +198,9 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                           <input type="hidden" name="shiftId" value={shift.id} />
                           <input type="hidden" name="redirectTo" value={`/aesthetic-lab/opportunities/${task.id}`} />
                           <input type="hidden" name="successRedirectTo" value={`/aesthetic-lab/opportunities/${task.id}/sessions/${shift.id}`} />
-                          {usesPaperWaiver ? <p className={styles.onboardingPaperWaiver}><ShieldCheck size={15} /> Your reservation is provisional until the organization records your in-person waiver at check-in.</p> : null}
+                          {allowsPaperWaiver && waiverCollectionMethod === 'either' ? <fieldset className={styles.onboardingWaiverChoice}><legend>How will you complete the waiver?</legend><label><input type="radio" name="waiverCollectionMethod" value="digital" defaultChecked={waiverSignatures.size === waivers.length} /> Sign digitally now</label><label><input type="radio" name="waiverCollectionMethod" value="in_person" defaultChecked={waiverSignatures.size !== waivers.length} /> Bring a signed paper copy</label></fieldset> : <input type="hidden" name="waiverCollectionMethod" value={usesPaperWaiver ? 'in_person' : 'digital'} />}
+                          {usesPaperWaiver || waiverCollectionMethod === 'either' ? <p className={styles.onboardingPaperWaiver}><ShieldCheck size={15} /> A paper-waiver reservation is provisional until the organization records receipt of your signed copy at check-in.</p> : null}
+                          {waiverSetup.identityCheck === 'staff_attested' ? <p className={styles.onboardingPaperWaiver}><UsersRound size={15} /> The organization will confirm that you match your City/Sync account at check-in.</p> : null}
                           <label className={styles.reservationAcknowledgement}><input type="checkbox" name="attendanceAcknowledgement" value="yes" required /><span><b>I intend to attend this session.</b><small>If my plans change, I will cancel before the 24-hour cancellation cutoff.</small></span></label>
                           <div className={styles.onboardingReservationActions}><span>A reservation is for this date only.</span><button type="submit">{isOnboarding ? 'Reserve a spot' : 'Sign up'}</button></div>
                         </form>}

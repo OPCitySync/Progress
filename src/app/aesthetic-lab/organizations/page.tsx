@@ -3,7 +3,6 @@ import {
   ArrowUpRight,
   Building2,
   CheckCircle2,
-  ChevronDown,
   Compass,
   Heart,
   MapPin,
@@ -38,10 +37,9 @@ export default async function OrganizationsLabPage({ searchParams }: { searchPar
       <div className={styles.detailLayout}>
         <aside className={styles.leftRail}>
           <section className={styles.cityCard}>
-            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Discover in</span><Link href="/aesthetic-lab/cities" aria-label="Change city"><ChevronDown size={16} /></Link></div>
+            <div className={styles.cityCardTop}><span className={styles.cityOverline}>Discover in</span></div>
             <div className={styles.cityName}><MapPin size={17} /><span>{city?.name ?? 'Choose a city'}</span></div>
             <p>Every organization here is part of the local City/Sync network.</p>
-            <Link href="/aesthetic-lab/cities">Explore city network <ArrowUpRight size={14} /></Link>
           </section>
 
           <section className={styles.filterCard}>

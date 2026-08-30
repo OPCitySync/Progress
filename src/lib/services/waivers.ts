@@ -8,10 +8,15 @@ import { canonicalJson, sha256Hex } from '@/lib/ledger/hash'
 import type { Result } from './identity'
 import { programBelongsToOrganization } from './volunteer-programs'
 
-export type OnboardingWaiverMethod = 'digital' | 'in_person'
+export type OnboardingWaiverMethod = 'digital' | 'in_person' | 'either'
+export type OnboardingIdentityCheck = 'not_required' | 'staff_attested'
 
-function normalizeOnboardingWaiverMethod(value: unknown): OnboardingWaiverMethod | null {
-  return value === 'digital' || value === 'in_person' ? value : null
+export function normalizeOnboardingWaiverMethod(value: unknown): OnboardingWaiverMethod | null {
+  return value === 'digital' || value === 'in_person' || value === 'either' ? value : null
+}
+
+export function normalizeOnboardingIdentityCheck(value: unknown): OnboardingIdentityCheck | null {
+  return value === 'not_required' || value === 'staff_attested' ? value : null
 }
 
 /**
@@ -122,35 +127,53 @@ export async function getActiveWaivers(orgId: string): Promise<(typeof waiverVer
 }
 
 /** The active waiver set and collection rule governing a new onboarding reservation. */
-export async function getOnboardingWaiverSetup(orgId: string): Promise<{
+export async function getOnboardingWaiverSetup(
+  orgId: string,
+  overrides?: {
+    onboardingWaiverMethod?: string | null
+    onboardingIdentityCheck?: string | null
+  },
+): Promise<{
   waiver: Awaited<ReturnType<typeof getActiveWaiver>>
   waivers: Awaited<ReturnType<typeof getActiveWaivers>>
   method: OnboardingWaiverMethod | null
+  identityCheck: OnboardingIdentityCheck
 }> {
   const [waivers, profile] = await Promise.all([
     getActiveWaivers(orgId),
     db
-      .select({ onboardingWaiverMethod: orgProfiles.onboardingWaiverMethod })
+      .select({
+        onboardingWaiverMethod: orgProfiles.onboardingWaiverMethod,
+        onboardingIdentityCheck: orgProfiles.onboardingIdentityCheck,
+      })
       .from(orgProfiles)
       .where(eq(orgProfiles.orgId, orgId))
       .limit(1)
       .then((rows) => rows[0] ?? null),
   ])
 
-  if (waivers.length === 0) return { waiver: null, waivers: [], method: null }
+  const identityCheck = normalizeOnboardingIdentityCheck(overrides?.onboardingIdentityCheck)
+    ?? normalizeOnboardingIdentityCheck(profile?.onboardingIdentityCheck)
+    ?? 'not_required'
+  if (waivers.length === 0) return { waiver: null, waivers: [], method: null, identityCheck }
   // Existing organizations already used the digital acceptance path. Preserve
   // that behavior until they expressly switch to paper collection.
   return {
     waiver: waivers[0],
     waivers,
-    method: normalizeOnboardingWaiverMethod(profile?.onboardingWaiverMethod) ?? 'digital',
+    method: normalizeOnboardingWaiverMethod(overrides?.onboardingWaiverMethod)
+      ?? normalizeOnboardingWaiverMethod(profile?.onboardingWaiverMethod)
+      ?? 'digital',
+    identityCheck,
   }
 }
 
-/** Changes only the collection process; the published waiver version remains intact. */
-export async function setOnboardingWaiverMethod(input: {
+/** Changes the default collection and identity-confirmation process. Published
+ * waiver versions remain intact; these controls only govern future sessions. */
+export async function setOnboardingWaiverRequirements(input: {
   orgId: string
   method: OnboardingWaiverMethod
+  identityCheck: OnboardingIdentityCheck
 }): Promise<Result> {
   const waiver = await getActiveWaiver(input.orgId)
   if (!waiver) return { ok: false, error: 'Publish a liability waiver before choosing how it is collected.' }
@@ -158,12 +181,34 @@ export async function setOnboardingWaiverMethod(input: {
   const now = Date.now()
   await db
     .insert(orgProfiles)
-    .values({ orgId: input.orgId, onboardingWaiverMethod: input.method, updatedAt: now })
+    .values({
+      orgId: input.orgId,
+      onboardingWaiverMethod: input.method,
+      onboardingIdentityCheck: input.identityCheck,
+      updatedAt: now,
+    })
     .onConflictDoUpdate({
       target: orgProfiles.orgId,
-      set: { onboardingWaiverMethod: input.method, updatedAt: now },
+      set: {
+        onboardingWaiverMethod: input.method,
+        onboardingIdentityCheck: input.identityCheck,
+        updatedAt: now,
+      },
     })
   return { ok: true }
+}
+
+/** Backwards-compatible helper retained for existing callers that only change
+ * the collection method. */
+export async function setOnboardingWaiverMethod(input: {
+  orgId: string
+  method: OnboardingWaiverMethod
+}): Promise<Result> {
+  const setup = await getOnboardingWaiverSetup(input.orgId)
+  return setOnboardingWaiverRequirements({
+    ...input,
+    identityCheck: setup.identityCheck,
+  })
 }
 
 /** Stops a waiver from being included with future onboarding sessions without

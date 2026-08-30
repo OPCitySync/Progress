@@ -75,14 +75,17 @@ function OnboardingSessionDetails({
   session,
   participants,
   referenceTime,
+  open = false,
 }: {
   session: OnboardingSessionRow
   participants: OnboardingParticipant[]
   referenceTime: number
+  open?: boolean
 }) {
   const { shift, taken } = session
   const isUpcoming = shift.status === 'open' && Boolean(shift.startsAt && shift.startsAt > referenceTime)
-  return <details className={styles.onboardingSessionDetails}>
+  const needsVerification = shift.status === 'open' && !isUpcoming
+  return <details id={`event-${shift.id}`} className={styles.onboardingSessionDetails} open={open}>
     <summary>
       <CalendarDays size={16} />
       <b>{shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase() : 'TBD'}</b>
@@ -97,6 +100,9 @@ function OnboardingSessionDetails({
           <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=onboarding" />
           <button type="submit"><XCircle size={14} /> Cancel &amp; notify</button>
         </form>
+      </div> : needsVerification ? <div className={styles.onboardingSessionActions}>
+        <span>Review attendance and close this session.</span>
+        <Link className={styles.onboardingWorkspaceAction} href={`/aesthetic-lab/issuer/shifts/${shift.id}/verify`}><CheckCircle2 size={14} /> Verify &amp; Close</Link>
       </div> : null}
       {participants.length === 0 ? <p>No participants have signed up for this session.</p> : participants.map((participant) => <article key={participant.claimId}>
         <div className={styles.onboardingParticipantIdentity}>
@@ -397,14 +403,14 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
                   </div>
                   <div className={styles.onboardingSessionHistory}>
                     <div className={styles.onboardingSessionHistoryHeading}><span>Upcoming onboarding sessions</span><small>Open a date to review sign-ups</small></div>
-                    {series.upcomingSessions.length ? series.upcomingSessions.map((session) => <OnboardingSessionDetails key={session.shift.id} session={session} participants={series.participants.get(session.shift.id) ?? []} referenceTime={referenceTime} />) : <p className={styles.onboardingSessionEmpty}>No upcoming sessions are published yet.</p>}
+                    {series.upcomingSessions.length ? series.upcomingSessions.map((session) => <OnboardingSessionDetails key={session.shift.id} session={session} participants={series.participants.get(session.shift.id) ?? []} referenceTime={referenceTime} open={searchParams.event === session.shift.id} />) : <p className={styles.onboardingSessionEmpty}>No upcoming sessions are published yet.</p>}
                   </div>
                 </section>)}</div> : <div className={styles.onboardingProgramEmpty}><Repeat2 size={18} /><div><b>No onboarding sessions in this program yet.</b><p>Add one when this area of work would benefit from a dedicated volunteer welcome.</p></div></div>}
               </section>)}
               <section className={`${styles.onboardingWorkspaceCard} ${styles.pastOnboardingSessionsCard}`}>
                 <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Past onboarding sessions</p></div></div>
                 <div className={styles.onboardingSessionHistory}>
-                  {pastOnboardingSessions.length ? pastOnboardingSessions.map(({ session, participants }) => <OnboardingSessionDetails key={session.shift.id} session={session} participants={participants} referenceTime={referenceTime} />) : <p className={styles.onboardingSessionEmpty}>Completed onboarding sessions will appear here.</p>}
+                  {pastOnboardingSessions.length ? pastOnboardingSessions.map(({ session, participants }) => <OnboardingSessionDetails key={session.shift.id} session={session} participants={participants} referenceTime={referenceTime} open={searchParams.event === session.shift.id} />) : <p className={styles.onboardingSessionEmpty}>Completed onboarding sessions will appear here.</p>}
                 </div>
               </section>
             </>}
@@ -444,11 +450,11 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
                         const participants = eventParticipantsByShift.get(shift.id) ?? []
                         const isFuture = Boolean(shift.startsAt && shift.startsAt > referenceTime)
                         const access = shift.visibility === 'private' ? 'Private roster' : shift.enrollmentMode === 'organization_managed' ? 'Public · organization-managed' : 'Public · open claims'
-                        return <details key={shift.id} className={styles.opportunityShiftDetails}>
+                        return <details key={shift.id} id={`event-${shift.id}`} className={styles.opportunityShiftDetails} open={searchParams.event === shift.id}>
                           <summary><span><CalendarDays size={15} /></span><div><b>{shift.startsAt ? new Date(shift.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Date and time to be confirmed'}</b><small>{access} · {taken} of {shift.capacity} filled{shift.visibility === 'public' && shift.enrollmentMode === 'open_claims' ? ` · ${slotsLeft} open` : ''}</small></div><i>{participants.length} rostered</i></summary>
                           <div className={styles.opportunityShiftBody}>
                             <EventParticipantList participants={participants} mode="upcoming" />
-                            <div className={styles.opportunityShiftActions}>{shift.visibility === 'private' ? <ShiftRosterAssignmentButton shiftId={shift.id} title={task.title} capacity={shift.capacity} taken={taken} visibility={shift.visibility} volunteers={roster.volunteers} redirectTo="/aesthetic-lab/issuer/catalog?workspace=opportunities" /> : null}{isFuture ? <form action={cancelShiftAndNotifyAction}><input type="hidden" name="shiftId" value={shift.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=opportunities" /><button type="submit" className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton} ${styles.opportunityShiftCancel}`}><XCircle size={14} /> Cancel &amp; notify</button></form> : null}</div>
+                            <div className={styles.opportunityShiftActions}>{shift.visibility === 'private' ? <ShiftRosterAssignmentButton shiftId={shift.id} title={task.title} capacity={shift.capacity} taken={taken} visibility={shift.visibility} volunteers={roster.volunteers} redirectTo="/aesthetic-lab/issuer/catalog?workspace=opportunities" /> : null}{isFuture ? <form action={cancelShiftAndNotifyAction}><input type="hidden" name="shiftId" value={shift.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=opportunities" /><button type="submit" className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton} ${styles.opportunityShiftCancel}`}><XCircle size={14} /> Cancel &amp; notify</button></form> : <Link className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton} ${styles.opportunityShiftVerify}`} href={`/aesthetic-lab/issuer/shifts/${shift.id}/verify`}><CheckCircle2 size={14} /> Verify &amp; Close</Link>}</div>
                           </div>
                         </details>
                       })}</div> : <p className={styles.opportunityShiftEmpty}>No shifts are published from this template yet. Publish one whenever volunteers can take part.</p>}

@@ -15,8 +15,6 @@ import {
   updateTask,
   createShift,
   assignVolunteersToShift,
-  closeTask,
-  reopenTask,
   closeShift,
   cancelUpcomingShiftAndNotify,
   claimShift,
@@ -41,7 +39,14 @@ import {
 import { parseCredentialList } from '@/lib/credentials'
 import { setInterests, setNeighborhood, notifyMatchingParticipants } from '@/lib/services/interests'
 import { setResumePublic } from '@/lib/services/resume'
-import { createWaiverVersion, retireWaiverVersion, setOnboardingWaiverMethod, signWaiver } from '@/lib/services/waivers'
+import {
+  createWaiverVersion,
+  normalizeOnboardingIdentityCheck,
+  normalizeOnboardingWaiverMethod,
+  retireWaiverVersion,
+  setOnboardingWaiverRequirements,
+  signWaiver,
+} from '@/lib/services/waivers'
 import {
   ALLOWED_ORGANIZATION_DOCUMENT_TYPES,
   ALLOWED_WAIVER_DOCUMENT_TYPES,
@@ -85,6 +90,7 @@ import {
   createOrganizationRole,
   createOrganizationInvite,
   defaultSessionForUser,
+  getOrganizationInvitePreview,
   hasOrganizationPermission,
   revokeOrganizationDelegation,
   sessionForIdentity,
@@ -140,6 +146,22 @@ function safeNext(formData: FormData): string | null {
   const next = str(formData, 'next').trim()
   if (next.startsWith('/') && !next.startsWith('//')) return next
   return null
+}
+
+/** A feed attachment must come from this organization's image-upload path. */
+function organizationPostImageUrl(value: string, orgId: string): string | null {
+  const url = value.trim()
+  if (!url) return null
+  const pathPrefix = `/orgs/${orgId}/`
+  if (url.startsWith(`/uploads${pathPrefix}`)) return url
+  try {
+    const parsed = new URL(url)
+    const isVercelBlob = parsed.hostname.endsWith('.blob.vercel-storage.com')
+      || parsed.hostname.endsWith('.public.blob.vercel-storage.com')
+    return parsed.protocol === 'https:' && isVercelBlob && parsed.pathname.startsWith(pathPrefix) ? url : null
+  } catch {
+    return null
+  }
 }
 
 /** Extract the invite code only from City/Sync's own volunteer-invite path. */
@@ -219,6 +241,11 @@ export async function signUpAction(formData: FormData) {
   const password = str(formData, 'password')
 
   if (kind === 'participant') {
+    const organizationInvite = str(formData, 'organizationInvite')
+    if (organizationInvite) {
+      const preview = await getOrganizationInvitePreview(organizationInvite)
+      if (!preview.ok) back(formData, '/signup', { error: preview.error })
+    }
     const result = await registerParticipant({ name, email, password, homeCityId: str(formData, 'cityId') })
     if (!result.ok) back(formData, '/signup', { error: result.error })
     const rosterInvite = str(formData, 'rosterInvite')
@@ -228,6 +255,25 @@ export async function signUpAction(formData: FormData) {
     }
     const session = await defaultSessionForUser(result.userId)
     if (!session) back(formData, '/signup', { error: 'We could not provision your participant identity.' })
+
+    // A role invite is intentionally redeemed as part of creating the personal
+    // account. The new user keeps their participant identity and gains a
+    // separate, role-limited authority for the inviting organization.
+    if (organizationInvite) {
+      const inviteResult = await acceptOrganizationInvite({ userId: result.userId, code: organizationInvite })
+      if (!inviteResult.ok) {
+        await createSession(session)
+        redirect(`/aesthetic-lab/invite?code=${encodeURIComponent(organizationInvite)}&error=${encodeURIComponent(inviteResult.error)}`)
+      }
+      const organizationSession = await sessionForIdentity(result.userId, inviteResult.identityId)
+      if (!organizationSession) {
+        await createSession(session)
+        redirect(`/aesthetic-lab/invite?code=${encodeURIComponent(organizationInvite)}&error=${encodeURIComponent('Your account was created, but the organization role could not be activated.')}`)
+      }
+      await createSession(organizationSession)
+      redirect(aestheticHomeFor(organizationSession.role))
+    }
+
     await createSession(session)
     redirect(safeNext(formData) ?? aestheticHomeFor(session.role))
   }
@@ -354,6 +400,7 @@ export async function createOrganizationInviteAction(formData: FormData) {
     roleId: str(formData, 'roleId'),
     cityId: city.id,
     expiresInDays: int(formData, 'expiresInDays') || 7,
+    ownerRoleConfirmed: str(formData, 'confirmOwnerRole') === 'yes',
   })
   back(
     formData,
@@ -366,12 +413,13 @@ export async function createOrganizationInviteAction(formData: FormData) {
 
 export async function acceptOrganizationInviteAction(formData: FormData) {
   const session = await requireActor()
-  const result = await acceptOrganizationInvite({ userId: session.sub, code: str(formData, 'code') })
-  if (!result.ok) back(formData, '/invite', { error: result.error })
+  const code = str(formData, 'code')
+  const result = await acceptOrganizationInvite({ userId: session.sub, code })
+  if (!result.ok) back(formData, '/aesthetic-lab/invite', { code, error: result.error })
   const next = await sessionForIdentity(session.sub, result.identityId)
-  if (!next) back(formData, '/invite', { error: 'The authority was created, but could not be activated.' })
+  if (!next) back(formData, '/aesthetic-lab/invite', { code, error: 'The authority was created, but could not be activated.' })
   await createSession(next)
-  redirect(next.role === 'issuer' ? '/issuer' : '/redeemer')
+  redirect(aestheticHomeFor(next.role))
 }
 
 export async function revokeOrganizationDelegationAction(formData: FormData) {
@@ -628,6 +676,8 @@ export async function createOnboardingSessionAction(formData: FormData) {
     durationMinutes: int(formData, 'durationMinutes'),
     weeklyCapacity: int(formData, 'weeklyCapacity'),
     programId: str(formData, 'programId') || null,
+    onboardingWaiverMethod: normalizeOnboardingWaiverMethod(str(formData, 'onboardingWaiverMethod')),
+    onboardingIdentityCheck: normalizeOnboardingIdentityCheck(str(formData, 'onboardingIdentityCheck')),
   })
   const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=onboarding'
   if (result.ok) await notifyMatchingParticipants(result.taskId)
@@ -651,6 +701,8 @@ export async function updateOnboardingSessionAction(formData: FormData) {
     durationMinutes: int(formData, 'durationMinutes'),
     weeklyCapacity: int(formData, 'weeklyCapacity'),
     programId: str(formData, 'programId') || null,
+    onboardingWaiverMethod: normalizeOnboardingWaiverMethod(str(formData, 'onboardingWaiverMethod')),
+    onboardingIdentityCheck: normalizeOnboardingIdentityCheck(str(formData, 'onboardingIdentityCheck')),
   })
   back(formData, '/aesthetic-lab/issuer/catalog?workspace=onboarding', result.ok ? undefined : { error: result.error })
 }
@@ -758,20 +810,6 @@ export async function cancelShiftAndNotifyAction(formData: FormData) {
   back(formData, destination, result.ok
     ? { ok: result.notified > 0 ? `Event cancelled and ${result.notified} participant${result.notified === 1 ? '' : 's'} notified.` : 'Event cancelled.' }
     : { error: result.error })
-}
-
-export async function closeTaskAction(formData: FormData) {
-  const session = await requireActor('issuer', 'opportunities.manage')
-  if (!session.orgId) redirect('/issuer')
-  const result = await closeTask(str(formData, 'taskId'), session.orgId, session.sub)
-  back(formData, str(formData, 'redirectTo') || '/issuer', result.ok ? { ok: 'Opportunity closed.' } : { error: result.error })
-}
-
-export async function reopenTaskAction(formData: FormData) {
-  const session = await requireActor('issuer', 'opportunities.manage')
-  if (!session.orgId) redirect('/issuer')
-  const result = await reopenTask(str(formData, 'taskId'), session.orgId, session.sub)
-  back(formData, str(formData, 'redirectTo') || '/issuer', result.ok ? { ok: 'Opportunity reactivated.' } : { error: result.error })
 }
 
 // ---------------------------------------------------------------------------
@@ -926,11 +964,13 @@ export async function verifyClaimAction(formData: FormData) {
     session.orgId,
     session.sub,
     str(formData, 'paperWaiverReceived') === 'on',
+    undefined,
+    str(formData, 'identityMatchesConfirmed') === 'on',
   )
   back(formData, '/issuer', result.ok ? { ok: 'Completion verified — credits minted.' } : { error: result.error })
 }
 
-/** Confirm selected attendees for one completed shift in a single staff action. */
+/** Finalize attendance for one organization-controlled shift. */
 export async function verifyShiftAttendanceAction(formData: FormData) {
   const session = await requireActor('issuer', 'participants.manage')
   if (!session.orgId) redirect('/issuer')
@@ -942,12 +982,13 @@ export async function verifyShiftAttendanceAction(formData: FormData) {
     actorId: session.sub,
     note: str(formData, 'note'),
     paperWaiverReceived: str(formData, 'paperWaiverReceived') === 'on',
+    identityMatchesConfirmed: str(formData, 'identityMatchesConfirmed') === 'on',
   })
   back(
     formData,
     destination,
     result.ok
-      ? { ok: `${result.verifiedCount} volunteer${result.verifiedCount === 1 ? '' : 's'} verified for this shift.` }
+      ? { ok: `Attendance finalized — ${result.verifiedCount} verified, ${result.noShowCount} marked no-show.` }
       : { error: result.error },
   )
 }
@@ -1009,27 +1050,31 @@ export async function createWaiverAction(formData: FormData) {
     document,
     programId: str(formData, 'programId') || null,
     onboardingWaiverMethod: formData.has('onboardingWaiverMethod')
-      ? (str(formData, 'onboardingWaiverMethod') === 'in_person' ? 'in_person' : 'digital')
+      ? (normalizeOnboardingWaiverMethod(str(formData, 'onboardingWaiverMethod')) ?? 'digital')
       : undefined,
   })
   if (!result.ok) back(formData, destination, { error: result.error })
   back(formData, destination, { ok: 'Waiver published and included with future onboarding sessions.' })
 }
 
-export async function setOnboardingWaiverMethodAction(formData: FormData) {
+export async function setOnboardingWaiverRequirementsAction(formData: FormData) {
   const session = await requireActor('issuer', 'waiver.manage')
   if (!session.orgId) redirect('/issuer')
   const destination = str(formData, 'redirectTo') || '/issuer/waiver'
-  const method = str(formData, 'onboardingWaiverMethod') === 'in_person' ? 'in_person' : 'digital'
-  const result = await setOnboardingWaiverMethod({ orgId: session.orgId, method })
+  const method = normalizeOnboardingWaiverMethod(str(formData, 'onboardingWaiverMethod')) ?? 'digital'
+  const identityCheck = normalizeOnboardingIdentityCheck(str(formData, 'onboardingIdentityCheck')) ?? 'not_required'
+  const result = await setOnboardingWaiverRequirements({ orgId: session.orgId, method, identityCheck })
   back(
     formData,
     destination,
     result.ok
-      ? { ok: method === 'digital' ? 'Digital waiver acceptance selected for onboarding.' : 'In-person paper waiver selected for onboarding.' }
+      ? { ok: 'Onboarding waiver requirements saved.' }
       : { error: result.error },
   )
 }
+
+/** Compatibility alias for any older form that still imports this action. */
+export const setOnboardingWaiverMethodAction = setOnboardingWaiverRequirementsAction
 
 export async function retireWaiverAction(formData: FormData) {
   const session = await requireActor('issuer', 'waiver.manage')
@@ -1889,7 +1934,8 @@ export async function claimShiftAction(formData: FormData) {
     back(formData, dest, { error: 'Please acknowledge your attendance commitment before reserving a spot.' })
   }
 
-  const result = await claimShift(shiftId, session.sub)
+  const requestedWaiverMethod = str(formData, 'waiverCollectionMethod') === 'in_person' ? 'in_person' : 'digital'
+  const result = await claimShift(shiftId, session.sub, requestedWaiverMethod)
   const task = taskId
     ? (await db.select({ isOnboarding: tasks.isOnboarding }).from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
     : null
@@ -1946,7 +1992,7 @@ export async function issuerCheckInAction(formData: FormData) {
 
 export async function unclaimClaimAction(formData: FormData) {
   const session = await requireActor('participant')
-  const result = await unclaimClaim(str(formData, 'claimId'), session.sub)
+  const result = await unclaimClaim(str(formData, 'claimId'), session.sub, str(formData, 'withdrawalNote'))
   back(formData, '/participant', result.ok ? { ok: 'Sign-up withdrawn.' } : { error: result.error })
 }
 
@@ -2077,10 +2123,16 @@ export async function createPostAction(formData: FormData) {
   if (!(await hasOrganizationPermission(session, 'feed.manage'))) {
     back(formData, '/feed', { error: 'Your organization role cannot publish to MyCity Feed.' })
   }
+  const suppliedImageUrl = str(formData, 'imageUrl')
+  const imageUrl = organizationPostImageUrl(suppliedImageUrl, session.orgId!)
+  if (suppliedImageUrl && !imageUrl) {
+    back(formData, '/feed', { error: 'That image could not be attached to this post.' })
+  }
   const result = await createPost({
     orgId: session.orgId!,
     actorId: session.sub,
     body: str(formData, 'body'),
+    imageUrl: imageUrl ?? undefined,
   })
   back(formData, '/feed', result.ok ? { ok: 'Posted to MyCity.' } : { error: result.error })
 }

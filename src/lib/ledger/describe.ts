@@ -86,6 +86,10 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
       return `${l.orgName(p.orgId)} removed liability waiver v${String(p.version ?? '?')} from future onboarding.`
     case 'WAIVER_ACCEPTED':
       return `${l.who(actorId)} accepted ${l.orgName(p.orgId)}'s waiver v${String(p.version ?? '?')} against hash ${String(p.sha256 ?? '').slice(0, 12)}…`
+    case 'WAIVER_RECEIPT_ATTESTED':
+      return `${l.who(actorId)} recorded receipt of ${l.who(p.participantId)}’s paper waiver for “${l.taskTitle(p.taskId)}”.`
+    case 'IDENTITY_MATCH_ATTESTED':
+      return `${l.who(actorId)} confirmed that ${l.who(p.participantId)} matches their City/Sync account.`
     case 'TASK_CREATED':
       return `${l.orgName(p.orgId)} published “${String(p.title ?? l.taskTitle(p.taskId))}” — ${String(p.credits ?? '?')} credits, ${String(p.slots ?? '?')} slot(s).`
     case 'TASK_CLOSED':
@@ -103,13 +107,15 @@ export function describeEvent(type: string, payloadJson: string, actorId: string
     case 'COMPLETION_SUBMITTED':
       return `${l.who(actorId)} submitted completion of “${l.taskTitle(p.taskId)}” for verification.`
     case 'COMPLETION_VERIFIED':
-      return `Completion of “${l.taskTitle(p.taskId)}” verified — ${String(p.credits ?? '?')} credits to ${l.who(p.participantId)}.`
+      return `Completion of “${l.taskTitle(p.taskId)}” was verified for ${l.who(p.participantId)}.`
     case 'COMPLETION_REJECTED':
       return `Completion of “${l.taskTitle(p.taskId)}” was rejected.`
     case 'CLAIM_CHECKED_IN':
       return `${l.who(actorId)} was checked in for “${l.taskTitle(p.taskId)}”.`
     case 'CLAIM_NO_SHOW':
-      return `${l.who(p.userId)} was marked as a no-show for “${l.taskTitle(p.taskId)}”.`
+      return `${l.who(p.participantId ?? p.userId)} was marked as a no-show for “${l.taskTitle(p.taskId)}”.`
+    case 'SHIFT_ATTENDANCE_FINALIZED':
+      return `Attendance for “${l.taskTitle(p.taskId)}” was finalized — ${String(p.verifiedCount ?? 0)} verified and ${String(p.noShowCount ?? 0)} marked no-show.`
     case 'CREDITS_MINTED':
       return `⬆ ${String(p.amount ?? '?')} civic credits minted to ${l.who(p.userId)} (${String(p.reason ?? '')}).`
     case 'CREDITS_BURNED':

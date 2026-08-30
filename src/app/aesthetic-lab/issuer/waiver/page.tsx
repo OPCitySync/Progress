@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft, ChevronDown, ShieldCheck, Trash2 } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
-import { retireWaiverAction, setWaiverProgramAction } from '@/app/actions'
+import { retireWaiverAction, setOnboardingWaiverRequirementsAction, setWaiverProgramAction } from '@/app/actions'
 import { getOnboardingWaiverSetup } from '@/lib/services/waivers'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { organizationFileUrl } from '@/lib/storage/organization-file-url'
@@ -39,6 +39,22 @@ export default async function IssuerWaiverLabPage({ searchParams }: { searchPara
             <div><p className={styles.eyebrow}>Current waivers</p><h2>{setup.waivers.length > 0 ? 'Required for every onboarding session.' : 'No waivers published yet.'}</h2><p>{setup.waivers.length > 0 ? `${setup.waivers.length} active waiver${setup.waivers.length === 1 ? '' : 's'} will be included automatically. Participants acknowledge each digital waiver before reserving.` : 'Add a waiver whenever your organization needs participant acknowledgement for onboarding.'}</p></div>
             <WaiverCreateButton programs={volunteerPrograms} />
           </div>
+          <form action={setOnboardingWaiverRequirementsAction} className={styles.waiverRequirementForm}>
+            <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/waiver" />
+            <div><p className={styles.eyebrow}>Default onboarding requirements</p><p>Choose how future onboarding sessions collect the waiver. Each session can inherit these settings or use its own.</p></div>
+            <fieldset className={styles.waiverMethodFieldset}>
+              <legend>Waiver collection</legend>
+              <label><input type="radio" name="onboardingWaiverMethod" value="digital" defaultChecked={(setup.method ?? 'digital') === 'digital'} /> Digital signature before reservation</label>
+              <label><input type="radio" name="onboardingWaiverMethod" value="in_person" defaultChecked={setup.method === 'in_person'} /> Paper waiver receipt attested at check-in</label>
+              <label><input type="radio" name="onboardingWaiverMethod" value="either" defaultChecked={setup.method === 'either'} /> Let participants choose digital or paper</label>
+            </fieldset>
+            <fieldset className={styles.waiverMethodFieldset}>
+              <legend>Identity confirmation</legend>
+              <label><input type="radio" name="onboardingIdentityCheck" value="not_required" defaultChecked={setup.identityCheck !== 'staff_attested'} /> Not required</label>
+              <label><input type="radio" name="onboardingIdentityCheck" value="staff_attested" defaultChecked={setup.identityCheck === 'staff_attested'} /> Staff confirms the person matches their City/Sync account at check-in</label>
+            </fieldset>
+            <button className={styles.catalogWorkspaceAction} type="submit">Save requirements</button>
+          </form>
           {setup.waivers.length > 0 ? (
             <div className={styles.waiverCurrentList} aria-label="Current waiver previews">
               {setup.waivers.map((waiver) => <details className={styles.waiverCurrentItem} key={waiver.id}>

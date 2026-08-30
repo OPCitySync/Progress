@@ -9,6 +9,133 @@ Newest entries at the top. Each entry: date, summary, changes, decisions, verifi
 
 ---
 
+## Upcoming — Pre-launch ledger vocabulary migration (planned)
+
+### Summary
+Before public launch, review and standardize the names of durable ledger events
+so the audit record uses the same plain-language concepts as the product.
+
+### Planned work
+- Establish a reviewed event vocabulary for reusable opportunity templates,
+  published volunteer events, reservations, attendance, verification, and
+  Mass Coordination Event workflows.
+- Replace legacy task-oriented event names where appropriate—for example,
+  consider `TASK_CREATED` → `TEMPLATE_CREATED`—rather than relying only on a
+  user-interface label to translate an ambiguous stored event name.
+- Rename `TASK_UPDATED` to `OPPORTUNITY_TEMPLATE_UPDATED`, displayed as
+  **Opportunity Template Updated**. Its recorded details should list only the
+  fields that actually changed (for example, title, default location, or
+  program area); do not show unchanged values or large before-and-after
+  document bodies in the activity feed.
+- Rename the displayed `WAIVER_ACCEPTED` event to **Waiver Electronically
+  Signed**. Keep paper-waiver receipt distinct: it is an organization
+  confirmation recorded on the relevant onboarding attendance record, not an
+  electronic-signature event.
+- Resolve overlap between the current `SHIFT_CREATED` and
+  `TEMPLATE_EVENT_PUBLISHED` records before they become long-lived protocol
+  vocabulary. The proposed canonical replacement is
+  `VOLUNTEER_EVENT_SCHEDULED`, displayed as **Volunteer Event Scheduled**,
+  because it accurately covers both publicly claimable and privately managed
+  dated events.
+- Reserve **Volunteer Event Published** for a distinct future action in which
+  an already scheduled event becomes publicly claimable. Do not use
+  “published” for a private event.
+- Rename recurrence-rule records in the audit vocabulary so they describe the
+  rule being set—not the individual event being released: display
+  `ONBOARDING_SESSION_RECURRENCE_SET` as **Recurring Onboarding Schedule Set**
+  and `TEMPLATE_EVENT_RECURRENCE_SET` as **Recurring Volunteer Event Schedule
+  Set**.
+- Define a deliberate local and staging migration/reseed process so the
+  hash-chained ledger is rebuilt consistently with the finalized vocabulary.
+
+### Additional decisions — 2026-08-29
+- Treat the ledger as a record of meaningful civic, organizational, and policy
+  facts—not a catch-all technical activity stream. Maintain a clear distinction
+  between the durable stored event code, its human-facing title, and normal
+  mutable application state.
+- Display `TASK_CREATED` as **Opportunity Template Created** and plan a
+  pre-launch stored-code migration to `TEMPLATE_CREATED`. Display
+  `TASK_UPDATED` as **Opportunity Template Updated** and migrate its stored
+  code to `OPPORTUNITY_TEMPLATE_UPDATED` at the same time. A template is a
+  reusable definition; it is not a dated volunteer commitment.
+- Consolidate `SHIFT_CREATED` and `TEMPLATE_EVENT_PUBLISHED` into one
+  pre-launch canonical event, `VOLUNTEER_EVENT_SCHEDULED`, displayed as
+  **Volunteer Event Scheduled**. Reserve **Volunteer Event Published** for a
+  future, distinct change in which an already scheduled event becomes publicly
+  claimable. Do not describe private, organization-assigned events as
+  “published.”
+- Display `ONBOARDING_SESSION_PUBLISHED` as **Onboarding Session Scheduled**
+  when it represents a dated occurrence. Keep its final stored-code decision
+  aligned with the volunteer-event scheduling migration.
+- Display `SHIFT_CLOSED` as **Volunteer Event Ended**. Do not conflate a
+  normally ended event with a cancellation; add a distinct future cancellation
+  event if the product needs one.
+- Retire the close/reopen-template workflow: retain existing `TASK_CLOSED` and
+  `TASK_REOPENED` records as historical facts, but do not emit new ones.
+- Use participant-facing reservation language: `TASK_CLAIMED` displays as
+  **Volunteer Event Reserved**; `CLAIM_UNCLAIMED` as **Reservation Withdrawn**;
+  `CLAIM_CHECKED_IN` as **Check-In Recorded**; and `CLAIM_NO_SHOW` as
+  **No-Show Recorded**. Capture a withdrawal reason when a participant provides
+  one.
+- Keep `COMPLETION_SUBMITTED` for future Mass Coordination Event workflows,
+  displayed as **Completion Submitted for Verification**. It may signal a
+  verifier or a dependent next task, even though that front-end trigger is not
+  part of V1 volunteer management.
+- Prefer `SHIFT_ATTENDANCE_FINALIZED` as the issuer-facing group-verification
+  record, displayed as **Shift Attendance Finalized**. When a batch result is
+  shown, suppress duplicate individual `COMPLETION_VERIFIED` / rejected records
+  in the issuer activity feed; preserve those individual records as participant
+  evidence. Treat `SHIFT_ATTENDANCE_BATCH_VERIFIED` as legacy vocabulary.
+- Display `COMPLETION_REJECTED` as **Completion Not Verified**, with a reason
+  where one is applicable.
+- Display `WAIVER_ACCEPTED` as **Waiver Electronically Signed**. Keep it
+  separate from `WAIVER_RECEIPT_ATTESTED` (**Paper Waiver Receipt Confirmed**)
+  and `IDENTITY_MATCH_ATTESTED` (**Identity Match Confirmed**). The latter is a
+  staff attestation that the person present matches the City/Sync account, not
+  an assertion that the platform independently performed identity verification.
+- Keep `IDENTITY_CREATED` admin-facing and display it as **Platform Identity
+  Established** to avoid implying real-world identity verification. Display
+  `ORG_PROFILE_UPDATED` as **Public Organization Profile Updated**, not an
+  “organizational identity” change.
+- Display `CREDITS_MINTED` as **Civic Credits Issued** and `CREDITS_BURNED` as
+  **Civic Credits Redeemed** when the burn is tied to a redemption. Display
+  `REDEMPTION_FINALIZED` as **Redemption Completed**. The underlying credit
+  burn and redemption may both remain linked audit facts, but the end-user view
+  should not present them as confusing duplicates.
+- Retire `REDEMPTION_REQUESTED` and `REDEMPTION_CANCELLED` for the intended
+  immediate QR-code redemption flow. Preserve old records only as legacy data;
+  a completed scan should directly create `REDEMPTION_FINALIZED` plus the
+  associated credit-burn fact.
+- Keep `ANCHOR_CREATED` technical and describe it as **Ledger Anchor Recorded**
+  for audit-oriented views.
+- Keep post hearts/unhearts in normal mutable application state for persistence,
+  but do not expose `POST_HEARTED` or `POST_UNHEARTED` as user-facing ledger
+  history. Reassess whether new immutable events are needed for them at all.
+- Keep `EVENT_CHAT_ARCHIVED` and `EVENT_CHAT_DELETED` as internal retention
+  operations only; do not show them in participant or issuer activity records.
+- Make `MESSAGE_SENT` explicitly an organization outbound-message record and
+  link its recorded details to the relevant Outbox item. Do not use it as an
+  ambiguous substitute for event-chat message history.
+- Keep `USER_DISABLED`, `USER_ENABLED`, and password-reset records as security
+  audit facts. If reset requests and completed resets are both retained, name
+  them separately rather than allowing `USER_PASSWORD_RESET` to cover both.
+- Owner-role invitations must show an explicit warning and require the current
+  owner to acknowledge that the recipient will become a co-owner before a
+  one-use invitation link can be issued. Enforce this server-side as well as in
+  the interface.
+- Require every future user-facing activity detail to favor plain-language
+  facts, named people/organizations, a relevant event/post/message link where
+  applicable, and only the minimum useful audit identifiers.
+
+### Decision
+- Do **not** change event names piecemeal. This is a major pre-launch database
+  and audit-language change; wait until the broader terminology review is
+  complete, then apply one coordinated migration.
+- Once City/Sync is publicly live, ledger event names should be treated as
+  durable protocol terms. Historical production records must not be rewritten.
+
+---
+
 ## 2026-06-10 — Session 3: Volunteer roster + messaging, full admin suite
 
 ### Summary

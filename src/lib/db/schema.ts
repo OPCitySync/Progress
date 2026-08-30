@@ -300,7 +300,10 @@ export const orgProfiles = sqliteTable('org_profiles', {
   // How the current liability waiver is collected for the recurring onboarding
   // session. Digital means acceptance is recorded before reservation; in-person
   // means staff record receipt of the signed document at check-in.
-  onboardingWaiverMethod: text('onboarding_waiver_method', { enum: ['digital', 'in_person'] }),
+  // Organization-wide defaults for onboarding. Individual onboarding templates
+  // may override either rule when a particular program needs a different flow.
+  onboardingWaiverMethod: text('onboarding_waiver_method', { enum: ['digital', 'in_person', 'either'] }),
+  onboardingIdentityCheck: text('onboarding_identity_check', { enum: ['not_required', 'staff_attested'] }),
   published: integer('published').notNull().default(0),
   updatedAt: integer('updated_at').notNull(),
 })
@@ -544,6 +547,11 @@ export const tasks = sqliteTable('tasks', {
   // local membership and waiver rules that ordinary opportunities do not.
   // This enables organizations to operate several independent series.
   isOnboarding: integer('is_onboarding').notNull().default(0),
+  // Null inherits the organization-wide onboarding requirement. These values
+  // are intentionally configuration, not evidence: a reservation snapshots
+  // its applicable rule on the claim below.
+  onboardingWaiverMethod: text('onboarding_waiver_method', { enum: ['digital', 'in_person', 'either'] }),
+  onboardingIdentityCheck: text('onboarding_identity_check', { enum: ['not_required', 'staff_attested'] }),
   requiredCredentials: text('required_credentials').notNull().default('[]'), // JSON: CredentialKey[]
   // The approved catalog template this opportunity was scheduled from (nullable
   // for legacy/direct opportunities; required once catalogApproval is enabled).
@@ -690,6 +698,10 @@ export const claims = sqliteTable(
     // document is received on site; the document itself is never stored here.
     waiverVersionId: text('waiver_version_id'),
     waiverCollectionMethod: text('waiver_collection_method', { enum: ['digital', 'in_person'] }),
+    // Snapshot whether staff identity matching was required for this specific
+    // reservation. The staff attestation itself stays in the organization-
+    // local identity record; no identity document is retained by City/Sync.
+    identityMatchRequired: integer('identity_match_required').notNull().default(0),
     paperWaiverConfirmedAt: integer('paper_waiver_confirmed_at'),
     paperWaiverConfirmedBy: text('paper_waiver_confirmed_by'),
     // A single staff confirmation can verify an entire shift while preserving
@@ -957,6 +969,7 @@ export const posts = sqliteTable('posts', {
   orgId: text('org_id').notNull(),
   authorUserId: text('author_user_id').notNull(),
   body: text('body').notNull(),
+  imageUrl: text('image_url'),
   createdAt: integer('created_at').notNull(),
 })
 

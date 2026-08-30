@@ -8,6 +8,7 @@ import type { Result } from '@/lib/services/identity'
 import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
 import { cancelRemindersForShift, notifyOnboardingSessionCancelled } from './notifications'
 import { programBelongsToOrganization } from './volunteer-programs'
+import type { OnboardingIdentityCheck, OnboardingWaiverMethod } from './waivers'
 
 const MINUTE_MS = 60_000
 
@@ -45,6 +46,8 @@ export async function createRecurringOnboardingSession(input: {
   durationMinutes: number
   weeklyCapacity: number
   programId?: string | null
+  onboardingWaiverMethod?: OnboardingWaiverMethod | null
+  onboardingIdentityCheck?: OnboardingIdentityCheck | null
 }): Promise<Result<{ taskId: string }>> {
   const title = input.title.trim()
   const description = input.description.trim()
@@ -111,6 +114,8 @@ export async function createRecurringOnboardingSession(input: {
       status: 'open',
       programId: input.programId || null,
       isOnboarding: 1,
+      onboardingWaiverMethod: input.onboardingWaiverMethod ?? null,
+      onboardingIdentityCheck: input.onboardingIdentityCheck ?? null,
       requiredCredentials: '[]',
       catalogEntryId: null,
       createdBy: input.actorId,
@@ -170,6 +175,8 @@ export async function updateRecurringOnboardingSession(input: {
   durationMinutes: number
   weeklyCapacity: number
   programId?: string | null
+  onboardingWaiverMethod?: OnboardingWaiverMethod | null
+  onboardingIdentityCheck?: OnboardingIdentityCheck | null
 }): Promise<Result> {
   const title = input.title.trim()
   const description = input.description.trim()
@@ -250,6 +257,8 @@ export async function updateRecurringOnboardingSession(input: {
         credits: input.credits,
         slots: input.weeklyCapacity,
         programId,
+        onboardingWaiverMethod: input.onboardingWaiverMethod ?? null,
+        onboardingIdentityCheck: input.onboardingIdentityCheck ?? null,
         startsAt: weeklyLabel,
       })
       .where(eq(tasks.id, input.taskId))

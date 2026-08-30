@@ -3,7 +3,6 @@ import { and, desc, eq, isNull, lte, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { notifications, organizationCalendarEntries, organizationDelegations, organizationRoles, reminders, shifts, tasks, orgs, users } from '@/lib/db/schema'
 import { getEmailAdapter } from '@/lib/notify/email'
-import { processOverdueNoShows } from './city-participation'
 
 const PRE_SHIFT_MS = 24 * 60 * 60 * 1000
 
@@ -299,11 +298,8 @@ export async function processDueReminders(now = Date.now()): Promise<{ sent: num
       failed++ // left pending; retried on the next run
     }
   }
-  const [attendance, calendarNotifications] = await Promise.all([
-    processOverdueNoShows(now),
-    processDueOrganizationCalendarReminders(now),
-  ])
-  return { sent, failed, noShows: attendance.marked, barred: attendance.barred, calendarNotifications }
+  const calendarNotifications = await processDueOrganizationCalendarReminders(now)
+  return { sent, failed, noShows: 0, barred: 0, calendarNotifications }
 }
 
 /** Deliver private, in-app reminders for an organization’s own calendar notes. */

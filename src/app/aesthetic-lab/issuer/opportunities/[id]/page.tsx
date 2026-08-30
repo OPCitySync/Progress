@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { orgs, tasks } from '@/lib/db/schema'
-import { closeTaskAction, createShiftAction, reopenTaskAction, updateTaskAction } from '@/app/actions'
+import { createShiftAction, updateTaskAction } from '@/app/actions'
 import { getShiftsWithCounts } from '@/lib/services/opportunities'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getLabWorkspace } from '../../../lab-workspace'
@@ -69,10 +69,6 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
           <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 
           <section className={styles.labPanel}>
-            <div className={styles.templateManageStatus}>
-              <span className={canPublish ? styles.opportunityStatusOpen : styles.opportunityStatusClosed}>{canPublish ? 'Active template' : 'Closed template'}</span>
-              {canPublish ? <form action={closeTaskAction}><input type="hidden" name="taskId" value={task.id} /><input type="hidden" name="redirectTo" value={redirectTo} /><button className={`${styles.labLinkButton} ${styles.labLinkButtonSecondary}`} type="submit">Close template</button></form> : <form action={reopenTaskAction}><input type="hidden" name="taskId" value={task.id} /><input type="hidden" name="redirectTo" value={redirectTo} /><button className={`${styles.labLinkButton} ${styles.labLinkButtonSecondary}`} type="submit">Reopen template</button></form>}
-            </div>
             <form action={updateTaskAction} className={styles.labForm}>
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="redirectTo" value={redirectTo} />
@@ -109,7 +105,7 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
               <input type="hidden" name="redirectTo" value={redirectTo} />
               <div className={styles.opportunitySectionHeading}>
                 <div><p className={styles.eyebrow}>Add a session</p><h2>Publish a time for volunteers.</h2><p>Each session has its own date and capacity. It becomes visible on the participant board as soon as it is published.</p></div>
-                <span>{canPublish ? 'Ready to publish' : 'Reopen template first'}</span>
+                <span>{canPublish ? 'Ready to publish' : 'Publishing is unavailable for this template.'}</span>
               </div>
               <fieldset disabled={!canPublish} className={styles.opportunitySessionForm}>
                 <div className={styles.labFormGrid}><label>Starts<input type="datetime-local" name="shiftStartsAt" required /></label><label>Ends<input type="datetime-local" name="shiftEndsAt" required /></label></div>

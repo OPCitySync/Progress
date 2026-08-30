@@ -43,6 +43,9 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
     ? (await db.select().from(tasks).where(and(eq(tasks.id, editingTaskId), eq(tasks.orgId, orgId))).limit(1))[0] ?? null
     : null
   const editingTask = candidateEditingTask?.isOnboarding === 1 ? candidateEditingTask : null
+  const sessionWaiverSetup = editingTask
+    ? await getOnboardingWaiverSetup(orgId, editingTask)
+    : waiverSetup
   const nextSession = editingTask
     ? (await db.select().from(shifts).where(and(eq(shifts.taskId, editingTask.id), gte(shifts.startsAt, Date.now()))).orderBy(asc(shifts.startsAt), asc(shifts.createdAt)).limit(1))[0] ?? null
     : null
@@ -50,7 +53,7 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
   const durationMinutes = nextSession?.startsAt && nextSession.endsAt
     ? Math.max(30, Math.round((nextSession.endsAt - nextSession.startsAt) / 60_000))
     : 45
-  const usesPaperWaivers = waiverSetup.method === 'in_person'
+  const usesPaperWaivers = sessionWaiverSetup.method === 'in_person'
   const returnToWorkspace = '/aesthetic-lab/issuer/catalog?workspace=onboarding'
   const includedDocuments = editingTask ? organizationDocuments.filter((document) => document.taskIds.includes(editingTask.id)) : []
   const availableDocuments = editingTask ? organizationDocuments.filter((document) => !document.taskIds.includes(editingTask.id)) : []
@@ -87,13 +90,29 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
                 {isEditing ? <input type="hidden" name="firstStartsAt" value={localDateTimeValue(nextSession?.startsAt)} /> : <label>First session<input type="datetime-local" name="firstStartsAt" defaultValue={localDateTimeValue(nextSession?.startsAt)} required /></label>}
                 <div className={styles.labFormGrid}><label>Weekly capacity<input type="number" name="weeklyCapacity" min="1" defaultValue={nextSession?.capacity ?? editingTask?.slots ?? 20} required /></label><label>Duration (minutes)<input type="number" name="durationMinutes" min="30" defaultValue={durationMinutes} required /></label></div>
                 <section className={styles.onboardingDocumentsCard}>
+                  <div className={styles.onboardingDocumentsHeading}><div><p className={styles.eyebrow}>Session requirements</p><h2>Choose how this session handles waivers.</h2><p>These settings apply only to this onboarding series. Leave either setting at the organization default unless this program needs a different process.</p></div></div>
+                  <div className={styles.labFormGrid}>
+                    <label>Waiver collection<select name="onboardingWaiverMethod" defaultValue={editingTask?.onboardingWaiverMethod ?? ''}>
+                      <option value="">Organization default ({waiverSetup.method === 'in_person' ? 'Paper waiver at check-in' : waiverSetup.method === 'either' ? 'Digital or paper waiver' : 'Digital signature'})</option>
+                      <option value="digital">Digital signature before reserving</option>
+                      <option value="in_person">Paper waiver attested at check-in</option>
+                      <option value="either">Let participants choose digital or paper</option>
+                    </select></label>
+                    <label>Identity confirmation<select name="onboardingIdentityCheck" defaultValue={editingTask?.onboardingIdentityCheck ?? ''}>
+                      <option value="">Organization default ({waiverSetup.identityCheck === 'staff_attested' ? 'Staff confirmation at check-in' : 'Not required'})</option>
+                      <option value="not_required">Not required</option>
+                      <option value="staff_attested">Staff confirmation at check-in</option>
+                    </select></label>
+                  </div>
+                </section>
+                <section className={styles.onboardingDocumentsCard}>
                   <div className={styles.onboardingDocumentsHeading}>
                     <div><p className={styles.eyebrow}>Included documents</p><h2>Materials participants receive for onboarding.</h2><p>Attach guides, forms, safety information, or other resources that participants should review before their session.</p></div>
                   </div>
                   {isEditing ? <>
-                    {waiverSetup.waivers.length > 0 || includedDocuments.length > 0 ? <div className={styles.onboardingDocumentList}>
-                      {waiverSetup.waivers.map((waiver) => <article key={waiver.id}>
-                        <span><ShieldCheck size={17} /></span><div><p>Liability waiver</p><h3>{waiver.title}</h3><small>{usesPaperWaivers ? 'Signed in person at check-in' : 'Digital acceptance required before reservation'} · Included with this onboarding session</small></div><Link href="/aesthetic-lab/issuer/waiver" className={styles.catalogWorkspaceAction}>Manage</Link>
+                    {sessionWaiverSetup.waivers.length > 0 || includedDocuments.length > 0 ? <div className={styles.onboardingDocumentList}>
+                      {sessionWaiverSetup.waivers.map((waiver) => <article key={waiver.id}>
+                        <span><ShieldCheck size={17} /></span><div><p>Liability waiver</p><h3>{waiver.title}</h3><small>{usesPaperWaivers ? 'Paper receipt attested at check-in' : sessionWaiverSetup.method === 'either' ? 'Digital signature or paper receipt selected at reservation' : 'Digital signature required before reservation'} · Included with this onboarding session</small></div><Link href="/aesthetic-lab/issuer/waiver" className={styles.catalogWorkspaceAction}>Manage</Link>
                       </article>)}
                       {includedDocuments.map((document) => <article key={document.id}>
                       <span><FileText size={17} /></span><div><p>{ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label}</p><h3>{document.title}</h3><small>{document.documentUrl ? 'Source file attached' : 'Written guidance'} · Included with this onboarding session</small></div><Link href={`/aesthetic-lab/issuer/documents/${document.id}`} className={styles.catalogWorkspaceAction}>Manage</Link>

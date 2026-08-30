@@ -603,6 +603,7 @@ export async function createOrganizationInvite(input: {
   roleId: string
   cityId: string
   expiresInDays: number
+  ownerRoleConfirmed?: boolean
 }): Promise<Result<{ code: string; expiresAt: number }>> {
   if (!(await isOrganizationOwner(input.userId, input.authorityId, input.orgId))) {
     return { ok: false, error: 'Only an organization owner can issue an access invite.' }
@@ -623,6 +624,9 @@ export async function createOrganizationInvite(input: {
       .limit(1)
   )[0]
   if (!role) return { ok: false, error: 'Choose an organization role for this invite.' }
+  if (role.isOwnerRole && !input.ownerRoleConfirmed) {
+    return { ok: false, error: 'Confirm that this invitation grants full organization-owner access before generating the link.' }
+  }
   const expiresInDays = Math.min(Math.max(Math.floor(input.expiresInDays), 1), 30)
   const now = Date.now()
   const expiresAt = now + expiresInDays * 24 * 60 * 60 * 1000
@@ -652,6 +656,47 @@ export async function createOrganizationInvite(input: {
     )
   })
   return { ok: true, code, expiresAt }
+}
+
+/**
+ * The public-facing, non-sensitive facts needed to explain an organization
+ * invite before its recipient has an account. The bearer code itself is never
+ * stored—only its hash—so this deliberately exposes no authority metadata
+ * beyond the organization, assigned role, and expiry.
+ */
+export async function getOrganizationInvitePreview(codeInput: string): Promise<Result<{
+  organizationName: string
+  organizationType: 'issuer' | 'redeemer'
+  roleName: string
+  expiresAt: number
+}>> {
+  const code = codeInput.trim()
+  if (!code) return { ok: false, error: 'This invitation is missing its code.' }
+
+  const row = (
+    await db
+      .select({ invite: organizationInvites, organization: orgs, role: organizationRoles })
+      .from(organizationInvites)
+      .innerJoin(orgs, eq(organizationInvites.orgId, orgs.id))
+      .leftJoin(organizationRoles, eq(organizationInvites.roleId, organizationRoles.id))
+      .where(eq(organizationInvites.codeHash, hashInviteCode(code)))
+      .limit(1)
+  )[0]
+
+  if (!row || row.invite.revokedAt || row.invite.expiresAt <= Date.now() || row.invite.uses >= row.invite.maxUses) {
+    return { ok: false, error: 'This invitation is invalid, expired, or has already been used.' }
+  }
+  if (!row.role || row.role.orgId !== row.organization.id) {
+    return { ok: false, error: 'The role attached to this invitation is no longer available.' }
+  }
+
+  return {
+    ok: true,
+    organizationName: row.organization.name,
+    organizationType: row.organization.type,
+    roleName: row.role.name,
+    expiresAt: row.invite.expiresAt,
+  }
 }
 
 export async function acceptOrganizationInvite(input: {

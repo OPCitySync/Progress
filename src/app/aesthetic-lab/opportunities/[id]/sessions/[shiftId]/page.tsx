@@ -4,7 +4,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import { ArrowUpRight, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronDown, ClipboardCheck, Download, FileText, Heart, Mail, MapPin, Phone, ShieldCheck, Sparkles, UsersRound } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, orgs, shifts, tasks } from '@/lib/db/schema'
+import { claims, orgs, shifts, tasks, volunteerIdentityVerifications } from '@/lib/db/schema'
 import { getOnboardingWaiverSetup, getWaiverSignatures } from '@/lib/services/waivers'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
 import { getWaiversAttachedToTask } from '@/lib/services/organization-resources'
@@ -73,8 +73,8 @@ export default async function ReservedSessionPage({
   }
 
   const isOnboarding = record.task.isOnboarding === 1
-  const [waiverSetup, attachedWaivers, organizationDocuments, shiftRows, profile, resume, joinedOrganizations, impact, activeClaimRows, cityEvents] = await Promise.all([
-    getOnboardingWaiverSetup(record.organization.id),
+  const [waiverSetup, attachedWaivers, organizationDocuments, shiftRows, profile, resume, joinedOrganizations, impact, identityVerification, activeClaimRows, cityEvents] = await Promise.all([
+    getOnboardingWaiverSetup(record.organization.id, record.task),
     getWaiversAttachedToTask(record.task.id),
     getOrganizationDocuments(record.organization.id),
     getShiftsWithCounts(record.task.id),
@@ -82,6 +82,15 @@ export default async function ReservedSessionPage({
     getMyResume(session.sub),
     getParticipantOrganizations(session.sub),
     getCityImpact(city?.id),
+    db
+      .select({ status: volunteerIdentityVerifications.status })
+      .from(volunteerIdentityVerifications)
+      .where(and(
+        eq(volunteerIdentityVerifications.orgId, record.organization.id),
+        eq(volunteerIdentityVerifications.userId, session.sub),
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
     city
       ? db
           .select({ claim: claims })
@@ -101,12 +110,14 @@ export default async function ReservedSessionPage({
       : Promise.resolve([]),
   ])
   const waivers = isOnboarding ? waiverSetup.waivers : attachedWaivers
-  const usesPaperWaiver = isOnboarding && waiverSetup.method === 'in_person'
+  const waiverCollectionMethod = isOnboarding ? (claim.waiverCollectionMethod ?? waiverSetup.method ?? 'digital') : 'digital'
+  const usesPaperWaiver = isOnboarding && waiverCollectionMethod === 'in_person'
   const signatures = await getWaiverSignatures(session.sub, waivers.map((waiver) => waiver.id))
   const documents = organizationDocuments.filter((document) => document.taskIds.includes(record.task.id))
   const currentShift = shiftRows.find(({ shift }) => shift.id === record.shift.id)
   const slotsLeft = currentShift?.slotsLeft ?? Math.max(0, record.shift.capacity - 1)
   const unsignedWaivers = usesPaperWaiver ? [] : waivers.filter((waiver) => !signatures.has(waiver.id))
+  const identityMatchPending = claim.identityMatchRequired === 1 && identityVerification?.status !== 'verified'
   const sessionUrl = `/aesthetic-lab/opportunities/${record.task.id}/sessions/${record.shift.id}`
   const opportunityUrl = `/aesthetic-lab/opportunities/${record.task.id}`
   const sessionLocation = record.task.location || profile?.location || 'Location to be confirmed by the organization'
@@ -175,11 +186,12 @@ export default async function ReservedSessionPage({
             </div>
             <div className={styles.sessionPrepChecklist}>
               {unsignedWaivers.map((waiver) => <article data-state="action" key={waiver.id}><span><ShieldCheck size={17} /></span><div><b>Sign {waiver.title}</b><p>Review the current waiver version and add your electronic signature before attending.</p></div><DigitalWaiverSignature taskId={record.task.id} waiver={{ id: waiver.id, title: waiver.title, version: waiver.version, body: waiver.body, hasDocument: Boolean(waiver.documentUrl), documentName: waiver.documentName }} redirectTo={sessionUrl} defaultSigningName={session.name} organizationName={record.organization.name} /></article>)}
-              {usesPaperWaiver && waivers.length ? <article data-state="action"><span><ShieldCheck size={17} /></span><div><b>Complete the waiver at check-in</b><p>This organization collects its active waiver{waivers.length === 1 ? '' : 's'} in person. Review the document below and bring any required signed copy.</p></div><em>At session</em></article> : null}
+              {usesPaperWaiver && waivers.length && !claim.paperWaiverConfirmedAt ? <article data-state="action"><span><ShieldCheck size={17} /></span><div><b>Bring your signed waiver</b><p>Review the document below and bring any required signed copy. The organization will record its receipt at check-in.</p></div><em>At session</em></article> : null}
+              {identityMatchPending ? <article data-state="action"><span><UsersRound size={17} /></span><div><b>Complete identity confirmation at check-in</b><p>The organization will confirm that the person who arrives matches the City/Sync account used for this reservation. City/Sync does not keep identity documents.</p></div><em>At session</em></article> : null}
               {record.task.beforeSession.trim() ? <article data-state="action"><span><ClipboardCheck size={17} /></span><div><b>Review the session notes</b><p>The organization has shared preparation instructions for this session.</p></div><a href="#session-details">Review</a></article> : null}
               {record.task.bringItems.trim() ? <article data-state="action"><span><UsersRound size={17} /></span><div><b>Bring the listed items</b><p>{record.task.bringItems.trim()}</p></div><a href="#session-details">View list</a></article> : null}
               {documents.length ? <article data-state="action"><span><FileText size={17} /></span><div><b>Review related documents</b><p>{documents.length} document{documents.length === 1 ? '' : 's'} is attached to this session.</p></div><a href="#related-documents">Open</a></article> : null}
-              {!unsignedWaivers.length && !usesPaperWaiver && !record.task.beforeSession.trim() && !record.task.bringItems.trim() && !documents.length ? <p className={styles.sessionPrepChecklistEmpty}><CheckCircle2 size={17} /> You’re all set. The organization has not added any required preparation steps for this session.</p> : null}
+              {!unsignedWaivers.length && !(usesPaperWaiver && waivers.length && !claim.paperWaiverConfirmedAt) && !identityMatchPending && !record.task.beforeSession.trim() && !record.task.bringItems.trim() && !documents.length ? <p className={styles.sessionPrepChecklistEmpty}><CheckCircle2 size={17} /> You’re all set. The organization has not added any required preparation steps for this session.</p> : null}
             </div>
           </section>
         </section>
@@ -205,7 +217,7 @@ export default async function ReservedSessionPage({
           </div>
           <div className={styles.onboardingResourceList}>
             {waivers.map((waiver) => <details className={styles.onboardingResourceItem} key={waiver.id}>
-              <summary><span className={styles.onboardingResourceIcon}><ShieldCheck size={16} /></span><div><b>{waiver.title}</b><small>{usesPaperWaiver ? 'Required at check-in' : signatures.has(waiver.id) ? `Signed electronically ${signatureDate(signatures.get(waiver.id)?.signedAt ?? null)}.` : 'Digital signature still needed.'}</small></div><ChevronDown size={16} /></summary>
+              <summary><span className={styles.onboardingResourceIcon}><ShieldCheck size={16} /></span><div><b>{waiver.title}</b><small>{usesPaperWaiver ? claim.paperWaiverConfirmedAt ? 'Paper-waiver receipt recorded.' : 'Bring a signed copy for receipt at check-in.' : signatures.has(waiver.id) ? `Signed electronically ${signatureDate(signatures.get(waiver.id)?.signedAt ?? null)}.` : 'Digital signature still needed.'}</small></div><ChevronDown size={16} /></summary>
               <div className={styles.onboardingResourcePreview}>{waiver.body ? <p>{waiver.body}</p> : <p>This waiver is provided as a source document.</p>}{waiver.documentUrl ? <a href={organizationFileDownloadUrl('waiver', waiver.id, record.task.id)} target="_blank" rel="noreferrer"><Download size={14} /> Download source file</a> : null}{!usesPaperWaiver && !signatures.has(waiver.id) ? <DigitalWaiverSignature taskId={record.task.id} waiver={{ id: waiver.id, title: waiver.title, version: waiver.version, body: waiver.body, hasDocument: Boolean(waiver.documentUrl), documentName: waiver.documentName }} redirectTo={sessionUrl} defaultSigningName={session.name} organizationName={record.organization.name} /> : null}</div>
             </details>)}
             {documents.map((document) => <details className={styles.onboardingResourceItem} key={document.id}>
@@ -218,13 +230,6 @@ export default async function ReservedSessionPage({
       </section>
 
       <aside className={styles.rightRail}>
-        <section className={styles.issuerFeedCityCard}>
-          <p className={styles.eyebrow}>Your City Network</p>
-          <h2>{cityLabel}</h2>
-          <p>{city ? 'This is the active network where you can discover opportunities, contribute, and stay connected.' : 'Choose an active City Network to find local opportunities.'}</p>
-          <Link href="/aesthetic-lab/cities">View City Network <ArrowUpRight size={14} /></Link>
-        </section>
-
         <section className={styles.todayEventsCard}>
           <div className={styles.sectionHeading}><p className={styles.eyebrow}>My Calendar</p><CalendarDays size={17} /></div>
           <div className={styles.todayEventList}>

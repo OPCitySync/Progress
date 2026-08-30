@@ -16,8 +16,10 @@ import {
   listOrganizationRoles,
   ORGANIZATION_PERMISSION_OPTIONS,
 } from '@/lib/services/identity-access'
+import { listOrganizationActivity } from '@/lib/services/organization-activity'
 import { LabHeader } from '../../LabHeader'
 import { getLabWorkspace } from '../../lab-workspace'
+import { IssuerActivityFeed } from '../IssuerActivityFeed'
 import { IssuerInviteLink } from '../IssuerInviteLink'
 import { IssuerLabSidebar } from '../IssuerLabSidebar'
 import styles from '../../prototype.module.css'
@@ -83,6 +85,13 @@ function RoleInviteControl({ role, inviteCode }: { role: OrganizationRole; invit
               <option value="30">30 days</option>
             </select>
           </label>
+          {role.isOwnerRole ? (
+            <div className={styles.manageInviteOwnerWarning}>
+              <b>Owner access</b>
+              <span>This gives the recipient full control of the organization, including roles, invitations, and access removal.</span>
+              <label><input type="checkbox" name="confirmOwnerRole" value="yes" required /> I understand this creates another organization owner.</label>
+            </div>
+          ) : null}
           <button type="submit">Generate link</button>
         </form>
         {inviteCode ? <IssuerInviteLink code={inviteCode} /> : null}
@@ -138,11 +147,12 @@ export default async function ManageOrganizationLabPage({
   const session = await requireRole('issuer')
   const orgId = session.orgId!
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [org, roles, delegations, isOwner] = await Promise.all([
+  const [org, roles, delegations, isOwner, activity] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     listOrganizationRoles(orgId),
     listOrganizationDelegations(orgId),
     activeSessionIsOrganizationOwner(session),
+    listOrganizationActivity(orgId),
   ])
   if (!org) return null
 
@@ -158,6 +168,7 @@ export default async function ManageOrganizationLabPage({
         <section className={styles.issuerMain} aria-label="Manage organization permissions">
           <section className={styles.issuerPageHero}>
             <div><p className={styles.eyebrow}>Manage organization</p></div>
+            <span className={styles.issuerOrganizationId}><b>Organizational ID</b><code>{org.id}</code></span>
           </section>
 
           <section className={styles.manageOrganizationCard}>
@@ -181,6 +192,8 @@ export default async function ManageOrganizationLabPage({
               {isOwner ? <CreateRoleCard /> : null}
             </div>
           </section>
+
+          <IssuerActivityFeed activity={activity} />
         </section>
       </div>
     </main>

@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { tasks, shifts, claims, orgs, users, verificationBatches } from '@/lib/db/schema'
+import { tasks, shifts, claims, orgs, users, verificationBatches, volunteerIdentityVerifications } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { getOnboardingWaiverSetup, hasSignedWaiver } from './waivers'
@@ -12,7 +12,6 @@ import {
   notifyVerifiedShiftReflection,
   cancelRemindersForClaim,
   cancelRemindersForShift,
-  cancelRemindersForTask,
 } from './notifications'
 import { missingCredentials } from './credentials'
 import { parseCredentialList, credentialLabel, isCredentialKey } from '@/lib/credentials'
@@ -20,7 +19,7 @@ import type { Result } from './identity'
 import {
   activateCityParticipationForCheckIn,
   checkCityParticipationGate,
-  processOverdueNoShows,
+  markUnverifiedClaimsNoShow,
 } from './city-participation'
 import { mintCityCredits } from './city-wallets'
 import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
@@ -270,12 +269,40 @@ export async function assignVolunteersToShift(input: {
     return { ok: false, error: `Only ${Math.max(0, shift.capacity - activeCount)} spot${shift.capacity - activeCount === 1 ? '' : 's'} remain in this shift.` }
   }
 
+  // An organization-added onboarding reservation still carries the same
+  // requirement snapshot as a self-service reservation. When paper is
+  // allowed, the organization is deliberately choosing the staff-attested
+  // path; digital-only sessions cannot be bypassed by manual assignment.
+  const onboardingRequirement = task.isOnboarding === 1
+    ? await getOnboardingWaiverSetup(task.orgId, task)
+    : null
+  const assignedCollectionMethod: 'digital' | 'in_person' = onboardingRequirement?.method === 'in_person'
+    || onboardingRequirement?.method === 'either'
+    ? 'in_person'
+    : 'digital'
+  if (onboardingRequirement && assignedCollectionMethod === 'digital' && onboardingRequirement.waivers.length) {
+    const unsignedAssignments = await Promise.all(toAssign.map(async (userId) => {
+      const allSigned = (await Promise.all(onboardingRequirement.waivers.map((waiver) => hasSignedWaiver(userId, waiver.id))).then((signed) => signed.every(Boolean)))
+      return allSigned ? null : userId
+    }))
+    if (unsignedAssignments.some(Boolean)) {
+      return { ok: false, error: 'Each assigned participant must digitally sign the current onboarding waiver before they can be added to this session.' }
+    }
+  }
+  const onboardingRequirementFields = onboardingRequirement
+    ? {
+      waiverVersionId: onboardingRequirement.waivers[0]?.id ?? null,
+      waiverCollectionMethod: assignedCollectionMethod,
+      identityMatchRequired: onboardingRequirement.identityCheck === 'staff_attested' ? 1 : 0,
+    }
+    : {}
+
   const now = Date.now()
   await db.transaction(async (tx) => {
     for (const userId of toAssign) {
       const existing = existingByUserId.get(userId)
       if (existing) {
-        await tx.update(claims).set({ status: 'claimed', updatedAt: now }).where(eq(claims.id, existing.id))
+        await tx.update(claims).set({ status: 'claimed', updatedAt: now, ...onboardingRequirementFields }).where(eq(claims.id, existing.id))
       } else {
         await tx.insert(claims).values({
           id: randomUUID(),
@@ -283,6 +310,7 @@ export async function assignVolunteersToShift(input: {
           shiftId: shift.id,
           userId,
           status: 'claimed',
+          ...onboardingRequirementFields,
           createdAt: now,
           updatedAt: now,
         })
@@ -386,45 +414,6 @@ export async function cancelUpcomingShiftAndNotify(input: {
   return { ok: true, notified: participantIds.length }
 }
 
-export async function closeTask(taskId: string, orgId: string, actorId: string): Promise<Result> {
-  const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
-  if (!task || task.orgId !== orgId) return { ok: false, error: 'Task not found.' }
-  if (task.status === 'closed') return { ok: true }
-
-  await db.transaction(async (tx) => {
-    await tx.update(tasks).set({ status: 'closed' }).where(eq(tasks.id, taskId))
-    // Closing an opportunity closes its still-open shifts.
-    await tx.update(shifts).set({ status: 'closed' }).where(and(eq(shifts.taskId, taskId), eq(shifts.status, 'open')))
-    await appendEvent(tx, EventTypes.TASK_CLOSED, { taskId, cityId: task.cityId }, actorId)
-  })
-  await cancelRemindersForTask(taskId)
-  return { ok: true }
-}
-
-export async function reopenTask(taskId: string, orgId: string, actorId: string): Promise<Result> {
-  const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
-  if (!task || task.orgId !== orgId) return { ok: false, error: 'Task not found.' }
-  if (task.status === 'open') return { ok: true }
-
-  const now = Date.now()
-  await db.transaction(async (tx) => {
-    await tx.update(tasks).set({ status: 'open' }).where(eq(tasks.id, taskId))
-    // Reopen upcoming/undated shifts only — never resurrect past-dated shifts.
-    await tx
-      .update(shifts)
-      .set({ status: 'open' })
-      .where(
-        and(
-          eq(shifts.taskId, taskId),
-          eq(shifts.status, 'closed'),
-          sql`(${shifts.startsAt} is null or ${shifts.startsAt} >= ${now})`,
-        ),
-      )
-    await appendEvent(tx, EventTypes.TASK_REOPENED, { taskId, cityId: task.cityId }, actorId)
-  })
-  return { ok: true }
-}
-
 export async function activeClaimCount(shiftId: string): Promise<number> {
   const rows = await db
     .select({ count: sql<number>`count(*)` })
@@ -456,13 +445,24 @@ export async function getShiftsWithCounts(
 }
 
 export type ClaimGate =
-  | { ok: true; inPersonWaiver?: { waiverVersionIds: string[] } }
+  | {
+    ok: true
+    onboardingRequirement?: {
+      waiverVersionIds: string[]
+      collectionMethod: 'digital' | 'in_person'
+      identityMatchRequired: boolean
+    }
+  }
   | { ok: false; reason: 'waiver_required'; waiverVersionIds: string[] }
   | { ok: false; reason: 'credentials_required'; missing: string[] }
   | { ok: false; reason: 'error'; error: string }
 
 /** Everything that must be true before a participant can claim a shift. */
-export async function checkClaimGate(shiftId: string, userId: string): Promise<ClaimGate> {
+export async function checkClaimGate(
+  shiftId: string,
+  userId: string,
+  requestedWaiverMethod?: 'digital' | 'in_person',
+): Promise<ClaimGate> {
   const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
   if (!shift) return { ok: false, reason: 'error', error: 'Shift not found.' }
   if (shift.status !== 'open') return { ok: false, reason: 'error', error: 'This shift is closed.' }
@@ -497,31 +497,46 @@ export async function checkClaimGate(shiftId: string, userId: string): Promise<C
     if (missing.length > 0) return { ok: false, reason: 'credentials_required', missing }
   }
 
-  const waiverSetup = await getOnboardingWaiverSetup(task.orgId)
   const isOnboarding = task.isOnboarding === 1
-  if (isOnboarding && waiverSetup.method === 'in_person' && waiverSetup.waivers.length > 0) {
-    return { ok: true, inPersonWaiver: { waiverVersionIds: waiverSetup.waivers.map((waiver) => waiver.id) } }
-  }
   if (isOnboarding) {
-    const unacceptedWaiverIds = (
-      await Promise.all(waiverSetup.waivers.map(async (waiver) => (
-        (await hasSignedWaiver(userId, waiver.id)) ? null : waiver.id
-      )))
-    ).filter((id): id is string => Boolean(id))
-    if (unacceptedWaiverIds.length > 0) {
-      return { ok: false, reason: 'waiver_required', waiverVersionIds: unacceptedWaiverIds }
+    const waiverSetup = await getOnboardingWaiverSetup(task.orgId, task)
+    const configuredMethod = waiverSetup.method ?? 'digital'
+    // Paper collection is only selectable when the organization offered it.
+    // A client cannot use this field to bypass a digital-only session.
+    const collectionMethod: 'digital' | 'in_person' = configuredMethod === 'in_person'
+      || (configuredMethod === 'either' && requestedWaiverMethod === 'in_person')
+      ? 'in_person'
+      : 'digital'
+
+    if (collectionMethod === 'digital') {
+      const unacceptedWaiverIds = (
+        await Promise.all(waiverSetup.waivers.map(async (waiver) => (
+          (await hasSignedWaiver(userId, waiver.id)) ? null : waiver.id
+        )))
+      ).filter((id): id is string => Boolean(id))
+      if (unacceptedWaiverIds.length > 0) {
+        return { ok: false, reason: 'waiver_required', waiverVersionIds: unacceptedWaiverIds }
+      }
+    }
+    return {
+      ok: true,
+      onboardingRequirement: {
+        waiverVersionIds: waiverSetup.waivers.map((waiver) => waiver.id),
+        collectionMethod,
+        identityMatchRequired: waiverSetup.identityCheck === 'staff_attested',
+      },
     }
   }
 
   return { ok: true }
 }
 
-export async function claimShift(shiftId: string, userId: string): Promise<Result> {
-  // The scheduled job does this continuously in production. Running a sweep
-  // here as well prevents an overdue claim from bypassing the reservation rule
-  // between cron runs.
-  await processOverdueNoShows()
-  const gate = await checkClaimGate(shiftId, userId)
+export async function claimShift(
+  shiftId: string,
+  userId: string,
+  requestedWaiverMethod?: 'digital' | 'in_person',
+): Promise<Result> {
+  const gate = await checkClaimGate(shiftId, userId, requestedWaiverMethod)
   if (!gate.ok) {
     let error: string
     if (gate.reason === 'waiver_required') {
@@ -547,12 +562,16 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
   // The existing claim record retains the first required waiver as a backwards
   // compatible audit pointer. The full active set is enforced before a digital
   // reservation, and a paper confirmation attests receipt of the attached set.
-  const inPersonWaiverFields = gate.inPersonWaiver
-    ? { waiverVersionId: gate.inPersonWaiver.waiverVersionIds[0], waiverCollectionMethod: 'in_person' as const }
+  const onboardingRequirementFields = gate.onboardingRequirement
+    ? {
+      waiverVersionId: gate.onboardingRequirement.waiverVersionIds[0] ?? null,
+      waiverCollectionMethod: gate.onboardingRequirement.collectionMethod,
+      identityMatchRequired: gate.onboardingRequirement.identityMatchRequired ? 1 : 0,
+    }
     : {}
   await db.transaction(async (tx) => {
     if (existing) {
-      await tx.update(claims).set({ status: 'claimed', updatedAt: now, ...inPersonWaiverFields }).where(eq(claims.id, existing.id))
+      await tx.update(claims).set({ status: 'claimed', updatedAt: now, ...onboardingRequirementFields }).where(eq(claims.id, existing.id))
     } else {
       await tx.insert(claims).values({
         id: randomUUID(),
@@ -560,7 +579,7 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
         shiftId,
         userId,
         status: 'claimed',
-        ...inPersonWaiverFields,
+        ...onboardingRequirementFields,
         createdAt: now,
         updatedAt: now,
       })
@@ -572,7 +591,7 @@ export async function claimShift(shiftId: string, userId: string): Promise<Resul
   return { ok: true }
 }
 
-export async function unclaimClaim(claimId: string, userId: string): Promise<Result> {
+export async function unclaimClaim(claimId: string, userId: string, withdrawalNote = ''): Promise<Result> {
   const existing = (
     await db.select().from(claims).where(and(eq(claims.id, claimId), eq(claims.userId, userId))).limit(1)
   )[0]
@@ -588,12 +607,13 @@ export async function unclaimClaim(claimId: string, userId: string): Promise<Res
       return { ok: false, error: 'The 24-hour cancellation window has closed. Please contact the organization if you need help.' }
     }
   }
+  const note = withdrawalNote.trim().slice(0, 600)
   await db.transaction(async (tx) => {
     await tx.update(claims).set({ status: 'unclaimed', updatedAt: Date.now() }).where(eq(claims.id, existing.id))
     await appendEvent(
       tx,
       EventTypes.CLAIM_UNCLAIMED,
-      { taskId: existing.taskId, shiftId: existing.shiftId, claimId: existing.id, cityId: task.cityId },
+      { taskId: existing.taskId, shiftId: existing.shiftId, claimId: existing.id, cityId: task.cityId, ...(note ? { withdrawalNote: note } : {}) },
       userId,
     )
   })
@@ -632,6 +652,7 @@ export async function verifyCompletion(
   actorId: string,
   paperWaiverReceived = false,
   verificationBatchId?: string,
+  identityMatchConfirmed = false,
 ): Promise<Result> {
   const claim = (await db.select().from(claims).where(eq(claims.id, claimId)).limit(1))[0]
   if (!claim) return { ok: false, error: 'Claim not found.' }
@@ -650,6 +671,21 @@ export async function verifyCompletion(
 
   const participant = (await db.select().from(users).where(eq(users.id, claim.userId)).limit(1))[0]
   if (!participant) return { ok: false, error: 'Participant not found.' }
+  const identityMatch = claim.identityMatchRequired === 1
+    ? (await db
+        .select({ id: volunteerIdentityVerifications.id })
+        .from(volunteerIdentityVerifications)
+        .where(and(
+          eq(volunteerIdentityVerifications.orgId, orgId),
+          eq(volunteerIdentityVerifications.userId, participant.id),
+          eq(volunteerIdentityVerifications.status, 'verified'),
+        ))
+        .limit(1))[0]
+    : null
+  const identityMatchNeedsConfirmation = claim.identityMatchRequired === 1 && !identityMatch
+  if (identityMatchNeedsConfirmation && !identityMatchConfirmed) {
+    return { ok: false, error: 'Confirm that the participant matches their City/Sync account before verifying this onboarding session.' }
+  }
 
   // The wallet and credit journal are authoritative in the task's city
   // database. The reference makes this safe to retry if the control-plane
@@ -665,6 +701,38 @@ export async function verifyCompletion(
 
   await db.transaction(async (tx) => {
     const now = Date.now()
+    if (identityMatchNeedsConfirmation) {
+      await tx
+        .insert(volunteerIdentityVerifications)
+        .values({
+          id: randomUUID(),
+          orgId,
+          userId: participant.id,
+          status: 'verified',
+          verifiedByUserId: actorId,
+          verifiedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [volunteerIdentityVerifications.orgId, volunteerIdentityVerifications.userId],
+          set: {
+            status: 'verified',
+            verifiedByUserId: actorId,
+            verifiedAt: now,
+            revokedByUserId: null,
+            revokedAt: null,
+            updatedAt: now,
+          },
+        })
+      await appendEvent(
+        tx,
+        EventTypes.IDENTITY_MATCH_ATTESTED,
+        { orgId, taskId: task.id, shiftId: claim.shiftId, participantId: participant.id },
+        actorId,
+        task.cityId,
+      )
+    }
     await tx
       .update(claims)
       .set({
@@ -676,6 +744,21 @@ export async function verifyCompletion(
         ...(paperWaiverNeedsConfirmation ? { paperWaiverConfirmedAt: now, paperWaiverConfirmedBy: actorId } : {}),
       })
       .where(eq(claims.id, claimId))
+    if (paperWaiverNeedsConfirmation) {
+      await appendEvent(
+        tx,
+        EventTypes.WAIVER_RECEIPT_ATTESTED,
+        {
+          claimId,
+          taskId: task.id,
+          shiftId: claim.shiftId,
+          orgId,
+          participantId: participant.id,
+        },
+        actorId,
+        task.cityId,
+      )
+    }
     await appendEvent(
       tx,
       EventTypes.COMPLETION_VERIFIED,
@@ -685,7 +768,6 @@ export async function verifyCompletion(
         shiftId: claim.shiftId,
         participantId: participant.id,
         cityId: task.cityId,
-        credits: task.credits,
         ...(verificationBatchId ? { verificationBatchId } : {}),
       },
       actorId,
@@ -710,9 +792,10 @@ export async function verifyCompletion(
 }
 
 /**
- * Staff can confirm an entire completed shift in one operation. Every selected
- * attendee still receives an individual check-in, verified claim, credit mint,
- * and ledger event; the shared batch only removes repeated administrative work.
+ * Staff end a shift by confirming everyone who attended in one operation.
+ * Every selected attendee still receives an individual check-in, verified
+ * claim, credit mint, and ledger event. Remaining active reservations are
+ * explicitly resolved as no-shows before the shift is closed.
  */
 export async function verifyShiftAttendance(input: {
   shiftId: string
@@ -721,7 +804,8 @@ export async function verifyShiftAttendance(input: {
   actorId: string
   note?: string
   paperWaiverReceived?: boolean
-}): Promise<Result<{ batchId: string; verifiedCount: number }>> {
+  identityMatchesConfirmed?: boolean
+}): Promise<Result<{ batchId: string | null; verifiedCount: number; noShowCount: number }>> {
   const now = Date.now()
   const shiftRow = (await db
     .select({ shift: shifts, task: tasks })
@@ -735,16 +819,17 @@ export async function verifyShiftAttendance(input: {
   if (shiftRow.shift.status !== 'open') {
     return { ok: false, error: 'Only an active shift can be verified.' }
   }
-  if ((shiftRow.shift.endsAt ?? shiftRow.shift.startsAt) && (shiftRow.shift.endsAt ?? shiftRow.shift.startsAt)! > now) {
-    return { ok: false, error: 'Wait until the shift has ended before confirming attendance.' }
+  if (shiftRow.shift.startsAt && shiftRow.shift.startsAt > now) {
+    return { ok: false, error: 'A shift can be finalized once its scheduled start time has arrived.' }
   }
 
   const selectedIds = Array.from(new Set(input.claimIds.filter(Boolean)))
-  if (selectedIds.length === 0) return { ok: false, error: 'Select at least one attendee to verify.' }
-  const selectedClaims = await db
-    .select()
-    .from(claims)
-    .where(and(eq(claims.shiftId, input.shiftId), inArray(claims.id, selectedIds), inArray(claims.status, ['claimed', 'submitted'])))
+  const selectedClaims = selectedIds.length
+    ? await db
+        .select()
+        .from(claims)
+        .where(and(eq(claims.shiftId, input.shiftId), inArray(claims.id, selectedIds), inArray(claims.status, ['claimed', 'submitted'])))
+    : []
   if (selectedClaims.length !== selectedIds.length) {
     return { ok: false, error: 'One or more selected sign-ups have already been resolved. Refresh the shift roster and try again.' }
   }
@@ -753,19 +838,85 @@ export async function verifyShiftAttendance(input: {
     return { ok: false, error: 'Confirm that the selected attendees provided their signed paper waivers before verifying this onboarding shift.' }
   }
 
-  const batchId = randomUUID()
+  // Identity is a separate staff attestation, never an uploaded ID document.
+  // An organization-local confirmation from an earlier session can satisfy a
+  // later session, while the claim snapshot above preserves why it was needed.
+  const identityRequiredUserIds = selectedClaims
+    .filter((claim) => claim.identityMatchRequired === 1)
+    .map((claim) => claim.userId)
+  const existingIdentityMatches = identityRequiredUserIds.length
+    ? await db
+        .select({ userId: volunteerIdentityVerifications.userId })
+        .from(volunteerIdentityVerifications)
+        .where(and(
+          eq(volunteerIdentityVerifications.orgId, input.orgId),
+          inArray(volunteerIdentityVerifications.userId, identityRequiredUserIds),
+          eq(volunteerIdentityVerifications.status, 'verified'),
+        ))
+    : []
+  const verifiedIdentityUserIds = new Set(existingIdentityMatches.map((row) => row.userId))
+  const missingIdentityUserIds = identityRequiredUserIds.filter((userId) => !verifiedIdentityUserIds.has(userId))
+  if (missingIdentityUserIds.length > 0 && !input.identityMatchesConfirmed) {
+    return { ok: false, error: 'Confirm that the selected attendees match their City/Sync accounts before verifying this onboarding shift.' }
+  }
+
+  if (missingIdentityUserIds.length > 0) {
+    await db.transaction(async (tx) => {
+      for (const userId of missingIdentityUserIds) {
+        await tx
+          .insert(volunteerIdentityVerifications)
+          .values({
+            id: randomUUID(),
+            orgId: input.orgId,
+            userId,
+            status: 'verified',
+            verifiedByUserId: input.actorId,
+            verifiedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [volunteerIdentityVerifications.orgId, volunteerIdentityVerifications.userId],
+            set: {
+              status: 'verified',
+              verifiedByUserId: input.actorId,
+              verifiedAt: now,
+              revokedByUserId: null,
+              revokedAt: null,
+              updatedAt: now,
+            },
+          })
+        await appendEvent(
+          tx,
+          EventTypes.IDENTITY_MATCH_ATTESTED,
+          {
+            orgId: input.orgId,
+            taskId: shiftRow.task.id,
+            shiftId: shiftRow.shift.id,
+            participantId: userId,
+          },
+          input.actorId,
+          shiftRow.task.cityId,
+        )
+      }
+    })
+  }
+
+  const batchId = selectedClaims.length ? randomUUID() : null
   const note = input.note?.trim().slice(0, 2_000) ?? ''
-  await db.insert(verificationBatches).values({
-    id: batchId,
-    orgId: input.orgId,
-    taskId: shiftRow.task.id,
-    shiftId: shiftRow.shift.id,
-    verifiedByUserId: input.actorId,
-    note,
-    participantCount: selectedClaims.length,
-    verifiedAt: now,
-    createdAt: now,
-  })
+  if (batchId) {
+    await db.insert(verificationBatches).values({
+      id: batchId,
+      orgId: input.orgId,
+      taskId: shiftRow.task.id,
+      shiftId: shiftRow.shift.id,
+      verifiedByUserId: input.actorId,
+      note,
+      participantCount: selectedClaims.length,
+      verifiedAt: now,
+      createdAt: now,
+    })
+  }
 
   // Keep these operations sequential: both the organization ledger and the
   // city credit ledger are hash-chained, and each participant needs a durable
@@ -780,28 +931,42 @@ export async function verifyShiftAttendance(input: {
       input.orgId,
       input.actorId,
       Boolean(input.paperWaiverReceived),
-      batchId,
+      batchId ?? undefined,
+      Boolean(input.identityMatchesConfirmed),
     )
     if (!verified.ok) return verified
   }
 
+  const noShows = await markUnverifiedClaimsNoShow({
+    shiftId: shiftRow.shift.id,
+    orgId: input.orgId,
+    actorId: input.actorId,
+    now,
+  })
+
   await db.transaction(async (tx) => {
+    await tx
+      .update(shifts)
+      .set({ status: 'closed' })
+      .where(and(eq(shifts.id, shiftRow.shift.id), eq(shifts.status, 'open')))
     await appendEvent(
       tx,
-      EventTypes.SHIFT_ATTENDANCE_BATCH_VERIFIED,
+      EventTypes.SHIFT_ATTENDANCE_FINALIZED,
       {
         batchId,
         taskId: shiftRow.task.id,
         shiftId: shiftRow.shift.id,
         orgId: input.orgId,
-        participantCount: selectedClaims.length,
-        verifiedAt: now,
+        verifiedCount: selectedClaims.length,
+        noShowCount: noShows.marked,
+        finalizedAt: now,
       },
       input.actorId,
       shiftRow.task.cityId,
     )
   })
-  return { ok: true, batchId, verifiedCount: selectedClaims.length }
+  await cancelRemindersForShift(shiftRow.shift.id)
+  return { ok: true, batchId, verifiedCount: selectedClaims.length, noShowCount: noShows.marked }
 }
 
 /**

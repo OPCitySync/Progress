@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { claims, cityParticipantStatuses, shifts, tasks } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
@@ -6,15 +6,8 @@ import { EventTypes } from '@/lib/ledger/events'
 import { getCityParticipantStatus } from './city-networks'
 
 const SIX_MONTHS_MS = 183 * 24 * 60 * 60 * 1000
-const DEFAULT_SHIFT_DURATION_MS = 6 * 60 * 60 * 1000
-const CHECK_IN_GRACE_MS = 2 * 60 * 60 * 1000
 
 type PolicyResult = { ok: true } | { ok: false; error: string }
-
-function noShowCutoff(shift: typeof shifts.$inferSelect): number | null {
-  if (!shift.startsAt) return null
-  return (shift.endsAt ?? shift.startsAt + DEFAULT_SHIFT_DURATION_MS) + CHECK_IN_GRACE_MS
-}
 
 async function isOnboardingTask(taskId: string): Promise<boolean> {
   const task = (await db.select({ isOnboarding: tasks.isOnboarding }).from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
@@ -82,24 +75,32 @@ export async function activateCityParticipationForCheckIn(taskId: string, userId
 }
 
 /**
- * Mark unattended, past shifts as no-shows. Only no-shows while someone is
- * still New in that city consume one of their three onboarding attempts.
+ * Resolve remaining reservations when an organizer manually finalizes a
+ * shift. Only no-shows while someone is still New in that city consume one
+ * of their three onboarding attempts.
  */
-export async function processOverdueNoShows(now = Date.now()): Promise<{ marked: number; barred: number }> {
+export async function markUnverifiedClaimsNoShow(input: {
+  shiftId: string
+  orgId: string
+  actorId: string
+  now?: number
+}): Promise<{ marked: number; barred: number }> {
+  const now = input.now ?? Date.now()
   const rows = await db
     .select({ claim: claims, task: tasks, shift: shifts })
     .from(claims)
     .innerJoin(tasks, eq(claims.taskId, tasks.id))
     .innerJoin(shifts, eq(claims.shiftId, shifts.id))
-    .where(and(inArray(claims.status, ['claimed', 'submitted']), isNull(claims.checkedInAt)))
+    .where(and(
+      eq(claims.shiftId, input.shiftId),
+      eq(shifts.orgId, input.orgId),
+      inArray(claims.status, ['claimed', 'submitted']),
+    ))
 
   let marked = 0
   let barred = 0
   for (const row of rows) {
-    const cutoff = noShowCutoff(row.shift)
-    if (!cutoff || cutoff > now) continue
-
-    const onboarding = await isOnboardingTask(row.task.id)
+    const onboarding = row.task.isOnboarding === 1
     const participation = onboarding
       ? await getCityParticipantStatus(row.claim.userId, row.task.cityId)
       : null
@@ -109,11 +110,12 @@ export async function processOverdueNoShows(now = Date.now()): Promise<{ marked:
     const barredUntil = shouldBar ? now + SIX_MONTHS_MS : null
 
     await db.transaction(async (tx) => {
-      // A concurrent check-in wins: only an unchecked active claim can become a no-show.
+      // Attendance is determined by the organizer's finalized roster. A
+      // check-in is useful evidence, but it is not a service verification.
       await tx
         .update(claims)
         .set({ status: 'no_show', noShowAt: now, updatedAt: now })
-        .where(and(eq(claims.id, row.claim.id), inArray(claims.status, ['claimed', 'submitted']), isNull(claims.checkedInAt)))
+        .where(and(eq(claims.id, row.claim.id), inArray(claims.status, ['claimed', 'submitted'])))
 
       if (strikeApplies) {
         await tx
@@ -139,7 +141,7 @@ export async function processOverdueNoShows(now = Date.now()): Promise<{ marked:
           noShowCount: nextCount,
           barredUntil,
         },
-        null,
+        input.actorId,
       )
     })
     marked++

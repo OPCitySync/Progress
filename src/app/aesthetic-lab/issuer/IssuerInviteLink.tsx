@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import styles from '../prototype.module.css'
 
 export function IssuerInviteLink({ code }: { code: string }) {
-  const path = `/invite?code=${encodeURIComponent(code)}`
+  const path = `/aesthetic-lab/invite?code=${encodeURIComponent(code)}`
   const [link, setLink] = useState(path)
   const [copied, setCopied] = useState(false)
 

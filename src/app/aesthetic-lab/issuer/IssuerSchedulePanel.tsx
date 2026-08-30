@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, Clock3, LayoutGrid, List, MessageCircle, Settings2, UsersRound, XCircle } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CheckCircle2, Clock3, LayoutGrid, List, MessageCircle, Settings2, UsersRound, XCircle } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cancelShiftAndNotifyAction } from '@/app/actions'
 import { AddCalendarEntryButton } from './AddCalendarEntryButton'
@@ -19,7 +19,6 @@ export type IssuerScheduleEntry = {
   color?: 'blue' | 'gold' | 'mint' | 'coral'
 }
 
-type Presentation = 'list' | 'calendar'
 type Period = 'week' | 'month'
 type CalendarStage = 'calendar' | 'transitioning' | 'timeline'
 type Bounds = { top: number; left: number; width: number; height: number }
@@ -139,7 +138,6 @@ function calendarDays(period: Period) {
 
 /** An issuer-only schedule that can move between a compact agenda and a calendar. */
 export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[] }) {
-  const [presentation, setPresentation] = useState<Presentation>('calendar')
   const [period, setPeriod] = useState<Period>('month')
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
@@ -150,7 +148,10 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
   const calendarStageRef = useRef<HTMLDivElement>(null)
   const dayTimelineRef = useRef<HTMLElement>(null)
   const dayTimelineReelRef = useRef<HTMLDivElement>(null)
-  const activePeriod = presentation === 'calendar' ? period : 'week'
+  const scheduleHeaderActionRef = useRef<HTMLDivElement>(null)
+  const scheduleHeaderControlsRef = useRef<HTMLDivElement>(null)
+  const [scheduleHeaderActionOffset, setScheduleHeaderActionOffset] = useState(0)
+  const activePeriod = period
   const bounds = useMemo(() => periodBounds(activePeriod), [activePeriod])
   const visibleEntries = useMemo(
     () => entries
@@ -165,7 +166,9 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
   const days = useMemo(() => calendarDays(activePeriod), [activePeriod])
   const currentMonth = new Date().getMonth()
   const currentYear = new Date().getFullYear()
-  const today = dayKey(new Date())
+  const todayDate = new Date()
+  const today = dayKey(todayDate)
+  const todayLabel = todayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const rangeLabel = activePeriod === 'week'
     ? `${bounds.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(bounds.end.getTime() - DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
     : bounds.start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -242,15 +245,25 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
     setSelectedEntryId(null)
     setTransitionCard(null)
   }
-  const changePresentation = (next: Presentation) => {
-    if (next === presentation) return
-    returnToCalendar()
-    setPresentation(next)
-  }
   const changePeriod = (next: Period) => {
     setPeriod(next)
     returnToCalendar()
   }
+
+  useLayoutEffect(() => {
+    const action = scheduleHeaderActionRef.current
+    const controls = scheduleHeaderControlsRef.current
+    if (!action || !controls) return
+    const alignWithControls = () => {
+      const offset = Math.max(0, controls.offsetWidth - action.offsetWidth)
+      setScheduleHeaderActionOffset((current) => current === offset ? current : offset)
+    }
+    alignWithControls()
+    const observer = new ResizeObserver(alignWithControls)
+    observer.observe(action)
+    observer.observe(controls)
+    return () => observer.disconnect()
+  }, [period])
 
   useLayoutEffect(() => {
     if (calendarStage === 'calendar' || !selectedEntryId) return
@@ -334,39 +347,51 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
   return (
     <section className={styles.issuerScheduleCard} data-day-view={calendarStage !== 'calendar' ? 'true' : undefined} aria-label="Organization schedule">
       {calendarStage === 'calendar' ? <div className={styles.issuerScheduleHeader}>
-        <div>
-          <h2>{presentation === 'list' ? 'Volunteer schedule' : 'Calendar overview'}</h2>
-          <p>{rangeLabel}</p>
+        <div className={styles.issuerScheduleHeaderAction} ref={scheduleHeaderActionRef} style={{ marginLeft: scheduleHeaderActionOffset }}>
+          <AddCalendarEntryButton />
         </div>
-        <div className={styles.issuerScheduleControls}>
+        <div className={styles.issuerScheduleTitle}>
+          <h2>Calendar Overview</h2>
+          <p>{period === 'month' ? todayLabel : rangeLabel}</p>
+        </div>
+        <div className={styles.issuerScheduleControls} ref={scheduleHeaderControlsRef}>
           <div className={styles.issuerScheduleControlRow}>
-            <div className={styles.issuerScheduleButtons} aria-label="Schedule presentation" role="group">
-              <button type="button" className={presentation === 'calendar' ? styles.issuerScheduleButtonActive : undefined} onClick={() => changePresentation('calendar')} aria-pressed={presentation === 'calendar'}>
-                <LayoutGrid size={14} /> Calendar overview
+            <div className={styles.issuerScheduleButtons} aria-label="Calendar period" role="group">
+              <button type="button" className={period === 'month' ? styles.issuerScheduleButtonActive : undefined} onClick={() => changePeriod('month')} aria-pressed={period === 'month'}>
+                <LayoutGrid size={14} /> Month
               </button>
-              <button type="button" className={presentation === 'list' ? styles.issuerScheduleButtonActive : undefined} onClick={() => changePresentation('list')} aria-pressed={presentation === 'list'}>
-                <List size={14} /> Weekly list
+              <button type="button" className={period === 'week' ? styles.issuerScheduleButtonActive : undefined} onClick={() => changePeriod('week')} aria-pressed={period === 'week'}>
+                <List size={14} /> Week
               </button>
             </div>
           </div>
         </div>
       </div> : null}
 
-      {presentation === 'list' ? (
+      {period === 'week' ? (
         <div className={styles.issuerAgendaList}>
-          {visibleEntries.length === 0 ? <p className={styles.emptyCopy}>No organization schedule items are set for this week.</p> : visibleEntries.map((entry) => {
-            const content = <>
-              <span className={`${styles.issuerAgendaBadge} ${styles[colorClass(entry.isOnboarding ? 'gold' : entry.color, 'issuerSchedule')]}`}>
-                <small>{entry.startsAt ? new Date(entry.startsAt).toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase() : 'TBD'}</small>
-                <b>{entry.startsAt ? new Date(entry.startsAt).getDate() : '—'}</b>
-              </span>
-              <div>
-                <b>{entry.title}</b>
-                <span><Clock3 size={13} /> {dateLabel(entry.startsAt)} · {timeLabel(entry.startsAt)}</span>
+          {days.map((day) => {
+            const dayEntries = visibleEntries.filter((entry) => isOnDay(entry, day))
+            return <section className={styles.issuerAgendaDay} key={dayKey(day)}>
+              <time className={styles.issuerAgendaDayDate} dateTime={day.toISOString()}>
+                <span>{day.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}</span>
+                <b>{day.getDate()}</b>
+                <small>{day.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</small>
+              </time>
+              <div className={styles.issuerAgendaDayEvents}>
+                {dayEntries.length === 0 ? <p>No events scheduled.</p> : dayEntries.map((entry) => {
+                  const content = <>
+                    <span className={`${styles.issuerAgendaEventIcon} ${styles[colorClass(entry.isOnboarding ? 'gold' : entry.color, 'issuerSchedule')]}`}><CalendarDays size={15} /></span>
+                    <div>
+                      <b>{entry.title}</b>
+                      <span><Clock3 size={13} /> {entry.endsAt ? `${timeLabel(entry.startsAt)} – ${timeLabel(entry.endsAt)}` : timeLabel(entry.startsAt)}</span>
+                    </div>
+                    {entry.capacity !== null ? <em><UsersRound size={13} /> {entry.reserved ?? 0} / {entry.capacity}</em> : <em className={styles.issuerAgendaNote}>Organization note</em>}
+                  </>
+                  return entry.taskId ? <Link href={`/aesthetic-lab/issuer/opportunities/${entry.taskId}`} className={styles.issuerAgendaEvent} key={entry.id}>{content}</Link> : <article className={styles.issuerAgendaEvent} key={entry.id}>{content}</article>
+                })}
               </div>
-              {entry.capacity !== null ? <em><UsersRound size={13} /> {entry.reserved ?? 0} / {entry.capacity}</em> : <em className={styles.issuerAgendaNote}>Organization note</em>}
-            </>
-            return entry.taskId ? <Link href={`/aesthetic-lab/issuer/opportunities/${entry.taskId}`} className={styles.issuerAgendaItem} key={entry.id}>{content}</Link> : <article className={styles.issuerAgendaItem} key={entry.id}>{content}</article>
+            </section>
           })}
         </div>
       ) : (
@@ -405,13 +430,17 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
                         {entry.taskId ? <div className={styles.issuerDayTimelineActions}>
                           <Link href={`/aesthetic-lab/issuer/opportunities/${entry.taskId}`}><Settings2 size={13} />Manage event</Link>
                           <Link href={`/aesthetic-lab/issuer/notifications?event=${encodeURIComponent(entry.id)}`}><MessageCircle size={13} />Message team</Link>
-                          <form className={styles.issuerDayTimelineCancel} action={cancelShiftAndNotifyAction} onSubmit={(event) => {
-                            if (!window.confirm(`Cancel “${entry.title}” and notify everyone signed up?`)) event.preventDefault()
-                          }}>
-                            <input type="hidden" name="shiftId" value={entry.id} />
-                            <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer" />
-                            <button type="submit"><XCircle size={13} />Cancel &amp; Notify</button>
-                          </form>
+                          {!entry.startsAt || entry.startsAt <= Date.now() ? (
+                            <Link className={styles.issuerDayTimelineVerify} href={`/aesthetic-lab/issuer/shifts/${entry.id}/verify`}><CheckCircle2 size={13} />Verify &amp; Close</Link>
+                          ) : (
+                            <form className={styles.issuerDayTimelineCancel} action={cancelShiftAndNotifyAction} onSubmit={(event) => {
+                              if (!window.confirm(`Cancel “${entry.title}” and notify everyone signed up?`)) event.preventDefault()
+                            }}>
+                              <input type="hidden" name="shiftId" value={entry.id} />
+                              <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer" />
+                              <button type="submit"><XCircle size={13} />Cancel &amp; Notify</button>
+                            </form>
+                          )}
                         </div> : null}
                       </div>
                     </section>) : <p className={styles.issuerDayTimelineOpenHour}>Open time</p>}
@@ -462,7 +491,9 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
               {transitionCard.taskId ? <div className={styles.issuerCalendarTransitionActions}>
                 <span><Settings2 size={13} />Manage event</span>
                 <span><MessageCircle size={13} />Message team</span>
-                <span><XCircle size={13} />Cancel &amp; Notify</span>
+                {transitionCard.startsAt && transitionCard.startsAt > Date.now()
+                  ? <span><XCircle size={13} />Cancel &amp; Notify</span>
+                  : <span className={styles.issuerCalendarTransitionVerify}><CheckCircle2 size={13} />Verify &amp; Close</span>}
               </div> : null}
             </div>
           </div> : null}
@@ -470,20 +501,9 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
         </div>
       )}
       {calendarStage === 'calendar' ? <div className={styles.issuerScheduleFooter}>
-        {presentation === 'calendar' ? <>
-          <div className={styles.issuerCalendarFooterStart}>
-            <AddCalendarEntryButton />
-            <span>{visibleEntries.length} event{visibleEntries.length === 1 ? '' : 's'} this {activePeriod}.</span>
-          </div>
-          <div className={`${styles.issuerScheduleButtons} ${styles.issuerCalendarPeriodPicker}`} aria-label="Calendar period" role="group">
-            <button type="button" className={period === 'week' ? styles.issuerScheduleButtonActive : undefined} onClick={() => changePeriod('week')} aria-pressed={period === 'week'}>Week</button>
-            <button type="button" className={period === 'month' ? styles.issuerScheduleButtonActive : undefined} onClick={() => changePeriod('month')} aria-pressed={period === 'month'}>Month</button>
-          </div>
-        </> : <>
-          <CalendarDays size={15} />
-          <span>{visibleEntries.length} calendar item{visibleEntries.length === 1 ? '' : 's'} in this week.</span>
-          <Link href="/aesthetic-lab/issuer/catalog">Manage opportunities</Link>
-        </>}
+        <div className={styles.issuerCalendarFooterStart}>
+          <span>{visibleEntries.length} event{visibleEntries.length === 1 ? '' : 's'} this {activePeriod}.</span>
+        </div>
       </div> : null}
     </section>
   )

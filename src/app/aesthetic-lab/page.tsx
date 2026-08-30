@@ -23,6 +23,7 @@ import { getParticipantOrganizations } from '@/lib/services/participant-workspac
 import { getMyResume } from '@/lib/services/resume'
 import { savedItemIds } from '@/lib/services/saved-items'
 import { LabHeader } from './LabHeader'
+import { ActionQueueCard } from './ActionQueueCard'
 import { MyCityFeedContent, type LabFeedPost, type LabCommitment } from './MyCityFeedContent'
 import { getLabWorkspace } from './lab-workspace'
 import styles from './prototype.module.css'
@@ -92,6 +93,7 @@ export default async function AestheticLabPage() {
   const feedPosts: LabFeedPost[] = feed.map(({ post, org, hearts, heartedByMe }) => ({
     id: post.id,
     body: post.body,
+    imageUrl: post.imageUrl,
     createdAt: post.createdAt,
     organization: org.name,
     organizationType: org.type,
@@ -167,34 +169,24 @@ export default async function AestheticLabPage() {
 
         <section className={styles.feed} aria-label="MyCity Feed">
           <section className={`${styles.issuerHero} ${styles.participantFeedHero}`}>
-            <div><p className={styles.eyebrow}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
+            <div><p className={`${styles.eyebrow} ${styles.myCityFeedLabel}`}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
           </section>
-          <section className={`${styles.issuerTaskQueue} ${styles.participantActionQueue}`} aria-label="Your action queue">
+          <ActionQueueCard className={styles.participantActionQueue} historyHref="/aesthetic-lab/messages?pane=inbox" historyLabel="Open Messages">
             <div className={styles.issuerPanelHeading}>
-              <div><p className={styles.eyebrow}>Action queue</p><h2>What needs your attention.</h2></div>
-              <Link className={styles.issuerQueueHistoryLink} href="/aesthetic-lab/messages?pane=inbox" aria-label="Open Messages" title="Open Messages">
-                <ClipboardList size={19} />
-              </Link>
+              <div><h2>What needs your attention.</h2></div>
             </div>
             <p className={styles.issuerQueueIntro}>Actions that need you and the latest City/Sync updates are collected here.</p>
             <div className={styles.issuerQueueList}>
               {actionQueue.length ? <>
-                {actionItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action items</b><span>{actionItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{actionItems.map((notification) => renderQueueItem(notification, true))}</div></section> : null}
-                {notificationItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="notification"><div className={styles.issuerQueueGroupHeading}><b>Notifications</b><span>{notificationItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{notificationItems.map((notification) => renderQueueItem(notification, false))}</div></section> : null}
+                {actionItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action Items ({actionItems.length})</b></div><div className={styles.issuerQueueGroupItems}>{actionItems.map((notification) => renderQueueItem(notification, true))}</div></section> : null}
+                {notificationItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="notification"><div className={styles.issuerQueueGroupHeading}><b>Notifications ({notificationItems.length})</b></div><div className={styles.issuerQueueGroupItems}>{notificationItems.map((notification) => renderQueueItem(notification, false))}</div></section> : null}
               </> : <p className={styles.issuerQueueEmpty}>You’re caught up. New City/Sync updates will appear here.</p>}
             </div>
-          </section>
+          </ActionQueueCard>
           <MyCityFeedContent posts={feedPosts} commitments={commitments} />
         </section>
 
         <aside className={styles.rightRail}>
-          <section className={styles.issuerFeedCityCard}>
-            <p className={styles.eyebrow}>Your City Network</p>
-            <h2>{cityLabel}</h2>
-            <p>{city ? 'This is the active network where you can discover opportunities, contribute, and stay connected.' : 'Choose an active City Network to find local opportunities.'}</p>
-            <Link href="/aesthetic-lab/cities">View City Network <ArrowUpRight size={14} /></Link>
-          </section>
-
           <section className={styles.todayEventsCard}>
             <div className={styles.sectionHeading}><p className={styles.eyebrow}>My Calendar</p><CalendarDays size={17} /></div>
             <div className={styles.todayEventList}>

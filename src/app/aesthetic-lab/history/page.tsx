@@ -88,7 +88,6 @@ export default async function HistoryLabPage() {
             <div className={styles.cityCardTop}><span className={styles.cityOverline}>Your city membership</span><CheckCircle2 size={17} /></div>
             <div className={styles.cityName}><MapPin size={17} /><span>{city?.name ?? 'Choose a city'}</span></div>
             <p>Each completed local activity makes your city record more complete.</p>
-            <Link href="/aesthetic-lab/cities">Explore your city <ArrowUpRight size={14} /></Link>
           </section>
           <section className={styles.historyAsideCard}><p className={styles.eyebrow}>Keep going</p><strong>{city?.participation?.status === 'active' ? 'You are a City Member' : 'Start with onboarding'}</strong><span>{city?.participation?.status === 'active' ? 'Your verified participation opens local opportunities.' : 'One local onboarding session is all that is needed to become a City Member.'}</span><Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link></section>
         </aside>

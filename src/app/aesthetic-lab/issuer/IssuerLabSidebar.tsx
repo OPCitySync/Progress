@@ -10,10 +10,12 @@ export function IssuerLabSidebar({
   organizationName = 'Issuer organization',
   organizationId,
   cityName,
+  isMyCityFeed = false,
 }: {
   organizationName?: string
   organizationId?: string
   cityName?: string
+  isMyCityFeed?: boolean
 }) {
   return (
     <aside className={styles.leftRail}>
@@ -24,7 +26,7 @@ export function IssuerLabSidebar({
           <h1>{organizationName} <BadgeCheck size={17} /></h1>
           <p>{cityName ? `Issuer Organization · ${cityName}` : 'Issuer Organization'}</p>
           <div className={styles.issuerIdentityLinks}>
-            <Link href="/aesthetic-lab/issuer/feed">MyCity Feed</Link>
+            <Link href={isMyCityFeed ? '/aesthetic-lab/issuer' : '/aesthetic-lab/issuer/feed'}>{isMyCityFeed ? 'Home' : 'MyCity Feed'}</Link>
             <Link href="/aesthetic-lab/issuer/manage">Manage Organization</Link>
           </div>
         </div>

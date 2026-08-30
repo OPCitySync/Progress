@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Check, ClipboardCheck, FileSignature, RotateCcw, UserRoundCheck, UsersRound } from 'lucide-react'
+import { Check, ClipboardCheck, FileSignature, UserRoundCheck, UsersRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { verifyShiftAttendanceAction } from '@/app/actions'
 import styles from '../prototype.module.css'
@@ -11,10 +11,10 @@ type Participant = {
   userId: string
   name: string
   email: string
-  status: 'claimed' | 'submitted'
-  checkedInAt: number | null
   waiverCollectionMethod: 'digital' | 'in_person' | null
   paperWaiverConfirmedAt: number | null
+  identityMatchRequired: boolean
+  identityMatchConfirmed: boolean
 }
 
 type Shift = {
@@ -25,7 +25,7 @@ type Shift = {
   endsAt: number | null
   location: string
   isOnboarding: boolean
-  canVerify: boolean
+  canFinalize: boolean
 }
 
 function dateAndTime(value: number | null) {
@@ -39,10 +39,17 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
   const selected = useMemo(() => new Set(selectedClaimIds), [selectedClaimIds])
   const selectedParticipants = participants.filter((participant) => selected.has(participant.claimId))
   const paperWaiverRequired = selectedParticipants.some((participant) => participant.waiverCollectionMethod === 'in_person' && !participant.paperWaiverConfirmedAt)
+  const identityMatchRequired = selectedParticipants.some((participant) => participant.identityMatchRequired && !participant.identityMatchConfirmed)
   const selectedCount = selectedParticipants.length
+  const noShowCount = participants.length - selectedCount
+  const everyoneSelected = participants.length > 0 && selectedCount === participants.length
 
   function toggle(claimId: string) {
     setSelectedClaimIds((current) => current.includes(claimId) ? current.filter((id) => id !== claimId) : [...current, claimId])
+  }
+
+  function toggleAll() {
+    setSelectedClaimIds(everyoneSelected ? [] : participants.map((participant) => participant.claimId))
   }
 
   return <section className={styles.shiftVerificationCard}>
@@ -55,46 +62,44 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
       </div>
     </header>
 
-    {!participants.length ? <div className={styles.shiftVerificationEmpty}>
+    {!participants.length && !shift.canFinalize ? <div className={styles.shiftVerificationEmpty}>
       <Check size={22} />
-      <div><h3>This shift is fully resolved.</h3><p>There are no remaining attendee records ready for verification.</p></div>
+      <div><h3>Attendance is finalized.</h3><p>There are no remaining attendee records to resolve for this shift.</p></div>
     </div> : <form action={verifyShiftAttendanceAction} className={styles.shiftVerificationForm}>
       <input type="hidden" name="shiftId" value={shift.id} />
       <input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/shifts/${shift.id}/verify`} />
       <div className={styles.shiftVerificationIntro}>
-        <div><p className={styles.eyebrow}>Attendance roster</p><h3>Confirm everyone who was present.</h3><p>Select the people who attended. One confirmation gives every selected person their own verified service record and credit entry.</p></div>
-        <div className={styles.shiftVerificationRosterControls}>
-          <button type="button" onClick={() => setSelectedClaimIds(participants.map((participant) => participant.claimId))}><UsersRound size={14} /> Select all</button>
-          <button type="button" onClick={() => setSelectedClaimIds([])} disabled={selectedCount === 0}><RotateCcw size={14} /> Clear</button>
-        </div>
+        <p className={styles.eyebrow}>Attendance roster</p>
+        {participants.length ? <div className={styles.shiftVerificationRosterControls}>
+          <button type="button" onClick={toggleAll}><UsersRound size={14} /> {everyoneSelected ? 'Clear Selected' : 'Select All'}</button>
+        </div> : null}
       </div>
 
-      <div className={styles.shiftVerificationRoster}>
+      {participants.length ? <div className={styles.shiftVerificationRoster}>
         {participants.map((participant) => {
           const included = selected.has(participant.claimId)
-          const paperWaiverPending = participant.waiverCollectionMethod === 'in_person' && !participant.paperWaiverConfirmedAt
           return <article key={participant.claimId} data-selected={included ? 'true' : undefined}>
             <label>
               <input type="checkbox" name="claimId" value={participant.claimId} checked={included} onChange={() => toggle(participant.claimId)} />
               <span className={styles.shiftVerificationCheck}>{included ? <Check size={14} /> : null}</span>
               <span className={styles.shiftVerificationAvatar}>{participant.name.slice(0, 2).toUpperCase()}</span>
               <span className={styles.shiftVerificationPerson}><b>{participant.name}</b><small>{participant.email}</small></span>
-              <span className={styles.shiftVerificationStates}>
-                <em>{participant.checkedInAt ? 'Checked in' : participant.status === 'submitted' ? 'Completion submitted' : 'Signed up'}</em>
-                {paperWaiverPending ? <em data-tone="paper"><FileSignature size={12} /> Paper waiver to confirm</em> : null}
-              </span>
             </label>
-            <Link href={`/aesthetic-lab/issuer/volunteers/${participant.userId}`}><UserRoundCheck size={14} /> Profile</Link>
+            <Link href={`/aesthetic-lab/issuer/volunteers/${participant.userId}`}><UserRoundCheck size={12} /> View Profile</Link>
           </article>
         })}
-      </div>
+      </div> : <div className={styles.shiftVerificationEmpty}>
+        <Check size={22} />
+        <div><h3>No active reservations.</h3><p>Finalize attendance to close this shift without recording a no-show.</p></div>
+      </div>}
 
       <div className={styles.shiftVerificationFooter}>
-        <div className={styles.shiftVerificationSummary}><ClipboardCheck size={17} /><p><b>{selectedCount} attendee{selectedCount === 1 ? '' : 's'} selected.</b> Selected people will be marked present and verified together; anyone left unchecked remains available for separate review.</p></div>
+        <div className={styles.shiftVerificationSummary}><ClipboardCheck size={17} /><p><b>{selectedCount} attendee{selectedCount === 1 ? '' : 's'} marked present.</b> {noShowCount ? `${noShowCount} remaining reservation${noShowCount === 1 ? '' : 's'} will be marked no-show when you finalize attendance.` : 'No remaining reservations will be marked no-show.'}</p></div>
         {paperWaiverRequired ? <label className={styles.shiftVerificationWaiver}><input type="checkbox" name="paperWaiverReceived" required /><span><FileSignature size={16} /></span><p><b>Paper waivers received</b> Confirm each selected attendee who requires an in-person waiver provided their signed copy.</p></label> : null}
+        {identityMatchRequired ? <label className={styles.shiftVerificationWaiver}><input type="checkbox" name="identityMatchesConfirmed" required /><span><UserRoundCheck size={16} /></span><p><b>Identity matches confirmed</b> Confirm each selected attendee who requires it matches the City/Sync account they used to reserve this session.</p></label> : null}
         <label className={styles.shiftVerificationNote}>Verification note <textarea name="note" rows={3} maxLength={2000} placeholder="Optional note for this verification batch — e.g., hours, weather, or a delivery outcome." /></label>
-        {!shift.canVerify ? <p className={styles.shiftVerificationUnavailable}>This shift has not ended yet. Attendance can be confirmed after its scheduled end time.</p> : null}
-        <button className={styles.shiftVerificationSubmit} type="submit" disabled={!shift.canVerify || selectedCount === 0}><ClipboardCheck size={15} /> Verify {selectedCount || ''} attendee{selectedCount === 1 ? '' : 's'}</button>
+        {!shift.canFinalize ? <p className={styles.shiftVerificationUnavailable}>A shift can be finalized once its scheduled start time has arrived.</p> : null}
+        <button className={styles.shiftVerificationSubmit} type="submit" disabled={!shift.canFinalize}><ClipboardCheck size={15} /> Finalize Attendance</button>
       </div>
     </form>}
   </section>

@@ -50,14 +50,14 @@ export default async function IssuerCityEventsPage() {
         <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
         <section className={styles.issuerMain} aria-label="Today’s city events">
           <section className={styles.issuerPageHero}>
-            <div><p className={styles.eyebrow}>City-wide schedule</p><h1>Events today in {cityLabel}.</h1><p>See the volunteer activity happening across every participating organization today.</p></div>
-            <Link href="/aesthetic-lab/issuer" className={styles.issuerSecondaryAction}><ArrowLeft size={16} /> Back to workspace</Link>
+            <div><p className={styles.eyebrow}>City-wide schedule</p><h1>Events in {cityLabel}</h1></div>
+            <Link href="/aesthetic-lab/issuer/feed" className={styles.issuerHistoryBack}><ArrowLeft size={15} /> Back to MyCity Feed</Link>
           </section>
 
           <section className={styles.issuerEventsCard}>
-            <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Today’s events</p><h2>{events.length} scheduled event{events.length === 1 ? '' : 's'}</h2></div><CalendarDays size={19} /></div>
+            <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Today’s events</p><h2>{events.length === 0 ? 'No Scheduled Events' : `${events.length} scheduled event${events.length === 1 ? '' : 's'}`}</h2></div><CalendarDays size={19} /></div>
             <div className={styles.issuerCityEventsList}>
-              {events.length === 0 ? <p className={styles.emptyCopy}>No volunteer events are scheduled in {cityLabel} today.</p> : events.map(({ shift, task, org }) => <article key={shift.id}>
+              {events.length === 0 ? null : events.map(({ shift, task, org }) => <article key={shift.id}>
                 <span>{timeLabel(shift.startsAt)}</span>
                 <div><b>{task.title}</b><small>{org.name}</small></div>
                 <p><MapPin size={14} /> {task.location || 'Location TBD'}</p>

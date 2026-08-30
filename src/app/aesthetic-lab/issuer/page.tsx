@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { and, asc, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm'
 import {
   ArrowUpRight,
   Bell,
@@ -17,8 +17,10 @@ import { getUnreadNotificationCount } from '@/lib/services/notifications'
 import { getOrganizationCalendarEntries } from '@/lib/services/organization-calendar'
 import { LabHeader } from '../LabHeader'
 import { LabNotice } from '../LabNotice'
+import { ActionQueueCard } from '../ActionQueueCard'
 import { getLabWorkspace } from '../lab-workspace'
 import { IssuerLabSidebar } from './IssuerLabSidebar'
+import { IssuerHeroClock } from './IssuerHeroClock'
 import { IssuerSchedulePanel } from './IssuerSchedulePanel'
 import styles from '../prototype.module.css'
 
@@ -73,8 +75,14 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
           .from(claims)
           .innerJoin(tasks, eq(claims.taskId, tasks.id))
           .innerJoin(shifts, eq(claims.shiftId, shifts.id))
-          .where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id), inArray(claims.status, ['claimed', 'submitted']), lte(shifts.endsAt, now)))
-          .orderBy(desc(shifts.endsAt), desc(claims.updatedAt))
+          .where(and(
+            eq(tasks.orgId, orgId),
+            eq(tasks.cityId, city.id),
+            eq(shifts.status, 'open'),
+            inArray(claims.status, ['claimed', 'submitted']),
+            or(isNull(shifts.startsAt), lte(shifts.startsAt, now)),
+          ))
+          .orderBy(desc(shifts.startsAt), desc(claims.updatedAt))
       : Promise.resolve([]),
     city
       ? db
@@ -132,10 +140,10 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     ...pendingVerificationGroups.map(({ shift, task, participantCount }) => ({
       key: `verify:${shift.id}`,
       kind: 'verify' as const,
-      title: `Verify ${participantCount} attendee${participantCount === 1 ? '' : 's'}`,
-      detail: `${task.title} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Completed shift'}`,
+      title: `Verify & close · review ${participantCount} reservation${participantCount === 1 ? '' : 's'}`,
+      detail: `${task.title} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Active shift'}`,
       href: `/aesthetic-lab/issuer/shifts/${shift.id}/verify`,
-      action: 'Review',
+      action: 'Verify & Close',
     })),
     ...newSignupRows.map(({ claim, shift, task, participant }) => {
       const isOnboarding = task.isOnboarding === 1
@@ -189,28 +197,22 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
               <h2>Keep today’s work moving.</h2>
               <p>{scheduledShifts.length ? `${scheduledShifts.length} scheduled volunteer event${scheduledShifts.length === 1 ? '' : 's'} are ready for your organization.` : 'Start by creating an opportunity your community can join.'}</p>
             </div>
+            <IssuerHeroClock className={styles.issuerHeroClock} />
             <div className={styles.issuerHeroActions}>
-              <Link href="/aesthetic-lab/issuer/catalog" className={styles.issuerPrimaryAction}><ClipboardList size={18} /> Open Workspace</Link>
+              <Link href="/aesthetic-lab/issuer/catalog" className={styles.issuerHomeWorkspaceAction}><ClipboardList size={18} /> Open Workspace</Link>
             </div>
           </section>
 
           <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 
-          <section className={styles.issuerTaskQueue} aria-label="Organization action queue">
-            <div className={styles.issuerPanelHeading}>
-              <div><p className={styles.eyebrow}>Action queue</p><h2>What needs attention.</h2></div>
-              <Link className={styles.issuerQueueHistoryLink} href="/aesthetic-lab/issuer/notification-history" aria-label="Open notification history" title="Notification history">
-                <ClipboardList size={19} />
-              </Link>
-            </div>
-            <p className={styles.issuerQueueIntro}>Verification, new sign-ups, and incoming updates are collected here so the next step is always clear.</p>
+          <ActionQueueCard historyHref="/aesthetic-lab/issuer/notification-history" historyLabel="Open notification history">
             <div className={styles.issuerQueueList}>
               {queue.length ? <>
-                {actionItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action items</b><span>{actionItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{actionItems.map(renderQueueItem)}</div></section> : null}
-                {notificationItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="notification"><div className={styles.issuerQueueGroupHeading}><b>Notifications</b><span>{notificationItems.length}</span></div><div className={styles.issuerQueueGroupItems}>{notificationItems.map(renderQueueItem)}</div></section> : null}
-              </> : <p className={styles.issuerQueueEmpty}>You’re caught up. New sign-ups, verifications, messages, and notifications will appear here.</p>}
+                {actionItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action Items ({actionItems.length})</b></div><div className={styles.issuerQueueGroupItems}>{actionItems.map(renderQueueItem)}</div></section> : null}
+                {notificationItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="notification"><div className={styles.issuerQueueGroupHeading}><b>Notifications ({notificationItems.length})</b></div><div className={styles.issuerQueueGroupItems}>{notificationItems.map(renderQueueItem)}</div></section> : null}
+              </> : <p className={styles.issuerQueueEmpty}><b>Nothing to Review!</b></p>}
             </div>
-          </section>
+          </ActionQueueCard>
 
           <IssuerSchedulePanel entries={scheduleEntries} />
         </section>

@@ -8,8 +8,6 @@ import { getShiftsWithCounts, type ShiftRow } from '@/lib/services/opportunities
 import {
   verifyClaimAction,
   rejectClaimAction,
-  closeTaskAction,
-  reopenTaskAction,
   createShiftAction,
   closeShiftAction,
   issuerCheckInAction,
@@ -67,23 +65,6 @@ export default async function IssuerTaskDetail({
       <PageHeader
         title={task.title}
         subtitle={`${task.credits} credits per completion · ${shiftRows.length} shift${shiftRows.length === 1 ? '' : 's'}`}
-        action={
-          task.status === 'open' ? (
-            <form action={closeTaskAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <input type="hidden" name="redirectTo" value={redirectTo} />
-              <Button variant="danger" type="submit">
-                Close opportunity
-              </Button>
-            </form>
-          ) : (
-            <form action={reopenTaskAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <input type="hidden" name="redirectTo" value={redirectTo} />
-              <Button type="submit">Activate opportunity</Button>
-            </form>
-          )
-        }
       />
       <Flash searchParams={searchParams} />
 
