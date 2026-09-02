@@ -21,12 +21,16 @@ export function ManageOnboardingSessionButton({
   durationMinutes,
   weeklyCapacity,
   programs,
+  redirectTo,
+  lockedProgram,
 }: {
   task: { id: string; title: string; description: string; location: string; beforeSession: string; bringItems: string; credits: number; programId: string | null }
   nextStartsAt: number | null
   durationMinutes: number
   weeklyCapacity: number
   programs: Array<{ id: string; name: string }>
+  redirectTo?: string
+  lockedProgram?: { id: string; name: string }
 }) {
   const [open, setOpen] = useState(false)
   return <>
@@ -39,10 +43,12 @@ export function ManageOnboardingSessionButton({
         </div>
         <form action={updateOnboardingSessionAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
           <input type="hidden" name="taskId" value={task.id} />
+          {redirectTo ? <input type="hidden" name="redirectTo" value={redirectTo} /> : null}
           <input type="hidden" name="credits" value={task.credits} />
           <input type="hidden" name="firstStartsAt" value={localDateTimeValue(nextStartsAt)} />
+          {lockedProgram ? <input type="hidden" name="programId" value={lockedProgram.id} /> : null}
           <label>Session title<input name="title" required defaultValue={task.title} /></label>
-          <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={task.programId ?? ''}><option value="">Not assigned to a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select></label>
+          {lockedProgram ? <p className={styles.publishShiftAccessHint}>This onboarding pathway belongs to {lockedProgram.name}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={task.programId ?? ''}><option value="">Not assigned to a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select></label>}
           <label>Location<input name="location" required defaultValue={task.location} placeholder="Address or meeting point" /></label>
           <label>Description<textarea name="description" required defaultValue={task.description} /></label>
           <label>Before the session <span>(optional)</span><textarea name="beforeSession" defaultValue={task.beforeSession} placeholder="List anything participants should complete or review before they arrive." /></label>

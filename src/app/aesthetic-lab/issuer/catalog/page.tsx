@@ -40,7 +40,7 @@ import { DocumentCreateButton } from '../DocumentCreateButton'
 import { DocumentOverflowActions } from '../DocumentOverflowActions'
 import { ManageOnboardingSessionButton } from '../ManageOnboardingSessionButton'
 import { AddOnboardingSessionButton } from '../AddOnboardingSessionButton'
-import { VolunteerProgramCreateButton } from '../VolunteerProgramCreateButton'
+import { VolunteerProgramTabs } from '../VolunteerProgramTabs'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getRoster } from '@/lib/services/roster'
 import { ShiftRosterAssignmentButton } from '../ShiftRosterAssignmentButton'
@@ -241,8 +241,15 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
     })),
   ]
   const hasWaiver = Boolean(waiverSetup.waivers.length && waiverSetup.method)
-  const volunteerProgramViews = volunteerPrograms.map((program) => {
-    const programTaskShifts = taskShifts.filter(({ task }) => task.programId === program.id)
+  const volunteerProgramViews = [
+    {
+      id: null,
+      name: 'Organization',
+      description: 'Shared templates, onboarding sessions, and documents available across your organization.',
+    },
+    ...volunteerPrograms,
+  ].map((program) => {
+    const programTaskShifts = taskShifts.filter(({ task }) => program.id ? task.programId === program.id : !task.programId)
     const opportunityTemplatesForProgram = programTaskShifts.filter(({ task }) => task.isOnboarding !== 1)
     const onboardingForProgram = programTaskShifts.filter(({ task }) => task.isOnboarding === 1)
     const documentsForProgram = documents.filter((document) => document.programId === program.id)
@@ -252,6 +259,11 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
         .filter(({ shift }) => sessionHasEnded(shift.endsAt, shift.startsAt))
         .map(({ shift }) => ({ task, shift })))
       .sort((a, b) => (b.shift.startsAt ?? 0) - (a.shift.startsAt ?? 0))
+    const upcomingEventsForProgram = programTaskShifts
+      .flatMap(({ task, sessions }) => sessions
+        .filter(({ shift }) => shift.status === 'open' && !sessionHasEnded(shift.endsAt, shift.startsAt))
+        .map(({ shift }) => ({ task, shift })))
+      .sort((a, b) => (a.shift.startsAt ?? Number.MAX_SAFE_INTEGER) - (b.shift.startsAt ?? Number.MAX_SAFE_INTEGER))
     return {
       program,
       opportunityTemplates: opportunityTemplatesForProgram,
@@ -259,8 +271,38 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
       documents: documentsForProgram,
       waivers: waiversForProgram,
       pastEvents: pastEventsForProgram,
+      upcomingEvents: upcomingEventsForProgram,
     }
   })
+  const volunteerProgramTabs = volunteerProgramViews.map(({ program, opportunityTemplates: programTemplates, onboarding: programOnboarding, documents: programDocuments, waivers: programWaivers, pastEvents: programPastEvents, upcomingEvents: programUpcomingEvents }) => ({
+    id: program.id ?? 'organization',
+    name: program.name,
+    description: program.description || 'Shared work and resources available across your organization.',
+    detailHref: program.id ? `/aesthetic-lab/issuer/programs/${program.id}` : '/aesthetic-lab/issuer/catalog?workspace=documentation',
+    opportunityTemplates: programTemplates.map(({ task }) => ({ id: task.id, title: task.title, href: `/aesthetic-lab/issuer/opportunities/${task.id}` })),
+    onboarding: programOnboarding.map(({ task }) => ({ id: task.id, title: task.title, href: '/aesthetic-lab/issuer/catalog?workspace=onboarding' })),
+    documents: [
+      ...programDocuments.map((document) => ({ id: document.id, title: document.title, href: `/aesthetic-lab/issuer/documents/${document.id}` })),
+      ...programWaivers.map((waiver) => ({ id: waiver.id, title: waiver.title, href: '/aesthetic-lab/issuer/waiver' })),
+    ],
+    history: programPastEvents.slice(0, 3).map(({ task, shift }) => ({
+      id: shift.id,
+      title: task.title,
+      dateLabel: shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Completed session',
+    })),
+    upcomingEvents: programUpcomingEvents.length,
+    completedEvents: programPastEvents.length,
+    nextEvent: programUpcomingEvents[0] ? {
+      id: programUpcomingEvents[0].shift.id,
+      title: programUpcomingEvents[0].task.title,
+      dateLabel: programUpcomingEvents[0].shift.startsAt
+        ? new Date(programUpcomingEvents[0].shift.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : 'Date and time to be confirmed',
+      href: programUpcomingEvents[0].task.isOnboarding === 1
+        ? '/aesthetic-lab/issuer/catalog?workspace=onboarding'
+        : `/aesthetic-lab/issuer/opportunities/${programUpcomingEvents[0].task.id}`,
+    } : null,
+  }))
   const initialWorkspaceSection = searchParams.workspace === 'programs' || searchParams.workspace === 'onboarding' || searchParams.workspace === 'opportunities'
     ? searchParams.workspace
     : 'programs'
@@ -315,24 +357,7 @@ export default async function IssuerCatalogLabPage({ searchParams }: { searchPar
           <IssuerWorkspaceMenu
             initialSection={initialWorkspaceSection}
             programs={<>
-              <section className={styles.volunteerProgramsOverview}>
-                <div><p className={styles.eyebrow}>Program areas</p><h2>Organize the work around your mission.</h2></div>
-                <VolunteerProgramCreateButton />
-              </section>
-              {volunteerProgramViews.length ? <div className={styles.volunteerProgramGrid}>{volunteerProgramViews.map(({ program, opportunityTemplates: programTemplates, onboarding: programOnboarding, documents: programDocuments, waivers: programWaivers, pastEvents: programPastEvents }) => <section key={program.id} className={styles.volunteerProgramCard}>
-                <div className={styles.volunteerProgramHeading}><span><FolderKanban size={20} /></span><div><p className={styles.eyebrow}>Volunteer program</p><h2>{program.name}</h2><p>{program.description || 'A flexible area for this organization to organize related volunteer work.'}</p></div><Link className={styles.catalogWorkspaceAction} href={`/aesthetic-lab/issuer/programs/${program.id}`}>Program Details</Link></div>
-                <div className={styles.volunteerProgramMetrics}>
-                  <span><b>{programTemplates.length}</b> task template{programTemplates.length === 1 ? '' : 's'}</span>
-                  <span><b>{programOnboarding.length}</b> onboarding session{programOnboarding.length === 1 ? '' : 's'}</span>
-                  <span><b>{programDocuments.length + programWaivers.length}</b> document{programDocuments.length + programWaivers.length === 1 ? '' : 's'}</span>
-                </div>
-                <div className={styles.volunteerProgramDetails}>
-                  <section><h3>Task templates</h3>{programTemplates.length ? <ul>{programTemplates.map(({ task }) => <li key={task.id}><Link href={`/aesthetic-lab/issuer/opportunities/${task.id}`}>{task.title}</Link></li>)}</ul> : <p>No opportunity templates tagged to this program yet.</p>}</section>
-                  <section><h3>Onboarding</h3>{programOnboarding.length ? <ul>{programOnboarding.map(({ task }) => <li key={task.id}><Link href={`/aesthetic-lab/issuer/catalog?workspace=onboarding`}>{task.title}</Link></li>)}</ul> : <p>No onboarding sessions tagged to this program yet.</p>}</section>
-                  <section><h3>Documents</h3>{programDocuments.length || programWaivers.length ? <ul>{programDocuments.map((document) => <li key={document.id}><Link href={`/aesthetic-lab/issuer/documents/${document.id}`}>{document.title}</Link></li>)}{programWaivers.map((waiver) => <li key={waiver.id}><Link href="/aesthetic-lab/issuer/waiver">{waiver.title}</Link></li>)}</ul> : <p>No documents tagged to this program yet.</p>}</section>
-                  <section><h3>Program history</h3>{programPastEvents.length ? <ul>{programPastEvents.slice(0, 3).map(({ task, shift }) => <li key={shift.id}><b>{task.title}</b><small>{shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Completed session'}</small></li>)}</ul> : <p>Completed events will collect here as this program grows.</p>}</section>
-                </div>
-              </section>)}</div> : <section className={styles.volunteerProgramsEmpty}><FolderKanban size={22} /><div><h2>Start with an area of work.</h2><p>Create a volunteer program when you want to organize a set of opportunities, onboarding sessions, and documents around the same purpose.</p></div></section>}
+              <VolunteerProgramTabs tabs={volunteerProgramTabs} />
             </>}
             documentation={<>
               <section className={`${styles.workspaceSetupCard} ${styles.documentationInfoCard}`}>

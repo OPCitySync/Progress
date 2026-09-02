@@ -612,14 +612,14 @@ export async function createTaskAction(formData: FormData) {
       capacity,
     })
     if (!shift.ok) {
-      back(formData, `/aesthetic-lab/issuer/opportunities/${task.id}`, { error: `Opportunity created, but the first session wasn’t: ${shift.error}` }, false)
+      back(formData, `/aesthetic-lab/issuer/opportunities/${task.id}`, { error: `Opportunity created, but the first session wasn’t: ${shift.error}` })
     }
     // Alert participants whose interests match this org's causes (best-effort)
     // only once there is a session they can actually claim.
     await notifyMatchingParticipants(task.id)
-    back(formData, `/aesthetic-lab/issuer/opportunities/${task.id}`, { ok: 'Opportunity created and its first session published.' }, false)
+    back(formData, `/aesthetic-lab/issuer/opportunities/${task.id}`, { ok: 'Opportunity created and its first session published.' })
   }
-  back(formData, `/aesthetic-lab/issuer/opportunities/${task.id}`, { ok: 'Opportunity created. Add a session when you’re ready to publish it.' }, false)
+  back(formData, `/aesthetic-lab/issuer/opportunities/${task.id}`, { ok: 'Opportunity created. Add a session when you’re ready to publish it.' })
 }
 
 export async function updateTaskAction(formData: FormData) {
@@ -704,7 +704,7 @@ export async function updateOnboardingSessionAction(formData: FormData) {
     onboardingWaiverMethod: normalizeOnboardingWaiverMethod(str(formData, 'onboardingWaiverMethod')),
     onboardingIdentityCheck: normalizeOnboardingIdentityCheck(str(formData, 'onboardingIdentityCheck')),
   })
-  back(formData, '/aesthetic-lab/issuer/catalog?workspace=onboarding', result.ok ? undefined : { error: result.error })
+  back(formData, '/aesthetic-lab/issuer/catalog?workspace=onboarding', result.ok ? { ok: 'Onboarding session saved.' } : { error: result.error })
 }
 
 export async function publishOnboardingSessionAction(formData: FormData) {

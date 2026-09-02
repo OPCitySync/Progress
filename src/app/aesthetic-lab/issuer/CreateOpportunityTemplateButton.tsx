@@ -14,10 +14,12 @@ export function CreateOpportunityTemplateButton({
   programId,
   programName,
   defaultLocation = '',
+  redirectTo = '/aesthetic-lab/issuer/catalog?workspace=opportunities',
 }: {
   programId: string | null
   programName: string
   defaultLocation?: string
+  redirectTo?: string
 }) {
   const [open, setOpen] = useState(false)
   const isOrganizationWide = !programId
@@ -31,7 +33,7 @@ export function CreateOpportunityTemplateButton({
           <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
         <form action={createTaskAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
-          <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=opportunities" />
+          <input type="hidden" name="redirectTo" value={redirectTo} />
           <input type="hidden" name="programId" value={programId ?? ''} />
           <input type="hidden" name="capacity" value="8" />
           <input type="hidden" name="credits" value="10" />

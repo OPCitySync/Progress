@@ -40,26 +40,52 @@ const copy: Record<OrganizationDocumentCategory, { eyebrow: string; title: strin
   },
 }
 
+const generalDocumentCopy = {
+  eyebrow: 'Program document',
+  title: 'Add a document.',
+  helper: 'Choose the type of resource, then add written guidance, a source file, or both.',
+  placeholder: 'Add the instructions, context, checklist, or other information volunteers need.',
+}
+
 /** Keeps document creation in the Workspace so a new organization never has
  * to leave its setup checklist just to add one resource. */
-export function DocumentCreateButton({ category, tasks, programs }: { category: OrganizationDocumentCategory; tasks: TaskOption[]; programs: ProgramOption[] }) {
+export function DocumentCreateButton({
+  category,
+  tasks,
+  programs,
+  defaultProgramId = null,
+  activeProgramName,
+  redirectTo = '/aesthetic-lab/issuer/catalog?workspace=documentation',
+  buttonLabel = 'Add Document',
+}: {
+  category?: OrganizationDocumentCategory
+  tasks: TaskOption[]
+  programs: ProgramOption[]
+  defaultProgramId?: string | null
+  activeProgramName?: string
+  redirectTo?: string
+  buttonLabel?: string
+}) {
   const [open, setOpen] = useState(false)
-  const formCopy = copy[category]
+  const formCopy = category ? copy[category] : generalDocumentCopy
+  const dialogId = `add-${category ?? 'program'}-document-title`
 
   return <>
-    <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.documentCreateTrigger}`} style={documentTriggerDimensions} aria-haspopup="dialog" onClick={() => setOpen(true)}>Add Document</button>
+    <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.documentCreateTrigger}`} style={documentTriggerDimensions} aria-haspopup="dialog" onClick={() => setOpen(true)}>{buttonLabel}</button>
     {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setOpen(false)}>
-      <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby={`add-${category}-document-title`} onMouseDown={(event) => event.stopPropagation()}>
+      <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby={dialogId} onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
-          <div><p className={styles.eyebrow}>{formCopy.eyebrow}</p><h2 id={`add-${category}-document-title`}>{formCopy.title}</h2><p>{formCopy.helper} Add written guidance, a source file, or both.</p></div>
+          <div><p className={styles.eyebrow}>{formCopy.eyebrow}</p><h2 id={dialogId}>{formCopy.title}</h2><p>{formCopy.helper}</p></div>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
         <form action={createOrganizationDocumentAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
-          <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=documentation" />
-          <input type="hidden" name="successRedirectTo" value="/aesthetic-lab/issuer/catalog?workspace=documentation" />
-          <input type="hidden" name="category" value={category} />
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <input type="hidden" name="successRedirectTo" value={redirectTo} />
+          {category ? <input type="hidden" name="category" value={category} /> : null}
+          {defaultProgramId ? <input type="hidden" name="programId" value={defaultProgramId} /> : null}
           <label>Document title<input name="title" required maxLength={180} placeholder="e.g. Community garden volunteer guide" /></label>
-          <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Organization-wide / not assigned</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Tag this resource to the volunteer program where it belongs.</small></label>
+          {!category ? <label>Document type<select name="category" required defaultValue="guide"><option value="guide">Volunteer Guide</option><option value="safety">Safety &amp; Operations</option><option value="template">Additional Document</option></select></label> : null}
+          {defaultProgramId ? <p className={styles.publishShiftAccessHint}>This resource will be added to {activeProgramName || 'the active volunteer program'}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Organization-wide / not assigned</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Tag this resource to the volunteer program where it belongs.</small></label>}
           <label>Written guidance <span>(optional with source file)</span><textarea name="body" placeholder={formCopy.placeholder} /></label>
           <label>Attach a source file <span>(optional with written guidance)</span><input name="document" type="file" accept="application/pdf,.doc,.docx" /><small>Upload a PDF, DOC, or DOCX up to 10 MB.</small></label>
           <fieldset className={styles.documentAssignmentFieldset}>
