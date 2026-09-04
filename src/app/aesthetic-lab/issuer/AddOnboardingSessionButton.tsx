@@ -18,16 +18,19 @@ export function AddOnboardingSessionButton({
   defaultLocation = '',
   programs = [],
   defaultProgramId = null,
+  lockProgramContext = false,
   activeProgramName,
   redirectTo = '/aesthetic-lab/issuer/catalog?workspace=onboarding',
 }: {
   defaultLocation?: string
   programs?: Array<{ id: string; name: string }>
   defaultProgramId?: string | null
+  lockProgramContext?: boolean
   activeProgramName?: string
   redirectTo?: string
 }) {
   const [open, setOpen] = useState(false)
+  const hasLockedProgramContext = lockProgramContext || Boolean(defaultProgramId)
 
   return <>
     <button type="button" className={`${styles.onboardingWorkspaceAction} ${styles.opportunityWorkspaceButton}`} onClick={() => setOpen(true)}><Plus size={15} /> Add session</button>
@@ -40,9 +43,9 @@ export function AddOnboardingSessionButton({
         <form action={createOnboardingSessionAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <input type="hidden" name="credits" value="5" />
-          {defaultProgramId ? <input type="hidden" name="programId" value={defaultProgramId} /> : null}
+          {hasLockedProgramContext ? <input type="hidden" name="programId" value={defaultProgramId ?? ''} /> : null}
           <label>Session title<input name="title" required placeholder="e.g., Saturday garden orientation" /></label>
-          {defaultProgramId ? <p className={styles.publishShiftAccessHint}>This onboarding pathway will be added to {activeProgramName || 'the active volunteer program'}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Not assigned to a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Connect this session to the area of work it welcomes volunteers into.</small></label>}
+          {hasLockedProgramContext ? <p className={styles.publishShiftAccessHint}>This onboarding pathway will be added to {activeProgramName === 'Organization' ? 'your organization-wide work' : activeProgramName || 'the active volunteer program'}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Not assigned to a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Connect this session to the area of work it welcomes volunteers into.</small></label>}
           <label>Location<input name="location" required defaultValue={defaultLocation} placeholder="Address or meeting point" /></label>
           <label>Description<textarea name="description" required defaultValue="A welcoming local orientation for people beginning with our organization." /></label>
           <label>Before the session <span>(optional)</span><textarea name="beforeSession" placeholder="List anything participants should complete or review before they arrive." /></label>

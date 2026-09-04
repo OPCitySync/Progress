@@ -30,7 +30,7 @@ export function ManageOnboardingSessionButton({
   weeklyCapacity: number
   programs: Array<{ id: string; name: string }>
   redirectTo?: string
-  lockedProgram?: { id: string; name: string }
+  lockedProgram?: { id: string | null; name: string }
 }) {
   const [open, setOpen] = useState(false)
   return <>
@@ -46,7 +46,7 @@ export function ManageOnboardingSessionButton({
           {redirectTo ? <input type="hidden" name="redirectTo" value={redirectTo} /> : null}
           <input type="hidden" name="credits" value={task.credits} />
           <input type="hidden" name="firstStartsAt" value={localDateTimeValue(nextStartsAt)} />
-          {lockedProgram ? <input type="hidden" name="programId" value={lockedProgram.id} /> : null}
+          {lockedProgram ? <input type="hidden" name="programId" value={lockedProgram.id ?? ''} /> : null}
           <label>Session title<input name="title" required defaultValue={task.title} /></label>
           {lockedProgram ? <p className={styles.publishShiftAccessHint}>This onboarding pathway belongs to {lockedProgram.name}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue={task.programId ?? ''}><option value="">Not assigned to a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select></label>}
           <label>Location<input name="location" required defaultValue={task.location} placeholder="Address or meeting point" /></label>

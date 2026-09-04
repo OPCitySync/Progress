@@ -54,6 +54,7 @@ export function DocumentCreateButton({
   tasks,
   programs,
   defaultProgramId = null,
+  lockProgramContext = false,
   activeProgramName,
   redirectTo = '/aesthetic-lab/issuer/catalog?workspace=documentation',
   buttonLabel = 'Add Document',
@@ -62,11 +63,13 @@ export function DocumentCreateButton({
   tasks: TaskOption[]
   programs: ProgramOption[]
   defaultProgramId?: string | null
+  lockProgramContext?: boolean
   activeProgramName?: string
   redirectTo?: string
   buttonLabel?: string
 }) {
   const [open, setOpen] = useState(false)
+  const hasLockedProgramContext = lockProgramContext || Boolean(defaultProgramId)
   const formCopy = category ? copy[category] : generalDocumentCopy
   const dialogId = `add-${category ?? 'program'}-document-title`
 
@@ -82,10 +85,10 @@ export function DocumentCreateButton({
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <input type="hidden" name="successRedirectTo" value={redirectTo} />
           {category ? <input type="hidden" name="category" value={category} /> : null}
-          {defaultProgramId ? <input type="hidden" name="programId" value={defaultProgramId} /> : null}
+          {hasLockedProgramContext ? <input type="hidden" name="programId" value={defaultProgramId ?? ''} /> : null}
           <label>Document title<input name="title" required maxLength={180} placeholder="e.g. Community garden volunteer guide" /></label>
           {!category ? <label>Document type<select name="category" required defaultValue="guide"><option value="guide">Volunteer Guide</option><option value="safety">Safety &amp; Operations</option><option value="template">Additional Document</option></select></label> : null}
-          {defaultProgramId ? <p className={styles.publishShiftAccessHint}>This resource will be added to {activeProgramName || 'the active volunteer program'}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Organization-wide / not assigned</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Tag this resource to the volunteer program where it belongs.</small></label>}
+          {hasLockedProgramContext ? <p className={styles.publishShiftAccessHint}>This resource will be added to {activeProgramName === 'Organization' ? 'your organization-wide resources' : activeProgramName || 'the active volunteer program'}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Organization-wide / not assigned</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Tag this resource to the volunteer program where it belongs.</small></label>}
           <label>Written guidance <span>(optional with source file)</span><textarea name="body" placeholder={formCopy.placeholder} /></label>
           <label>Attach a source file <span>(optional with written guidance)</span><input name="document" type="file" accept="application/pdf,.doc,.docx" /><small>Upload a PDF, DOC, or DOCX up to 10 MB.</small></label>
           <fieldset className={styles.documentAssignmentFieldset}>

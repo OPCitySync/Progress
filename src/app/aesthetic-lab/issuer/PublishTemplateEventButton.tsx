@@ -11,7 +11,7 @@ function localDateTimeValue(timestamp: number) {
   return value.toISOString().slice(0, 16)
 }
 
-type Template = { id: string; title: string; capacity: number }
+type Template = { id: string; title: string; capacity: number; defaultDurationMinutes?: number }
 type Volunteer = { userId: string; name: string; email: string }
 
 /** A template becomes a dated shift here. Private shifts can be staffed before
@@ -22,23 +22,28 @@ export function PublishTemplateEventButton({
   redirectTo,
   suggestedStartsAt,
   buttonLabel = 'Publish shift',
+  defaultVisibility = 'public',
+  defaultDurationMinutes = 120,
 }: {
   templates: Template[]
   volunteers?: Volunteer[]
   redirectTo: string
   suggestedStartsAt: number
   buttonLabel?: string
+  defaultVisibility?: 'public' | 'private'
+  defaultDurationMinutes?: number
 }) {
   const [open, setOpen] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
-  const [visibility, setVisibility] = useState<'public' | 'private'>('public')
+  const [visibility, setVisibility] = useState<'public' | 'private'>(defaultVisibility)
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? '')
+  const [shiftCapacity, setShiftCapacity] = useState(templates[0]?.capacity ?? 1)
+  const [shiftDurationMinutes, setShiftDurationMinutes] = useState(templates[0]?.defaultDurationMinutes ?? defaultDurationMinutes)
   const [query, setQuery] = useState('')
   const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([])
   const hasTemplates = templates.length > 0
   const oneTemplate = templates.length === 1
-  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
-  const capacity = selectedTemplate?.capacity ?? 0
+  const capacity = shiftCapacity
   const selectedVolunteerSet = new Set(selectedVolunteerIds)
   const selectedVolunteers = volunteers.filter((volunteer) => selectedVolunteerSet.has(volunteer.userId))
   const filteredVolunteers = useMemo(() => {
@@ -50,7 +55,10 @@ export function PublishTemplateEventButton({
   const close = () => {
     setOpen(false)
     setRosterOpen(false)
-    setVisibility('public')
+    setVisibility(defaultVisibility)
+    setSelectedTemplateId(templates[0]?.id ?? '')
+    setShiftCapacity(templates[0]?.capacity ?? 1)
+    setShiftDurationMinutes(templates[0]?.defaultDurationMinutes ?? defaultDurationMinutes)
     setQuery('')
     setSelectedVolunteerIds([])
   }
@@ -61,7 +69,10 @@ export function PublishTemplateEventButton({
   }
   const setTemplate = (taskId: string) => {
     setSelectedTemplateId(taskId)
-    const nextCapacity = templates.find((template) => template.id === taskId)?.capacity ?? 0
+    const selectedTemplate = templates.find((template) => template.id === taskId)
+    const nextCapacity = selectedTemplate?.capacity ?? 0
+    setShiftCapacity(Math.max(1, nextCapacity))
+    setShiftDurationMinutes(selectedTemplate?.defaultDurationMinutes ?? defaultDurationMinutes)
     setSelectedVolunteerIds((current) => current.slice(0, nextCapacity))
   }
 
@@ -77,7 +88,7 @@ export function PublishTemplateEventButton({
     {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={close}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby="publish-template-event-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
-          <div><p className={styles.eyebrow}>Published shift</p><h2 id="publish-template-event-title">Schedule a volunteer shift.</h2><p>Set the date, then make this shift public and claimable or private and roster-managed.</p></div>
+          <div><p className={styles.eyebrow}>Published shift</p><h2 id="publish-template-event-title">Schedule a volunteer shift.</h2><p>Set the date, then open the shift for signup or keep it within your organization for direct assignment.</p></div>
           <button type="button" aria-label="Close" onClick={close}><X size={18} /></button>
         </div>
         <form action={publishTemplateEventAction} className={styles.issuerCalendarForm} onSubmit={close}>
@@ -89,6 +100,14 @@ export function PublishTemplateEventButton({
             </select>
           </label>}
           <label>Date and time<input name="startsAt" type="datetime-local" required defaultValue={localDateTimeValue(suggestedStartsAt)} /></label>
+          <div className={styles.publishShiftDefaults}>
+            <label>Capacity<input name="capacity" type="number" min={1} max={10000} required value={capacity} onChange={(event) => {
+              const nextCapacity = Math.max(1, Number(event.target.value) || 1)
+              setShiftCapacity(nextCapacity)
+              setSelectedVolunteerIds((current) => current.slice(0, nextCapacity))
+            }} /></label>
+            <label>Duration<select name="durationMinutes" value={String(shiftDurationMinutes)} onChange={(event) => setShiftDurationMinutes(Number(event.target.value))}><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">1 hour</option><option value="90">1.5 hours</option><option value="120">2 hours</option><option value="180">3 hours</option><option value="240">4 hours</option><option value="480">8 hours</option></select></label>
+          </div>
           <fieldset className={styles.publishShiftAccessChoices}>
             <legend>Shift access</legend>
             <label data-selected={visibility === 'public' ? 'true' : undefined}><input type="radio" name="visibility" value="public" checked={visibility === 'public'} onChange={() => setVisibility('public')} /><span><b>Public</b><small>Eligible Civic Participants can find and claim a spot.</small></span></label>
@@ -112,7 +131,7 @@ export function PublishTemplateEventButton({
           <p className={styles.publishShiftAccessHint}>{visibility === 'private'
             ? 'This shift will stay out of City/Sync’s public opportunities. Selected volunteers will be notified when it is published.'
             : 'Eligible Civic Participants can find this shift and claim an open spot. You can still add roster members directly later.'}</p>
-          <label className={styles.onboardingRecurringChoice}><span><input type="checkbox" name="recurring" value="true" /> <Repeat2 size={15} /> Set up as recurring</span><small>City/Sync keeps one active event at a time. If a private recurring shift must wait for a current event to finish, add its roster after that new shift is published.</small></label>
+          <label className={styles.onboardingRecurringChoice}><span><input type="checkbox" name="recurring" value="true" /> <Repeat2 size={15} /> Set up as recurring</span><small>City/Sync keeps one active occurrence at a time, then publishes the next date after the current shift ends.</small></label>
           <div className={styles.issuerCalendarFormActions}><button type="button" onClick={close}>Cancel</button><button type="submit"><CalendarPlus size={15} /> Publish shift</button></div>
         </form>
       </section>

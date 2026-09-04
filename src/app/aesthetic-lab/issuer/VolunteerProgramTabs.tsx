@@ -65,28 +65,28 @@ function readinessSteps(program: VolunteerProgramTab): ReadinessStep[] {
       label: 'Program resources',
       detail: program.documents.length ? `${program.documents.length} document${program.documents.length === 1 ? '' : 's'} ready` : 'Add guides, waivers, or operating documents',
       complete: program.documents.length > 0,
-      href: '/aesthetic-lab/issuer/catalog?workspace=documentation',
+      href: `${program.detailHref}#program-resources`,
       icon: FileText,
     },
     {
       label: 'Volunteer welcome',
       detail: program.onboarding.length ? `${program.onboarding.length} onboarding pathway${program.onboarding.length === 1 ? '' : 's'}` : 'Onboarding is optional for this program',
       complete: program.onboarding.length > 0,
-      href: '/aesthetic-lab/issuer/catalog?workspace=onboarding',
+      href: `${program.detailHref}#program-onboarding`,
       icon: Repeat2,
     },
     {
       label: 'Repeatable work',
       detail: program.opportunityTemplates.length ? `${program.opportunityTemplates.length} opportunity template${program.opportunityTemplates.length === 1 ? '' : 's'}` : 'Create the first opportunity template',
       complete: program.opportunityTemplates.length > 0,
-      href: '/aesthetic-lab/issuer/catalog?workspace=opportunities',
+      href: `${program.detailHref}#program-opportunities`,
       icon: UsersRound,
     },
     {
       label: 'Published schedule',
       detail: program.upcomingEvents ? `${program.upcomingEvents} upcoming shift${program.upcomingEvents === 1 ? '' : 's'}` : 'Publish a shift when the work is ready',
       complete: program.upcomingEvents > 0,
-      href: '/aesthetic-lab/issuer/catalog?workspace=opportunities',
+      href: `${program.detailHref}#program-schedule`,
       icon: CalendarDays,
     },
   ]
@@ -120,7 +120,7 @@ export function VolunteerProgramTabs({ tabs }: { tabs: VolunteerProgramTab[] }) 
               <h2>{program.name}</h2>
               <p>{program.description}</p>
             </div>
-            <Link className={styles.catalogWorkspaceAction} href={program.detailHref}>{program.id === 'organization' ? 'Open Area' : 'Program Details'}</Link>
+            <Link className={styles.catalogWorkspaceAction} href={program.detailHref}>Program Details</Link>
           </header>
 
           <div className={styles.volunteerProgramControlGrid}>

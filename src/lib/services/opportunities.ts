@@ -1,13 +1,14 @@
 import { randomUUID } from 'crypto'
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { tasks, shifts, claims, orgs, users, verificationBatches, volunteerIdentityVerifications } from '@/lib/db/schema'
+import { tasks, shifts, claims, orgs, users, organizationDelegations, shiftStaffAssignments, verificationBatches, volunteerIdentityVerifications, plannedRecurringAssignments, recurringEventSchedules } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { getOnboardingWaiverSetup, hasSignedWaiver } from './waivers'
 import {
   notifyShiftClaimed,
   notifyShiftAssigned,
+  notifyShiftAssignmentRemoved,
   notifyShiftCancelled,
   notifyVerifiedShiftReflection,
   cancelRemindersForClaim,
@@ -62,6 +63,7 @@ export async function createTask(input: {
   location: string
   credits: number
   slots: number
+  defaultDurationMinutes?: number
   startsAt: string
   requiredCredentials?: string[]
   catalogEntryId?: string | null
@@ -75,6 +77,10 @@ export async function createTask(input: {
   }
   if (!Number.isInteger(input.slots) || input.slots < 1 || input.slots > 10000) {
     return { ok: false, error: 'Slots must be a whole number of at least 1.' }
+  }
+  const defaultDurationMinutes = input.defaultDurationMinutes ?? 120
+  if (!Number.isInteger(defaultDurationMinutes) || defaultDurationMinutes < 15 || defaultDurationMinutes > 24 * 60) {
+    return { ok: false, error: 'Default shift duration must be between 15 minutes and 24 hours.' }
   }
 
   const org = (await db.select().from(orgs).where(eq(orgs.id, input.orgId)).limit(1))[0]
@@ -96,6 +102,7 @@ export async function createTask(input: {
       location,
       credits: input.credits,
       slots: input.slots,
+      defaultDurationMinutes,
       startsAt: input.startsAt.trim(),
       status: 'open',
       programId: input.programId || null,
@@ -129,7 +136,9 @@ export async function updateTask(input: {
   location: string
   credits?: number
   slots?: number
+  defaultDurationMinutes?: number
   programId?: string | null
+  allowCapacityConflicts?: boolean
 }): Promise<Result> {
   if (!input.title.trim()) return { ok: false, error: 'Title is required.' }
   const location = normalizeOrganizationLocation(input.location)
@@ -140,16 +149,29 @@ export async function updateTask(input: {
   if (input.slots !== undefined && (!Number.isInteger(input.slots) || input.slots < 1 || input.slots > 10000)) {
     return { ok: false, error: 'Default capacity must be a whole number of at least 1.' }
   }
+  if (input.defaultDurationMinutes !== undefined && (!Number.isInteger(input.defaultDurationMinutes) || input.defaultDurationMinutes < 15 || input.defaultDurationMinutes > 24 * 60)) {
+    return { ok: false, error: 'Default shift duration must be between 15 minutes and 24 hours.' }
+  }
 
   const task = (await db.select().from(tasks).where(eq(tasks.id, input.taskId)).limit(1))[0]
   if (!task || task.orgId !== input.orgId) return { ok: false, error: 'Opportunity not found.' }
   const credits = input.credits ?? task.credits
   const slots = input.slots ?? task.slots
+  const defaultDurationMinutes = input.defaultDurationMinutes ?? task.defaultDurationMinutes
   const programId = input.programId === undefined ? task.programId : input.programId
   if (!(await programBelongsToOrganization(input.orgId, programId))) {
     return { ok: false, error: 'Choose a volunteer program belonging to your organization.' }
   }
 
+  if (slots !== task.slots && !input.allowCapacityConflicts) {
+    const conflicts = await getTaskCapacityConflicts({ taskId: task.id, orgId: input.orgId, slots })
+    if (!conflicts.ok) return conflicts
+    if (conflicts.published.length || conflicts.planned.length) {
+      return { ok: false, error: 'Some published or planned shifts already have more volunteers than this new default. Review and confirm the change first.' }
+    }
+  }
+
+  const now = Date.now()
   await db.transaction(async (tx) => {
     await tx
       .update(tasks)
@@ -159,9 +181,22 @@ export async function updateTask(input: {
         location,
         credits,
         slots,
+        defaultDurationMinutes,
         programId,
       })
       .where(eq(tasks.id, input.taskId))
+    // Published shifts keep their own capacity. An active recurring schedule,
+    // however, is a future-shift generator and should inherit this new default.
+    if (slots !== task.slots) {
+      await tx
+        .update(recurringEventSchedules)
+        .set({ capacity: slots, updatedAt: now })
+        .where(and(
+          eq(recurringEventSchedules.taskId, task.id),
+          eq(recurringEventSchedules.orgId, input.orgId),
+          eq(recurringEventSchedules.active, 1),
+        ))
+    }
     await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
     await appendEvent(
       tx,
@@ -229,6 +264,7 @@ export async function assignVolunteersToShift(input: {
   orgId: string
   actorId: string
   userIds: string[]
+  allowOverCapacity?: boolean
 }): Promise<Result<{ assigned: number; alreadyAssigned: number }>> {
   const userIds = Array.from(new Set(input.userIds.filter(Boolean)))
   if (!userIds.length) return { ok: false, error: 'Choose at least one volunteer to assign.' }
@@ -265,7 +301,7 @@ export async function assignVolunteersToShift(input: {
   })
   const alreadyAssigned = userIds.length - toAssign.length
   const activeCount = await activeClaimCount(input.shiftId)
-  if (activeCount + toAssign.length > shift.capacity) {
+  if (!input.allowOverCapacity && activeCount + toAssign.length > shift.capacity) {
     return { ok: false, error: `Only ${Math.max(0, shift.capacity - activeCount)} spot${shift.capacity - activeCount === 1 ? '' : 's'} remain in this shift.` }
   }
 
@@ -325,6 +361,323 @@ export async function assignVolunteersToShift(input: {
   })
   await Promise.all(toAssign.map((userId) => notifyShiftAssigned(userId, shift.id)))
   return { ok: true, assigned: toAssign.length, alreadyAssigned }
+}
+
+export type TaskCapacityConflicts = {
+  published: Array<{
+    shiftId: string
+    title: string
+    startsAt: number | null
+    assignedVolunteerCount: number
+    currentCapacity: number
+  }>
+  planned: Array<{
+    occurrenceStartsAt: number
+    assignedVolunteerCount: number
+  }>
+}
+
+/**
+ * Show an issuer exactly what would sit above a new template capacity before
+ * they lower it. Published shifts retain their capacity; recurring plans will
+ * use the new capacity once the issuer confirms this intentional exception.
+ */
+export async function getTaskCapacityConflicts(input: {
+  taskId: string
+  orgId: string
+  slots: number
+}): Promise<Result<TaskCapacityConflicts>> {
+  if (!Number.isInteger(input.slots) || input.slots < 1 || input.slots > 10000) {
+    return { ok: false, error: 'Default capacity must be a whole number of at least 1.' }
+  }
+  const task = (await db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1))[0]
+  if (!task) return { ok: false, error: 'Opportunity not found.' }
+
+  const [shiftCounts, plannedAssignments] = await Promise.all([
+    getShiftsWithCounts(task.id),
+    db.select().from(plannedRecurringAssignments).where(and(
+      eq(plannedRecurringAssignments.taskId, task.id),
+      eq(plannedRecurringAssignments.orgId, input.orgId),
+      eq(plannedRecurringAssignments.status, 'planned'),
+    )),
+  ])
+  const now = Date.now()
+  const published = shiftCounts
+    .filter(({ shift, taken }) => {
+      const endsAt = shift.endsAt ?? shift.startsAt
+      return shift.status === 'open' && (endsAt === null || endsAt >= now) && taken > input.slots
+    })
+    .map(({ shift, taken }) => ({
+      shiftId: shift.id,
+      title: shift.label.trim() || task.title,
+      startsAt: shift.startsAt,
+      assignedVolunteerCount: taken,
+      currentCapacity: shift.capacity,
+    }))
+
+  const plannedCounts = new Map<number, number>()
+  plannedAssignments.forEach((assignment) => {
+    if (assignment.occurrenceStartsAt >= now) {
+      plannedCounts.set(assignment.occurrenceStartsAt, (plannedCounts.get(assignment.occurrenceStartsAt) ?? 0) + 1)
+    }
+  })
+  const planned = Array.from(plannedCounts.entries())
+    .filter(([, assignedVolunteerCount]) => assignedVolunteerCount > input.slots)
+    .sort(([left], [right]) => left - right)
+    .map(([occurrenceStartsAt, assignedVolunteerCount]) => ({ occurrenceStartsAt, assignedVolunteerCount }))
+
+  return { ok: true, published, planned }
+}
+
+/**
+ * Retire an opportunity template from an issuer workspace. This is a
+ * user-facing deletion, but the ledger and completed service records remain
+ * intact: open future shifts are cancelled and the template is closed rather
+ * than physically removing historical rows.
+ */
+export async function deleteOpportunityTemplate(input: {
+  taskId: string
+  orgId: string
+  actorId: string
+}): Promise<Result<{ cancelledShiftCount: number; notifiedParticipantCount: number }>> {
+  const now = Date.now()
+  const row = await db
+    .select({ task: tasks, organizationName: orgs.name })
+    .from(tasks)
+    .innerJoin(orgs, eq(tasks.orgId, orgs.id))
+    .where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!row) return { ok: false, error: 'Opportunity template not found.' }
+  if (row.task.isOnboarding === 1) return { ok: false, error: 'Onboarding sessions are managed from their own workspace.' }
+  if (row.task.status === 'closed') return { ok: true, cancelledShiftCount: 0, notifiedParticipantCount: 0 }
+
+  const openShifts = await db
+    .select()
+    .from(shifts)
+    .where(and(eq(shifts.taskId, input.taskId), eq(shifts.status, 'open')))
+  const inProgressShifts = openShifts.filter((shift) => {
+    if (shift.startsAt === null || shift.startsAt > now) return false
+    const endsAt = shift.endsAt ?? shift.startsAt + row.task.defaultDurationMinutes * 60_000
+    return endsAt > now
+  })
+  if (inProgressShifts.length) {
+    return { ok: false, error: 'Verify and close the shift that is currently in progress before deleting this template.' }
+  }
+
+  const shiftIds = openShifts.map((shift) => shift.id)
+  const [activeClaims, plannedAssignments] = await Promise.all([
+    shiftIds.length
+      ? db.select({ shiftId: claims.shiftId, userId: claims.userId }).from(claims).where(and(
+        inArray(claims.shiftId, shiftIds),
+        inArray(claims.status, ['claimed', 'submitted']),
+      ))
+      : Promise.resolve([]),
+    db.select().from(plannedRecurringAssignments).where(and(
+      eq(plannedRecurringAssignments.taskId, input.taskId),
+      eq(plannedRecurringAssignments.orgId, input.orgId),
+      eq(plannedRecurringAssignments.status, 'planned'),
+    )),
+  ])
+  const participantsByShift = new Map<string, string[]>()
+  activeClaims.forEach((claim) => {
+    if (!claim.shiftId) return
+    participantsByShift.set(claim.shiftId, [...(participantsByShift.get(claim.shiftId) ?? []), claim.userId])
+  })
+
+  await db.transaction(async (tx) => {
+    await tx.update(tasks).set({ status: 'closed' }).where(eq(tasks.id, input.taskId))
+    await tx.update(recurringEventSchedules).set({ active: 0, updatedAt: now }).where(and(
+      eq(recurringEventSchedules.taskId, input.taskId),
+      eq(recurringEventSchedules.orgId, input.orgId),
+      eq(recurringEventSchedules.active, 1),
+    ))
+    if (plannedAssignments.length) {
+      await tx.update(plannedRecurringAssignments).set({ status: 'removed', updatedAt: now }).where(and(
+        eq(plannedRecurringAssignments.taskId, input.taskId),
+        eq(plannedRecurringAssignments.orgId, input.orgId),
+        eq(plannedRecurringAssignments.status, 'planned'),
+      ))
+    }
+    if (shiftIds.length) {
+      await tx.update(shifts).set({ status: 'closed' }).where(inArray(shifts.id, shiftIds))
+      await tx.update(claims).set({ status: 'unclaimed', updatedAt: now }).where(and(
+        inArray(claims.shiftId, shiftIds),
+        inArray(claims.status, ['claimed', 'submitted']),
+      ))
+      for (const shift of openShifts) {
+        await appendEvent(tx, EventTypes.SHIFT_CLOSED, {
+          taskId: row.task.id,
+          shiftId: shift.id,
+          cityId: row.task.cityId,
+          reason: 'template_deleted',
+          releasedParticipantCount: participantsByShift.get(shift.id)?.length ?? 0,
+        }, input.actorId)
+      }
+    }
+    await appendEvent(tx, EventTypes.TASK_CLOSED, {
+      taskId: row.task.id,
+      cityId: row.task.cityId,
+      reason: 'template_deleted',
+      cancelledShiftCount: shiftIds.length,
+      removedPlannedAssignmentCount: plannedAssignments.length,
+    }, input.actorId)
+  })
+
+  for (const shift of openShifts) {
+    await cancelRemindersForShift(shift.id)
+    const userIds = participantsByShift.get(shift.id) ?? []
+    if (userIds.length && shift.startsAt && shift.startsAt > now) {
+      await notifyShiftCancelled({
+        userIds,
+        taskId: row.task.id,
+        taskTitle: row.task.title,
+        organizationName: row.organizationName,
+        startsAt: shift.startsAt,
+      })
+    }
+  }
+  return {
+    ok: true,
+    cancelledShiftCount: shiftIds.length,
+    notifiedParticipantCount: Array.from(new Set(activeClaims.filter((claim) => {
+      const shift = openShifts.find((candidate) => candidate.id === claim.shiftId)
+      return Boolean(shift?.startsAt && shift.startsAt > now)
+    }).map((claim) => claim.userId))).length,
+  }
+}
+
+/** Remove one roster-managed commitment before the shift begins. The claim is
+ * retained as unclaimed for audit/history purposes and the volunteer is told
+ * that their schedule changed. */
+export async function removeVolunteerFromShift(input: {
+  shiftId: string
+  orgId: string
+  actorId: string
+  userId: string
+}): Promise<Result> {
+  const row = await db
+    .select({ claim: claims, shift: shifts, task: tasks })
+    .from(claims)
+    .innerJoin(shifts, eq(claims.shiftId, shifts.id))
+    .innerJoin(tasks, eq(shifts.taskId, tasks.id))
+    .where(and(
+      eq(claims.shiftId, input.shiftId),
+      eq(claims.userId, input.userId),
+      eq(shifts.orgId, input.orgId),
+    ))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  if (!row || row.task.orgId !== input.orgId) return { ok: false, error: 'That scheduled volunteer was not found.' }
+  if (row.shift.visibility !== 'private' || row.shift.enrollmentMode !== 'organization_managed') {
+    return { ok: false, error: 'Only roster-managed private assignments can be removed here.' }
+  }
+  if (row.shift.status !== 'open' || (row.shift.startsAt && row.shift.startsAt <= Date.now())) {
+    return { ok: false, error: 'Assignments cannot be changed after a shift begins.' }
+  }
+  if (row.claim.status !== 'claimed') return { ok: false, error: 'That volunteer no longer has an active assignment.' }
+
+  const now = Date.now()
+  await db.transaction(async (tx) => {
+    await tx.update(claims).set({ status: 'unclaimed', updatedAt: now }).where(eq(claims.id, row.claim.id))
+    await appendEvent(
+      tx,
+      EventTypes.CLAIM_UNCLAIMED,
+      {
+        taskId: row.task.id,
+        shiftId: row.shift.id,
+        claimId: row.claim.id,
+        cityId: row.task.cityId,
+        removedByOrganization: true,
+      },
+      input.actorId,
+    )
+  })
+  await cancelRemindersForClaim(input.userId, row.shift.id)
+  await notifyShiftAssignmentRemoved(input.userId, row.shift.id)
+  return { ok: true }
+}
+
+/**
+ * Schedule an active organization authority to support a shift. Staff support
+ * intentionally lives outside `claims`: it never consumes a volunteer slot,
+ * creates service history, or affects civic-credit verification.
+ */
+export async function assignStaffToShift(input: {
+  shiftId: string
+  orgId: string
+  actorId: string
+  userId: string
+}): Promise<Result<{ assigned: boolean }>> {
+  const row = await db
+    .select({ shift: shifts, task: tasks })
+    .from(shifts)
+    .innerJoin(tasks, eq(shifts.taskId, tasks.id))
+    .where(and(eq(shifts.id, input.shiftId), eq(shifts.orgId, input.orgId)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!row || row.task.orgId !== input.orgId) return { ok: false, error: 'Published shift not found.' }
+  if (row.shift.status !== 'open' || (row.shift.startsAt && row.shift.startsAt <= Date.now())) {
+    return { ok: false, error: 'Staff can be scheduled only before a shift begins.' }
+  }
+
+  const delegation = await db
+    .select()
+    .from(organizationDelegations)
+    .where(and(
+      eq(organizationDelegations.orgId, input.orgId),
+      eq(organizationDelegations.userId, input.userId),
+      eq(organizationDelegations.status, 'active'),
+    ))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!delegation) return { ok: false, error: 'That person does not have active organization access.' }
+
+  const existing = await db
+    .select({ id: shiftStaffAssignments.id })
+    .from(shiftStaffAssignments)
+    .where(and(eq(shiftStaffAssignments.shiftId, input.shiftId), eq(shiftStaffAssignments.userId, input.userId)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (existing) return { ok: true, assigned: false }
+
+  const now = Date.now()
+  await db.insert(shiftStaffAssignments).values({
+    id: randomUUID(),
+    shiftId: input.shiftId,
+    orgId: input.orgId,
+    userId: input.userId,
+    delegationId: delegation.id,
+    assignedByUserId: input.actorId,
+    createdAt: now,
+    updatedAt: now,
+  })
+  return { ok: true, assigned: true }
+}
+
+/** Remove a staff-support placement without altering any volunteer claim. */
+export async function removeStaffFromShift(input: {
+  shiftId: string
+  orgId: string
+  userId: string
+}): Promise<Result> {
+  const shift = await db
+    .select()
+    .from(shifts)
+    .where(and(eq(shifts.id, input.shiftId), eq(shifts.orgId, input.orgId)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!shift) return { ok: false, error: 'Published shift not found.' }
+  if (shift.status !== 'open' || (shift.startsAt && shift.startsAt <= Date.now())) {
+    return { ok: false, error: 'Staff assignments cannot be changed after a shift begins.' }
+  }
+  await db.delete(shiftStaffAssignments).where(and(
+    eq(shiftStaffAssignments.shiftId, input.shiftId),
+    eq(shiftStaffAssignments.orgId, input.orgId),
+    eq(shiftStaffAssignments.userId, input.userId),
+  ))
+  return { ok: true }
 }
 
 export async function setTaskCredentials(

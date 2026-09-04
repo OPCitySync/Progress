@@ -13,8 +13,13 @@ import { registerParticipant, registerOrg, setOrgStatus, updateAccountIdentity }
 import {
   createTask,
   updateTask,
+  deleteOpportunityTemplate,
+  getTaskCapacityConflicts,
   createShift,
   assignVolunteersToShift,
+  removeVolunteerFromShift,
+  assignStaffToShift,
+  removeStaffFromShift,
   closeShift,
   cancelUpcomingShiftAndNotify,
   claimShift,
@@ -58,8 +63,8 @@ import { isOrganizationDocumentCategory } from '@/lib/services/organization-docu
 import { RESOURCE_DESTINATIONS, type OrganizationResourceKind } from '@/lib/services/organization-resources'
 import { saveProfile } from '@/lib/services/profile'
 import { cancelOnboardingSession, createRecurringOnboardingSession, publishOnboardingSession, updateRecurringOnboardingSession } from '@/lib/services/onboarding-session'
-import { publishTemplateEvent } from '@/lib/services/recurring-template-events'
-import { createVolunteerProgram, programBelongsToOrganization } from '@/lib/services/volunteer-programs'
+import { planVolunteerForRecurringShift, publishTemplateEvent, removeVolunteerFromRecurringShiftPlan } from '@/lib/services/recurring-template-events'
+import { createVolunteerProgram, programBelongsToOrganization, updateVolunteerProgramSettings } from '@/lib/services/volunteer-programs'
 import { createOrganizationCalendarEntry } from '@/lib/services/organization-calendar'
 import { markNotificationRead, markNotificationsRead, processDueReminders } from '@/lib/services/notifications'
 import { submitVolunteerReflection } from '@/lib/services/volunteer-reflections'
@@ -568,7 +573,25 @@ export async function createVolunteerProgramAction(formData: FormData) {
     name: str(formData, 'name'),
     description: str(formData, 'description'),
   })
-  back(formData, destination, result.ok ? { ok: 'Volunteer program created.' } : { error: result.error })
+  if (!result.ok) back(formData, destination, { error: result.error })
+  back(formData, `/aesthetic-lab/issuer/programs/${result.id}`, { ok: 'Volunteer program created. Add only the capabilities this program needs.' })
+}
+
+export async function updateVolunteerProgramSettingsAction(formData: FormData) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) redirect('/issuer')
+  const programId = str(formData, 'programId')
+  const destination = str(formData, 'redirectTo') || `/aesthetic-lab/issuer/programs/${programId}`
+  const result = await updateVolunteerProgramSettings({
+    orgId: session.orgId,
+    programId,
+    defaultVisibility: str(formData, 'defaultVisibility'),
+    defaultLocation: str(formData, 'defaultLocation'),
+    defaultCapacity: int(formData, 'defaultCapacity'),
+    defaultDurationMinutes: int(formData, 'defaultDurationMinutes'),
+    onboardingPreference: str(formData, 'onboardingPreference'),
+  })
+  back(formData, destination, result.ok ? { ok: 'Program settings saved.' } : { error: result.error })
 }
 
 export async function createTaskAction(formData: FormData) {
@@ -580,6 +603,8 @@ export async function createTaskAction(formData: FormData) {
   const capacity = requestedCapacity ? int(formData, 'capacity') : 8
   const requestedCredits = str(formData, 'credits')
   const credits = requestedCredits ? int(formData, 'credits') : 10
+  const requestedDuration = str(formData, 'defaultDurationMinutes')
+  const defaultDurationMinutes = requestedDuration ? int(formData, 'defaultDurationMinutes') : 120
   const label = str(formData, 'shiftLabel')
   const startsAt = parseDateTime(formData, 'shiftStartsAt')
   const endsAt = parseDateTime(formData, 'shiftEndsAt')
@@ -596,6 +621,7 @@ export async function createTaskAction(formData: FormData) {
     location: str(formData, 'location'),
     credits,
     slots: Number.isInteger(capacity) && capacity > 0 ? capacity : 1,
+    defaultDurationMinutes,
     startsAt: label,
     requiredCredentials: strList(formData, 'cred'),
     programId: str(formData, 'programId') || null,
@@ -635,9 +661,41 @@ export async function updateTaskAction(formData: FormData) {
     location: str(formData, 'location'),
     credits: str(formData, 'credits') ? int(formData, 'credits') : undefined,
     slots: str(formData, 'slots') ? int(formData, 'slots') : undefined,
+    defaultDurationMinutes: str(formData, 'defaultDurationMinutes') ? int(formData, 'defaultDurationMinutes') : undefined,
     programId: str(formData, 'programId') || null,
+    allowCapacityConflicts: str(formData, 'allowCapacityConflicts') === 'true',
   })
   back(formData, `/aesthetic-lab/issuer/opportunities/${taskId}`, result.ok ? { ok: 'Opportunity details saved.' } : { error: result.error })
+}
+
+export async function deleteOpportunityTemplateAction(formData: FormData) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog'
+  const result = await deleteOpportunityTemplate({
+    taskId: str(formData, 'taskId'),
+    orgId: session.orgId,
+    actorId: session.sub,
+  })
+  back(formData, destination, result.ok
+    ? { ok: `Template deleted. ${result.cancelledShiftCount} published shift${result.cancelledShiftCount === 1 ? '' : 's'} removed.` }
+    : { error: result.error })
+}
+
+/** Delete a template from the issuer workspace without relying on a page redirect. */
+export async function deleteOpportunityTemplateInlineAction(input: { taskId: string }) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before deleting an opportunity template.' }
+  const result = await deleteOpportunityTemplate({
+    taskId: input.taskId,
+    orgId: session.orgId,
+    actorId: session.sub,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  revalidatePath('/aesthetic-lab/issuer/catalog')
+  revalidatePath('/aesthetic-lab/issuer')
+  return { ok: true as const, cancelledShiftCount: result.cancelledShiftCount }
 }
 
 export async function createShiftAction(formData: FormData) {
@@ -742,9 +800,11 @@ export async function publishTemplateEventAction(formData: FormData) {
     startsAt: parseDateTime(formData, 'startsAt'),
     recurring: str(formData, 'recurring') === 'true',
     visibility,
+    capacity: int(formData, 'capacity'),
+    durationMinutes: int(formData, 'durationMinutes'),
   })
-  if (result.ok && result.mode === 'published' && visibility === 'public') await notifyMatchingParticipants(result.taskId)
-  if (result.ok && assignedUserIds.length) {
+  if (result.ok && result.mode === 'published' && result.visibility === 'public') await notifyMatchingParticipants(result.taskId)
+  if (result.ok && result.visibility === 'private' && assignedUserIds.length) {
     if (!result.shiftId) {
       back(formData, destination, { ok: 'Recurring private schedule saved. Add volunteers when its first shift is published.' })
     }
@@ -775,6 +835,103 @@ export async function assignVolunteersToShiftAction(formData: FormData) {
   back(formData, destination, result.ok
     ? { ok: result.assigned ? `${result.assigned} volunteer${result.assigned === 1 ? '' : 's'} added to this shift.` : 'Those volunteers are already assigned to this shift.' }
     : { error: result.error })
+}
+
+export async function assignVolunteerToShiftInlineAction(input: { shiftId: string; userId: string; allowOverCapacity?: boolean }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before assigning volunteers.' }
+  const result = await assignVolunteersToShift({
+    shiftId: input.shiftId,
+    orgId: session.orgId,
+    actorId: session.sub,
+    userIds: [input.userId],
+    allowOverCapacity: input.allowOverCapacity,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  revalidatePath('/aesthetic-lab/issuer')
+  return { ok: true as const, assigned: result.assigned }
+}
+
+export async function removeVolunteerFromShiftInlineAction(input: { shiftId: string; userId: string }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before changing assignments.' }
+  const result = await removeVolunteerFromShift({
+    shiftId: input.shiftId,
+    orgId: session.orgId,
+    actorId: session.sub,
+    userId: input.userId,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  revalidatePath('/aesthetic-lab/issuer')
+  return { ok: true as const }
+}
+
+export async function planVolunteerForRecurringShiftInlineAction(input: { taskId: string; occurrenceStartsAt: number; userId: string; allowOverCapacity?: boolean }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before planning volunteers.' }
+  const result = await planVolunteerForRecurringShift({
+    taskId: input.taskId,
+    orgId: session.orgId,
+    actorId: session.sub,
+    occurrenceStartsAt: input.occurrenceStartsAt,
+    userId: input.userId,
+    allowOverCapacity: input.allowOverCapacity,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  return { ok: true as const, assigned: result.assigned }
+}
+
+/** Read-only preflight used before an issuer lowers a template's volunteer limit. */
+export async function previewTaskCapacityChangeInlineAction(input: { taskId: string; slots: number }) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before updating an opportunity.' }
+  const result = await getTaskCapacityConflicts({ taskId: input.taskId, orgId: session.orgId, slots: input.slots })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  return { ok: true as const, published: result.published, planned: result.planned }
+}
+
+export async function removeVolunteerFromRecurringShiftPlanInlineAction(input: { taskId: string; occurrenceStartsAt: number; userId: string }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before changing planned volunteers.' }
+  const result = await removeVolunteerFromRecurringShiftPlan({
+    taskId: input.taskId,
+    orgId: session.orgId,
+    occurrenceStartsAt: input.occurrenceStartsAt,
+    userId: input.userId,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  return { ok: true as const }
+}
+
+export async function assignStaffToShiftInlineAction(input: { shiftId: string; userId: string }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before scheduling staff.' }
+  const result = await assignStaffToShift({
+    shiftId: input.shiftId,
+    orgId: session.orgId,
+    actorId: session.sub,
+    userId: input.userId,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  return { ok: true as const, assigned: result.assigned }
+}
+
+export async function removeStaffFromShiftInlineAction(input: { shiftId: string; userId: string }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before changing staff assignments.' }
+  const result = await removeStaffFromShift({
+    shiftId: input.shiftId,
+    orgId: session.orgId,
+    userId: input.userId,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  return { ok: true as const }
 }
 
 export async function cancelOnboardingSessionAction(formData: FormData) {

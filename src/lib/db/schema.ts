@@ -457,6 +457,16 @@ export const volunteerPrograms = sqliteTable(
     orgId: text('org_id').notNull(),
     name: text('name').notNull(),
     description: text('description').notNull().default(''),
+    operatingMode: text('operating_mode', {
+      enum: ['flexible', 'public_recruitment', 'roster_scheduling', 'project_coordination'],
+    }).notNull().default('flexible'),
+    defaultVisibility: text('default_visibility', { enum: ['public', 'private'] }).notNull().default('public'),
+    defaultLocation: text('default_location').notNull().default(''),
+    defaultCapacity: integer('default_capacity').notNull().default(8),
+    defaultDurationMinutes: integer('default_duration_minutes').notNull().default(120),
+    onboardingPreference: text('onboarding_preference', {
+      enum: ['optional', 'recommended', 'not_needed'],
+    }).notNull().default('optional'),
     createdByUserId: text('created_by_user_id').notNull(),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
@@ -540,6 +550,9 @@ export const tasks = sqliteTable('tasks', {
   bringItems: text('bring_items').notNull().default(''),
   credits: integer('credits').notNull(),
   slots: integer('slots').notNull().default(1),
+  // Reusable default for every shift published from this opportunity template.
+  // Individual shifts can still override it at publication time.
+  defaultDurationMinutes: integer('default_duration_minutes').notNull().default(120),
   startsAt: text('starts_at').notNull().default(''),
   status: text('status', { enum: ['open', 'closed'] }).notNull().default('open'),
   programId: text('program_id'),
@@ -634,6 +647,30 @@ export const shifts = sqliteTable(
   }),
 )
 
+// Staff support is scheduled alongside volunteers, but it is not a volunteer
+// claim: it does not consume public capacity, create a service record, or
+// participate in verification and credit issuance. A snapshot of the active
+// delegation makes the assignment auditable while keeping the two rosters
+// distinct.
+export const shiftStaffAssignments = sqliteTable(
+  'shift_staff_assignments',
+  {
+    id: text('id').primaryKey(),
+    shiftId: text('shift_id').notNull(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    delegationId: text('delegation_id').notNull(),
+    assignedByUserId: text('assigned_by_user_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    shiftUserUniq: uniqueIndex('shift_staff_assignments_shift_user').on(t.shiftId, t.userId),
+    byShift: index('shift_staff_assignments_shift').on(t.shiftId, t.createdAt),
+    byOrganization: index('shift_staff_assignments_org').on(t.orgId, t.createdAt),
+  }),
+)
+
 // A recurring onboarding program publishes only one public session at a time.
 // Once that session ends, the scheduled processor releases the next occurrence.
 export const onboardingRecurringSchedules = sqliteTable(
@@ -676,6 +713,30 @@ export const recurringEventSchedules = sqliteTable(
   },
   (t) => ({
     byOrganization: index('recurring_event_schedules_org').on(t.orgId, t.active),
+  }),
+)
+
+// Future roster plans remain distinct from claims until the matching recurring
+// occurrence is actually published. This prevents premature participant
+// notifications while preserving the issuer's scheduling work.
+export const plannedRecurringAssignments = sqliteTable(
+  'planned_recurring_assignments',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull(),
+    orgId: text('org_id').notNull(),
+    occurrenceStartsAt: integer('occurrence_starts_at').notNull(),
+    userId: text('user_id').notNull(),
+    assignedByUserId: text('assigned_by_user_id').notNull(),
+    status: text('status', { enum: ['planned', 'applied', 'removed'] }).notNull().default('planned'),
+    shiftId: text('shift_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    occurrenceUserUniq: uniqueIndex('planned_recurring_assignments_occurrence_user').on(t.taskId, t.occurrenceStartsAt, t.userId),
+    byOrganization: index('planned_recurring_assignments_org').on(t.orgId, t.occurrenceStartsAt),
+    byOccurrence: index('planned_recurring_assignments_occurrence').on(t.taskId, t.occurrenceStartsAt, t.status),
   }),
 )
 

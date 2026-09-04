@@ -19,17 +19,20 @@ const workspaceButtonDimensions = {
 export function WaiverCreateButton({
   programs = [],
   defaultProgramId = null,
+  lockProgramContext = false,
   activeProgramName,
   redirectTo = '/aesthetic-lab/issuer/waiver',
   buttonLabel = 'Add Waiver',
 }: {
   programs?: Array<{ id: string; name: string }>
   defaultProgramId?: string | null
+  lockProgramContext?: boolean
   activeProgramName?: string
   redirectTo?: string
   buttonLabel?: string
 }) {
   const [open, setOpen] = useState(false)
+  const hasLockedProgramContext = lockProgramContext || Boolean(defaultProgramId)
 
   return <>
     <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.waiverAddButton}`} style={workspaceButtonDimensions} onClick={() => setOpen(true)}>
@@ -43,9 +46,9 @@ export function WaiverCreateButton({
         </div>
         <form action={createWaiverAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
           <input type="hidden" name="redirectTo" value={redirectTo} />
-          {defaultProgramId ? <input type="hidden" name="programId" value={defaultProgramId} /> : null}
+          {hasLockedProgramContext ? <input type="hidden" name="programId" value={defaultProgramId ?? ''} /> : null}
           <label>Waiver title<input name="title" required maxLength={180} placeholder="e.g. Volunteer Liability Release" /></label>
-          {defaultProgramId ? <p className={styles.publishShiftAccessHint}>This waiver will be added to {activeProgramName || 'the active volunteer program'}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Applies across the organization</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Use a program tag when this waiver supports a particular area of volunteer work.</small></label>}
+          {hasLockedProgramContext ? <p className={styles.publishShiftAccessHint}>This waiver will be added to {activeProgramName === 'Organization' ? 'your organization-wide resources' : activeProgramName || 'the active volunteer program'}.</p> : <label>Volunteer program <span>(optional)</span><select name="programId" defaultValue=""><option value="">Applies across the organization</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}</select><small>Use a program tag when this waiver supports a particular area of volunteer work.</small></label>}
           <label>Waiver text <span>(optional with source file)</span><textarea name="body" placeholder="Paste the approved waiver text so participants can read it in City/Sync." /></label>
           <label>Upload waiver <span>(optional with text)</span><input name="document" type="file" accept="application/pdf,.doc,.docx" /><small>Upload a PDF, DOC, or DOCX up to 10 MB. Add either waiver text or a source file.</small></label>
           <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="submit"><FileText size={15} /> Add Waiver</button></div>

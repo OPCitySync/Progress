@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ClipboardList,
   UserRoundCheck,
+  UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { claims, organizationQueueAcknowledgements, orgs, shifts, tasks, users } from '@/lib/db/schema'
@@ -136,6 +137,11 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     })),
   ]
   const acknowledgedQueueKeys = new Set(acknowledgedQueueRows.map(({ actionKey }) => actionKey))
+  const staffingNeeds = scheduledShifts
+    .filter(({ shift }) => Boolean(shift.startsAt && shift.startsAt > now && shift.startsAt <= now + 7 * 24 * 60 * 60 * 1000))
+    .map(({ shift, task }) => ({ shift, task, openSpots: Math.max(0, shift.capacity - (activeByShift.get(shift.id) ?? 0)) }))
+    .filter(({ openSpots }) => openSpots > 0)
+    .slice(0, 3)
   const queue = [
     ...pendingVerificationGroups.map(({ shift, task, participantCount }) => ({
       key: `verify:${shift.id}`,
@@ -145,6 +151,14 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       href: `/aesthetic-lab/issuer/shifts/${shift.id}/verify`,
       action: 'Verify & Close',
     })),
+    ...staffingNeeds.map(({ shift, task, openSpots }) => ({
+      key: `staffing:${shift.id}:${openSpots}`,
+      kind: 'staffing' as const,
+      title: `${openSpots} open spot${openSpots === 1 ? '' : 's'} · ${task.title}`,
+      detail: `${shift.visibility === 'private' ? 'Organization assignment' : 'Open signup'} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Upcoming shift'}`,
+      href: `/aesthetic-lab/issuer/programs/${task.programId ?? 'organization'}#${task.isOnboarding === 1 ? 'program-onboarding' : shift.visibility === 'private' ? 'program-staffing' : 'program-schedule'}`,
+      action: task.isOnboarding === 1 ? 'Review session' : shift.visibility === 'private' ? 'Assign' : 'Review',
+    })),
     ...newSignupRows.map(({ claim, shift, task, participant }) => {
       const isOnboarding = task.isOnboarding === 1
       return {
@@ -152,7 +166,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
         kind: 'signup' as const,
         title: `${participantDisplayName(participant)} signed up`,
         detail: `${isOnboarding ? 'Onboarding session' : 'Volunteer shift'} · ${task.title}${shift.startsAt ? ` · ${new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`,
-        href: isOnboarding ? '/aesthetic-lab/issuer/catalog?workspace=onboarding' : '/aesthetic-lab/issuer/catalog?workspace=opportunities',
+        href: `/aesthetic-lab/issuer/programs/${task.programId ?? 'organization'}#${isOnboarding ? 'program-onboarding' : 'program-schedule'}`,
         action: isOnboarding ? 'View session' : 'View shift',
       }
     }),
@@ -167,11 +181,11 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
         }]
       : []),
   ].filter((item) => !acknowledgedQueueKeys.has(item.key)).slice(0, 6)
-  const actionItems = queue.filter((item) => item.kind === 'verify')
-  const notificationItems = queue.filter((item) => item.kind !== 'verify')
+  const actionItems = queue.filter((item) => item.kind === 'verify' || item.kind === 'staffing')
+  const notificationItems = queue.filter((item) => item.kind !== 'verify' && item.kind !== 'staffing')
   const renderQueueItem = (item: typeof queue[number]) => (
     <article key={item.key} data-queue-kind={item.kind}>
-      <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : item.kind === 'signup' ? <UserRoundCheck size={17} /> : <Bell size={17} />}</span>
+      <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : item.kind === 'staffing' ? <UsersRound size={17} /> : item.kind === 'signup' ? <UserRoundCheck size={17} /> : <Bell size={17} />}</span>
       <div><b>{item.title}</b><small>{item.detail}</small></div>
       <div className={styles.issuerQueueActions}>
         <form action={acknowledgeOrganizationQueueAction}>

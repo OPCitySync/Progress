@@ -184,15 +184,53 @@ export async function notifyShiftAssigned(userId: string, shiftId: string): Prom
     const task = (await db.select().from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
     const org = task ? (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0] : undefined
     const title = task?.title ?? 'a volunteer shift'
+    const when = whenText(shift)
+    const link = task ? `/aesthetic-lab/opportunities/${task.id}/sessions/${shift.id}` : '/aesthetic-lab/commitments'
     await insertNotification(
       userId,
       'organization_shift_assignment',
-      `You were added to: ${title}`,
-      `${org?.name ?? 'An organization'} added you to a shift on ${whenText(shift)}.`,
-      task ? `/aesthetic-lab/opportunities/${task.id}` : '/aesthetic-lab',
+      `You were scheduled: ${title}`,
+      `${org?.name ?? 'An organization'} scheduled you for ${when}. Open the shift to review the details or change your commitment.`,
+      link,
     )
+    if (task && shift.startsAt && shift.startsAt - PRE_SHIFT_MS > Date.now()) {
+      await enqueue({
+        userId,
+        taskId: task.id,
+        shiftId: shift.id,
+        kind: 'pre_shift',
+        inApp: true,
+        email: true,
+        title: `Reminder: ${title}`,
+        body: `Your scheduled shift with ${org?.name ?? 'the organization'} is coming up — ${when}.`,
+        link,
+        sendAfter: shift.startsAt - PRE_SHIFT_MS,
+      })
+    }
   } catch (error) {
     console.error('notifyShiftAssigned failed', error)
+  }
+}
+
+/** A roster manager removed a participant from a future private shift. The
+ * notification makes the schedule change explicit without turning it into a
+ * conversation thread. */
+export async function notifyShiftAssignmentRemoved(userId: string, shiftId: string): Promise<void> {
+  try {
+    const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
+    if (!shift) return
+    const task = (await db.select().from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
+    const org = task ? (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0] : undefined
+    const title = task?.title ?? 'a volunteer shift'
+    await insertNotification(
+      userId,
+      'organization_shift_assignment_removed',
+      `Schedule changed: ${title}`,
+      `${org?.name ?? 'An organization'} removed you from the shift on ${whenText(shift)}.`,
+      '/aesthetic-lab/commitments',
+    )
+  } catch (error) {
+    console.error('notifyShiftAssignmentRemoved failed', error)
   }
 }
 
