@@ -139,7 +139,7 @@ export async function ProgramOnboardingPanel({orgId,scope,programName,programs,l
             <div className={styles.actions}>
               <ManageOnboardingSessionButton task={task} nextStartsAt={upcoming[0]?.shift.startsAt||null} durationMinutes={task.defaultDurationMinutes} weeklyCapacity={task.slots} programs={programs} redirectTo={redirectTo}/>
               <PublishOnboardingSessionButton taskId={task.id} redirectTo={redirectTo} suggestedStartsAt={upcoming.length?Math.max(...upcoming.map(({shift})=>shift.startsAt??now))+7*24*60*60*1000:now+24*60*60*1000} existingFutureSessions={upcoming.length}/>
-              {approvedVolunteers.length&&inviteSessions.length?<InviteOnboardingVolunteersButton sessions={inviteSessions}/>:null}
+              <InviteOnboardingVolunteersButton sessions={inviteSessions}/>
             </div>
           </div>
           {upcoming.length?<div className={styles.onboardingSessionDateList}>{upcoming.map(({shift,taken})=><div className={styles.onboardingSessionDateRow} key={shift.id}><div><b>{dateTime(shift.startsAt!)}</b><small>{taken} reserved · {Math.max(0,shift.capacity-taken)} open</small></div></div>)}</div>:<p className={styles.onboardingSessionEmpty}>No upcoming dates.</p>}
