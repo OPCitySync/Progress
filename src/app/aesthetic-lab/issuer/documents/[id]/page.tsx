@@ -35,7 +35,7 @@ export default async function IssuerDocumentDetailLabPage({ params }: { params: 
       <section className={styles.issuerMain} aria-label={`${document.title} document`}>
         <section className={styles.issuerPageHero}>
           <div><p className={styles.eyebrow}>Workspace · Documentation · {category.label}</p><h1>{document.title}</h1><p>Review the current resource and download its source file when needed.</p></div>
-          <Link href="/aesthetic-lab/issuer/catalog" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
+          <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
         </section>
         <section className={`${styles.labPanel} ${styles.documentPreviewCard}`}>
           <div className={styles.documentPreviewHeading}><span>{document.category === 'safety' ? <ShieldCheck size={20} /> : document.category === 'guide' ? <FolderOpen size={20} /> : <FileText size={20} />}</span><div><p className={styles.eyebrow}>Document preview</p><h2>{document.title}</h2><p>{category.description}</p></div><div className={styles.documentPreviewActions}>{document.documentUrl ? <a className={styles.catalogWorkspaceAction} href={canPreviewPdf ? sourceFileUrl : sourceFileDownloadUrl} target="_blank" rel="noreferrer"><FileText size={15} /> {sourceFileLabel}</a> : null}<form action={archiveOrganizationDocumentAction}><input type="hidden" name="documentId" value={document.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=documentation" /><button className={styles.catalogWorkspaceAction} type="submit"><Trash2 size={15} /> Delete Document</button></form></div></div>

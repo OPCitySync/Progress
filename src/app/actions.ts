@@ -63,7 +63,13 @@ import { isOrganizationDocumentCategory } from '@/lib/services/organization-docu
 import { RESOURCE_DESTINATIONS, type OrganizationResourceKind } from '@/lib/services/organization-resources'
 import { saveProfile } from '@/lib/services/profile'
 import { cancelOnboardingSession, createRecurringOnboardingSession, publishOnboardingSession, updateRecurringOnboardingSession } from '@/lib/services/onboarding-session'
-import { planVolunteerForRecurringShift, publishTemplateEvent, removeVolunteerFromRecurringShiftPlan } from '@/lib/services/recurring-template-events'
+import {
+  planStaffForRecurringShift,
+  planVolunteerForRecurringShift,
+  publishTemplateEvent,
+  removeStaffFromRecurringShiftPlan,
+  removeVolunteerFromRecurringShiftPlan,
+} from '@/lib/services/recurring-template-events'
 import { createVolunteerProgram, programBelongsToOrganization, updateVolunteerProgramSettings } from '@/lib/services/volunteer-programs'
 import { createOrganizationCalendarEntry } from '@/lib/services/organization-calendar'
 import { markNotificationRead, markNotificationsRead, processDueReminders } from '@/lib/services/notifications'
@@ -97,6 +103,7 @@ import {
   defaultSessionForUser,
   getOrganizationInvitePreview,
   hasOrganizationPermission,
+  isActiveOrganizationStaff,
   revokeOrganizationDelegation,
   sessionForIdentity,
   updateOrganizationIdentity,
@@ -231,11 +238,14 @@ export async function signInAction(formData: FormData) {
   const session = await defaultSessionForUser(user.id)
   if (!session) back(formData, '/login', { error: 'Your account is missing an active identity. Contact support.' })
   const rosterInvite = volunteerRosterInviteFromPath(safeNext(formData))
+  let volunteerWelcomeNext:string|undefined
   if (rosterInvite && session.role === 'participant') {
     const inviteResult = await acceptVolunteerRosterInvite({ userId: user.id, code: rosterInvite })
     if (!inviteResult.ok) back(formData, '/login', { error: inviteResult.error })
+    volunteerWelcomeNext=inviteResult.next
   }
   await createSession(session)
+  if(volunteerWelcomeNext)redirect(volunteerWelcomeNext)
   redirect(rosterInvite ? aestheticHomeFor(session.role) : safeNext(formData) ?? aestheticHomeFor(session.role))
 }
 
@@ -254,9 +264,11 @@ export async function signUpAction(formData: FormData) {
     const result = await registerParticipant({ name, email, password, homeCityId: str(formData, 'cityId') })
     if (!result.ok) back(formData, '/signup', { error: result.error })
     const rosterInvite = str(formData, 'rosterInvite')
+    let volunteerWelcomeNext:string|undefined
     if (rosterInvite) {
       const inviteResult = await acceptVolunteerRosterInvite({ userId: result.userId, code: rosterInvite })
       if (!inviteResult.ok) back(formData, '/signup', { error: inviteResult.error })
+      volunteerWelcomeNext=inviteResult.next
     }
     const session = await defaultSessionForUser(result.userId)
     if (!session) back(formData, '/signup', { error: 'We could not provision your participant identity.' })
@@ -280,7 +292,7 @@ export async function signUpAction(formData: FormData) {
     }
 
     await createSession(session)
-    redirect(safeNext(formData) ?? aestheticHomeFor(session.role))
+    redirect(volunteerWelcomeNext ?? safeNext(formData) ?? aestheticHomeFor(session.role))
   }
 
   if (kind === 'issuer' || kind === 'redeemer') {
@@ -574,7 +586,7 @@ export async function createVolunteerProgramAction(formData: FormData) {
     description: str(formData, 'description'),
   })
   if (!result.ok) back(formData, destination, { error: result.error })
-  back(formData, `/aesthetic-lab/issuer/programs/${result.id}`, { ok: 'Volunteer program created. Add only the capabilities this program needs.' })
+  redirect(`/aesthetic-lab/issuer/programs/${result.id}?section=onboarding`)
 }
 
 export async function updateVolunteerProgramSettingsAction(formData: FormData) {
@@ -781,6 +793,94 @@ export async function publishOnboardingSessionAction(formData: FormData) {
     : { error: result.error })
 }
 
+export async function scheduleNewShiftAction(formData: FormData) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) redirect('/issuer')
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog'
+  const city = await getActiveCity(session)
+  if (!city) back(formData, destination, { error: 'Choose an organization city before scheduling a shift.' })
+
+  const startsAt = parseDateTime(formData, 'startsAt')
+  if (!startsAt) back(formData, destination, { error: 'Choose a date and time for this shift.' })
+  const capacity = int(formData, 'capacity')
+  const durationMinutes = int(formData, 'durationMinutes')
+  const visibility = str(formData, 'visibility') === 'private' ? 'private' : 'public'
+  const recurring = str(formData, 'recurring') === 'true'
+  const templateId = str(formData, 'taskId')
+  const assignedUserIds = visibility === 'private' ? strList(formData, 'assignedUserId') : []
+  if (assignedUserIds.length) await requireActor('issuer', 'participants.manage')
+
+  if(assignedUserIds.length){
+    const roster=await (await import('@/lib/services/roster')).getRoster(session.orgId)
+    if(assignedUserIds.some(id=>!roster.volunteers.some(v=>v.userId===id)))back(formData,destination,{error:'Choose approved volunteers from your organization’s roster.'})
+    if(assignedUserIds.length>capacity)back(formData,destination,{error:'The selected volunteers exceed the number of available spots.'})
+    const {programAccessError}=await import('@/lib/services/program-workspace')
+    for(const userId of assignedUserIds){
+      const error=await programAccessError(session.orgId,str(formData,'programId')||'organization',userId)
+      if(error)back(formData,destination,{error})
+    }
+  }
+  if (templateId) {
+    const requestedProgramId = str(formData, 'programId') || null
+    const template = (await db.select().from(tasks).where(and(eq(tasks.id, templateId), eq(tasks.orgId, session.orgId))).limit(1))[0]
+    if (!template || template.isOnboarding === 1 || template.status !== 'open' || template.programId !== requestedProgramId) {
+      back(formData, destination, { error: 'That template is not available in this program.' })
+    }
+    const result = await publishTemplateEvent({
+      taskId: template.id,
+      orgId: session.orgId,
+      cityId: city.id,
+      actorId: session.sub,
+      startsAt,
+      recurring,
+      visibility,
+      capacity: template.slots,
+      durationMinutes: template.defaultDurationMinutes,
+    })
+    if (!result.ok) back(formData, destination, { error: result.error })
+    if (result.mode === 'published' && result.visibility === 'public') await notifyMatchingParticipants(result.taskId)
+    back(formData, destination, { ok: recurring ? 'Recurring shift scheduled from the selected template.' : 'Shift scheduled from the selected template.' })
+  }
+  const result = await createTask({
+    orgId: session.orgId,
+    cityId: city.id,
+    actorId: session.sub,
+    title: str(formData, 'title'),
+    description: str(formData, 'description'),
+    location: str(formData, 'location'),
+    credits: 10,
+    slots: capacity,
+    defaultDurationMinutes: durationMinutes,
+    startsAt: '',
+    programId: str(formData, 'programId') || null,
+    initialShift: {
+      startsAt,
+      capacity,
+      durationMinutes,
+      visibility,
+      recurring,
+    },
+  })
+  if (!result.ok) back(formData, destination, { error: result.error })
+
+  if (visibility === 'public') await notifyMatchingParticipants(result.id)
+  if (visibility === 'private' && assignedUserIds.length && result.shiftId) {
+    const assignment = await assignVolunteersToShift({
+      shiftId: result.shiftId,
+      orgId: session.orgId,
+      actorId: session.sub,
+      userIds: assignedUserIds,
+    })
+    if (!assignment.ok) {
+      back(formData, destination, { error: `Shift scheduled and its reusable template saved, but volunteers could not be assigned: ${assignment.error}` })
+    }
+    back(formData, destination, { ok: `Shift scheduled, reusable template saved, and ${assignment.assigned} volunteer${assignment.assigned === 1 ? '' : 's'} added.` })
+  }
+  back(formData, destination, { ok: recurring
+    ? 'First shift scheduled and its reusable weekly template saved.'
+    : 'Shift scheduled and its reusable template saved.' })
+}
+
 export async function publishTemplateEventAction(formData: FormData) {
   const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
@@ -792,6 +892,18 @@ export async function publishTemplateEventAction(formData: FormData) {
   // Do this check before publishing so a role that can schedule shifts but
   // cannot manage people cannot create a partially completed roster action.
   if (assignedUserIds.length) await requireActor('issuer', 'participants.manage')
+  if (assignedUserIds.length) {
+    const template = (await db.select().from(tasks).where(and(eq(tasks.id, str(formData, 'taskId')), eq(tasks.orgId, session.orgId))).limit(1))[0]
+    if (!template) back(formData, destination, { error: 'Volunteer position not found.' })
+    const roster = await (await import('@/lib/services/roster')).getRoster(session.orgId)
+    if (assignedUserIds.some(id => !roster.volunteers.some(v => v.userId === id))) back(formData, destination, { error: 'Choose approved volunteers from your organization’s roster.' })
+    if (assignedUserIds.length > int(formData, 'capacity')) back(formData, destination, { error: 'The selected volunteers exceed the number of available spots.' })
+    const { programAccessError } = await import('@/lib/services/program-workspace')
+    for (const userId of assignedUserIds) {
+      const error = await programAccessError(session.orgId, template.programId || 'organization', userId)
+      if (error) back(formData, destination, { error })
+    }
+  }
   const result = await publishTemplateEvent({
     taskId: str(formData, 'taskId'),
     orgId: session.orgId,
@@ -897,6 +1009,35 @@ export async function removeVolunteerFromRecurringShiftPlanInlineAction(input: {
   const session = await requireActor('issuer', 'participants.manage')
   if (!session.orgId) return { ok: false as const, error: 'Choose an organization before changing planned volunteers.' }
   const result = await removeVolunteerFromRecurringShiftPlan({
+    taskId: input.taskId,
+    orgId: session.orgId,
+    occurrenceStartsAt: input.occurrenceStartsAt,
+    userId: input.userId,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  return { ok: true as const }
+}
+
+export async function planStaffForRecurringShiftInlineAction(input: { taskId: string; occurrenceStartsAt: number; userId: string }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before planning staff.' }
+  const result = await planStaffForRecurringShift({
+    taskId: input.taskId,
+    orgId: session.orgId,
+    actorId: session.sub,
+    occurrenceStartsAt: input.occurrenceStartsAt,
+    userId: input.userId,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  return { ok: true as const, assigned: result.assigned }
+}
+
+export async function removeStaffFromRecurringShiftPlanInlineAction(input: { taskId: string; occurrenceStartsAt: number; userId: string }) {
+  const session = await requireActor('issuer', 'participants.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before changing planned staff.' }
+  const result = await removeStaffFromRecurringShiftPlan({
     taskId: input.taskId,
     orgId: session.orgId,
     occurrenceStartsAt: input.occurrenceStartsAt,
@@ -1138,6 +1279,7 @@ export async function verifyShiftAttendanceAction(formData: FormData) {
     orgId: session.orgId,
     actorId: session.sub,
     note: str(formData, 'note'),
+    thankYouLetter: str(formData, 'thankYouLetter'),
     paperWaiverReceived: str(formData, 'paperWaiverReceived') === 'on',
     identityMatchesConfirmed: str(formData, 'identityMatchesConfirmed') === 'on',
   })
@@ -1145,7 +1287,7 @@ export async function verifyShiftAttendanceAction(formData: FormData) {
     formData,
     destination,
     result.ok
-      ? { ok: `Attendance finalized — ${result.verifiedCount} verified, ${result.noShowCount} marked no-show.` }
+      ? { ok: `Attendance finalized — ${result.verifiedCount} verified, ${result.noShowCount} marked no-show.${result.thankYouLetterSent ? ' Thank-you letter sent.' : ''}` }
       : { error: result.error },
   )
 }
@@ -1810,6 +1952,7 @@ export async function acceptVolunteerRosterInviteAction(formData: FormData) {
   const code = str(formData, 'code')
   const result = await acceptVolunteerRosterInvite({ userId: session.sub, code })
   if (!result.ok) back(formData, '/volunteer-invite', { error: result.error })
+  if(result.next)redirect(result.next)
   revalidatePath('/aesthetic-lab/issuer/volunteers')
   revalidatePath('/aesthetic-lab')
   redirect(`${aestheticHomeFor(session.role)}?ok=${encodeURIComponent(result.alreadyMember ? `You are already on ${result.organizationName}'s volunteer roster.` : `You joined ${result.organizationName}'s volunteer roster.`)}`)
@@ -1829,6 +1972,9 @@ export async function setVolunteerEligibilityAction(formData: FormData) {
   const status = str(formData, 'eligibility')
   if (!userId || !['pending', 'adult_verified', 'minor_consent_verified'].includes(status)) {
     back(formData, destination, { error: 'Choose a valid participant eligibility status.' })
+  }
+  if (status !== 'pending' && await isActiveOrganizationStaff(session.orgId, userId)) {
+    back(formData, destination, { error: 'Staff access takes priority. This person cannot be managed as a volunteer for the same organization.' })
   }
 
   const rosterClaim = await db
@@ -1887,6 +2033,9 @@ export async function setVolunteerIdentityVerificationAction(formData: FormData)
   }
   if (operation === 'verify' && str(formData, 'identityConfirmed') !== 'on') {
     back(formData, destination, { error: 'Confirm the in-person account match before recording it.' })
+  }
+  if (operation === 'verify' && await isActiveOrganizationStaff(session.orgId, userId)) {
+    back(formData, destination, { error: 'Staff access takes priority. This person cannot be managed as a volunteer for the same organization.' })
   }
 
   const rosterClaim = await db
@@ -1954,6 +2103,9 @@ export async function setVolunteerTaskEligibilityAction(formData: FormData) {
   const operation = str(formData, 'operation')
   if (!userId || !['grant', 'revoke'].includes(operation)) {
     back(formData, destination, { error: 'Choose a valid task eligibility action.' })
+  }
+  if (operation === 'grant' && await isActiveOrganizationStaff(session.orgId, userId)) {
+    back(formData, destination, { error: 'Staff access takes priority. This person cannot be managed as a volunteer for the same organization.' })
   }
 
   const rosterClaim = await db

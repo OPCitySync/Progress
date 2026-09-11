@@ -4,6 +4,9 @@
  * Run: npm run db:migrate
  */
 import { randomUUID } from 'crypto'
+import { programWorkspaceDDL } from '../src/lib/db/program-workspace-schema'
+import { volunteerIntakeDDL } from '../src/lib/db/volunteer-intake-schema'
+import { isPrivateOnboardingEvent } from '../src/lib/ledger/onboarding-privacy'
 import { createClient } from '@libsql/client'
 import { getCityClient } from '../src/lib/db/city-client'
 import { flushAllCityLedgerOutbox } from '../src/lib/ledger/city-outbox'
@@ -14,6 +17,8 @@ const client = createClient({
 })
 
 const statements = [
+  ...programWorkspaceDDL,
+  ...volunteerIntakeDDL,
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -282,12 +287,45 @@ const statements = [
     updated_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS recurring_event_schedules_org ON recurring_event_schedules (org_id, active)`,
+  `CREATE TABLE IF NOT EXISTS recurring_event_patterns (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    interval_days INTEGER NOT NULL DEFAULT 7,
+    next_starts_at INTEGER NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    capacity INTEGER NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'public',
+    enrollment_mode TEXT NOT NULL DEFAULT 'open_claims',
+    last_published_shift_id TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `INSERT OR IGNORE INTO recurring_event_patterns
+    (id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at)
+    SELECT 'legacy:' || task_id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at
+    FROM recurring_event_schedules`,
   `CREATE TABLE IF NOT EXISTS planned_recurring_assignments (
     id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL,
     org_id TEXT NOT NULL,
     occurrence_starts_at INTEGER NOT NULL,
     user_id TEXT NOT NULL,
+    assigned_by_user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'planned',
+    shift_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(task_id, occurrence_starts_at, user_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS planned_recurring_staff_assignments (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    occurrence_starts_at INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    delegation_id TEXT NOT NULL,
     assigned_by_user_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'planned',
     shift_id TEXT,
@@ -727,6 +765,9 @@ const columnMigrations = [
   `ALTER TABLE claims ADD COLUMN verification_batch_id TEXT`,
   `ALTER TABLE claims ADD COLUMN verified_by_user_id TEXT`,
   `ALTER TABLE claims ADD COLUMN verified_at INTEGER`,
+  `ALTER TABLE onboarding_intakes ADD COLUMN application_public INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE onboarding_intakes ADD COLUMN role_join_mode TEXT NOT NULL DEFAULT 'open'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN archived_at INTEGER`,
   `ALTER TABLE waiver_acceptances ADD COLUMN signature_method TEXT NOT NULL DEFAULT 'acknowledgement'`,
   `ALTER TABLE waiver_acceptances ADD COLUMN signer_name TEXT`,
   `ALTER TABLE waiver_acceptances ADD COLUMN electronic_consent_at INTEGER`,
@@ -757,9 +798,14 @@ const indexes = [
   `CREATE INDEX IF NOT EXISTS organization_documents_program ON organization_documents (program_id, updated_at)`,
   `CREATE INDEX IF NOT EXISTS volunteer_programs_org ON volunteer_programs (org_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS tasks_program ON tasks (program_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS recurring_event_patterns_org ON recurring_event_patterns (org_id, active)`,
+  `CREATE INDEX IF NOT EXISTS recurring_event_patterns_task ON recurring_event_patterns (task_id, active)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS planned_recurring_assignments_occurrence_user ON planned_recurring_assignments (task_id, occurrence_starts_at, user_id)`,
   `CREATE INDEX IF NOT EXISTS planned_recurring_assignments_org ON planned_recurring_assignments (org_id, occurrence_starts_at)`,
   `CREATE INDEX IF NOT EXISTS planned_recurring_assignments_occurrence ON planned_recurring_assignments (task_id, occurrence_starts_at, status)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS planned_recurring_staff_assignments_occurrence_user ON planned_recurring_staff_assignments (task_id, occurrence_starts_at, user_id)`,
+  `CREATE INDEX IF NOT EXISTS planned_recurring_staff_assignments_org ON planned_recurring_staff_assignments (org_id, occurrence_starts_at)`,
+  `CREATE INDEX IF NOT EXISTS planned_recurring_staff_assignments_occurrence ON planned_recurring_staff_assignments (task_id, occurrence_starts_at, status)`,
   `CREATE INDEX IF NOT EXISTS organization_document_assignments_document ON organization_document_assignments (document_id)`,
   `CREATE INDEX IF NOT EXISTS organization_document_assignments_task ON organization_document_assignments (task_id)`,
   `CREATE INDEX IF NOT EXISTS organization_resource_publications_org_destination ON organization_resource_publications (org_id, destination)`,
@@ -1384,6 +1430,7 @@ async function backfillLegacyCityLedgerOutbox() {
   let queued = 0
 
   for (const event of eventRows.rows) {
+    if (isPrivateOnboardingEvent(String(event.type))) continue
     let payload: Record<string, unknown> = {}
     try {
       const parsed: unknown = JSON.parse(String(event.payload))

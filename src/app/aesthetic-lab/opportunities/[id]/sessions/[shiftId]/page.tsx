@@ -120,6 +120,7 @@ export default async function ReservedSessionPage({
   const identityMatchPending = claim.identityMatchRequired === 1 && identityVerification?.status !== 'verified'
   const sessionUrl = `/aesthetic-lab/opportunities/${record.task.id}/sessions/${record.shift.id}`
   const opportunityUrl = `/aesthetic-lab/opportunities/${record.task.id}`
+  const welcomePolicy=await (await import('@/lib/services/program-workspace')).programPolicy(record.task.orgId,record.task.programId||'organization')
   const sessionLocation = record.task.location || profile?.location || 'Location to be confirmed by the organization'
   const participation = city?.participation?.status
   const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
@@ -162,6 +163,7 @@ export default async function ReservedSessionPage({
 
       <section className={styles.primaryColumn} aria-label="Session preparation">
         <Link href={opportunityUrl} className={styles.onboardingBackLink}>← Opportunity</Link>
+        {isOnboarding&&welcomePolicy&&welcomePolicy.onboardingMode!=='none'?<section className={styles.onboardingProcessCard}><b>Finish your volunteer welcome</b><p>Your session is part of the organization’s onboarding. Review your checklist and request profile approval when everything is ready.</p><Link className={styles.catalogWorkspaceAction} href={'/aesthetic-lab/onboarding/'+record.task.orgId+'/'+(record.task.programId||'organization')}>Open my onboarding checklist</Link></section>:null}
         <LabNotice ok={searchParams.ok} error={searchParams.error} />
 
         <section className={styles.sessionPrepReservationGroup}>

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { and, asc, eq, gte } from 'drizzle-orm'
-import { FileText, FolderKanban, Repeat2, ShieldCheck, UsersRound } from 'lucide-react'
+import { FileText, ShieldCheck } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { attachOrganizationDocumentAction, createOnboardingSessionAction, updateOnboardingSessionAction } from '@/app/actions'
 import { db } from '@/lib/db/client'
@@ -54,7 +54,7 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
     ? Math.max(30, Math.round((nextSession.endsAt - nextSession.startsAt) / 60_000))
     : 45
   const usesPaperWaivers = sessionWaiverSetup.method === 'in_person'
-  const returnToWorkspace = '/aesthetic-lab/issuer/catalog?workspace=onboarding'
+  const returnToWorkspace = '/aesthetic-lab/issuer/volunteers'
   const includedDocuments = editingTask ? organizationDocuments.filter((document) => document.taskIds.includes(editingTask.id)) : []
   const availableDocuments = editingTask ? organizationDocuments.filter((document) => !document.taskIds.includes(editingTask.id)) : []
   const manageUrl = editingTask ? `/aesthetic-lab/issuer/onboarding?taskId=${editingTask.id}` : '/aesthetic-lab/issuer/onboarding'
@@ -63,20 +63,14 @@ export default async function NewLabOnboardingPage({ searchParams }: { searchPar
     : '/aesthetic-lab/issuer/documents?category=guide'
 
   return <main className={styles.app}>
-    <LabHeader activeSection="issuer-catalog" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
+    <LabHeader activeSection="issuer-volunteers" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
     <div className={styles.issuerLayout}>
       <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
       <section className={styles.issuerMain} aria-label="Workspace">
         <section className={styles.issuerPageHero}>
-          <div><p className={styles.eyebrow}>Workspace · Onboarding</p><h1>{isEditing ? 'Manage your onboarding session.' : 'Create a first step.'}</h1><p>{isEditing ? 'Update the recurring session while keeping completed session history in place.' : 'Participants complete this local session to become City Members.'}</p></div>
-          <Link href={returnToWorkspace} className={styles.catalogWorkspaceAction}>Back to Workspace</Link>
+          <div><p className={styles.eyebrow}>Volunteers · Onboarding</p><h1>{isEditing ? 'Manage your onboarding session.' : 'Create a first step.'}</h1><p>{isEditing ? 'Update the recurring session while keeping completed session history in place.' : 'Participants complete this local session to become City Members.'}</p></div>
+          <Link href={returnToWorkspace} className={styles.catalogWorkspaceAction}>Back to Volunteers</Link>
         </section>
-        <nav className={styles.workspaceSectionNav} aria-label="Workspace navigation">
-          <Link href="/aesthetic-lab/issuer/catalog?workspace=programs"><FolderKanban size={15} /> Volunteer Programs</Link>
-          <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation"><FileText size={15} /> Documentation</Link>
-          <Link href={manageUrl} data-active="true" aria-current="page"><Repeat2 size={15} /> Onboarding</Link>
-          <Link href="/aesthetic-lab/issuer/catalog?workspace=opportunities"><UsersRound size={15} /> Opportunities</Link>
-        </nav>
         <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
         <section className={styles.labPanel}>
               <form action={isEditing ? updateOnboardingSessionAction : createOnboardingSessionAction} className={styles.labForm}>

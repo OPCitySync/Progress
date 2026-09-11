@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { tasks, shifts, claims, orgs, users, organizationDelegations, shiftStaffAssignments, verificationBatches, volunteerIdentityVerifications, plannedRecurringAssignments, recurringEventSchedules } from '@/lib/db/schema'
+import { tasks, shifts, claims, orgs, users, organizationDelegations, shiftStaffAssignments, verificationBatches, volunteerIdentityVerifications, plannedRecurringAssignments, plannedRecurringStaffAssignments, recurringEventSchedules, programRecognitions, orgMessages, messageRecipients } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { getOnboardingWaiverSetup, hasSignedWaiver } from './waivers'
@@ -25,6 +25,9 @@ import {
 import { mintCityCredits } from './city-wallets'
 import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
 import { programBelongsToOrganization } from './volunteer-programs'
+import { programAccessError, programPolicy, registerProgramCandidate, scopeOf } from './program-workspace'
+import { getIntake, intakeReservationGate } from './volunteer-intake'
+import { getRoster } from './roster'
 
 /**
  * Opportunity module. An opportunity (task) is a template; volunteers claim a
@@ -36,6 +39,17 @@ import { programBelongsToOrganization } from './volunteer-programs'
 
 export type ShiftRow = typeof shifts.$inferSelect
 const ACTIVE_CLAIM_STATUSES = ['claimed', 'submitted', 'verified'] as const
+const MINUTE_MS = 60_000
+
+function advanceDays(startsAt: number, days: number) {
+  const date = new Date(startsAt)
+  date.setDate(date.getDate() + days)
+  return date.getTime()
+}
+
+function recurringShiftLabel(startsAt: number) {
+  return `Weekly ${new Date(startsAt).toLocaleDateString('en-US', { weekday: 'long' })} event`
+}
 
 // Unambiguous code alphabet (no 0/O/1/I).
 function shiftCode(): string {
@@ -68,7 +82,21 @@ export async function createTask(input: {
   requiredCredentials?: string[]
   catalogEntryId?: string | null
   programId?: string | null
-}): Promise<Result<{ id: string }>> {
+  initialShift?: {
+    startsAt: number
+    capacity: number
+    durationMinutes: number
+    visibility: 'public' | 'private'
+    recurring: boolean
+  }
+  initialShifts?: Array<{
+    startsAt: number
+    capacity: number
+    durationMinutes: number
+    visibility: 'public' | 'private'
+    recurring: boolean
+  }>
+}): Promise<Result<{ id: string; shiftId?: string; visibility?: 'public' | 'private' }>> {
   if (!input.title.trim()) return { ok: false, error: 'Title is required.' }
   const location = normalizeOrganizationLocation(input.location)
   if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
@@ -82,6 +110,22 @@ export async function createTask(input: {
   if (!Number.isInteger(defaultDurationMinutes) || defaultDurationMinutes < 15 || defaultDurationMinutes > 24 * 60) {
     return { ok: false, error: 'Default shift duration must be between 15 minutes and 24 hours.' }
   }
+  const initialShifts = input.initialShifts ?? (input.initialShift ? [input.initialShift] : [])
+  if (initialShifts.length > 21) return { ok: false, error: 'Add no more than 21 shifts while creating a role.' }
+  if (new Set(initialShifts.map((shift) => shift.startsAt)).size !== initialShifts.length) {
+    return { ok: false, error: 'Each shift must have a different day and start time.' }
+  }
+  for (const initialShift of initialShifts) {
+    if (!initialShift.startsAt || initialShift.startsAt < Date.now() - 5 * MINUTE_MS) {
+      return { ok: false, error: 'Choose a shift date and time in the future.' }
+    }
+    if (!Number.isInteger(initialShift.capacity) || initialShift.capacity < 1 || initialShift.capacity > 10000) {
+      return { ok: false, error: 'Shift capacity must be a whole number of at least 1.' }
+    }
+    if (!Number.isInteger(initialShift.durationMinutes) || initialShift.durationMinutes < 15 || initialShift.durationMinutes > 24 * 60) {
+      return { ok: false, error: 'Shift duration must be between 15 minutes and 24 hours.' }
+    }
+  }
 
   const org = (await db.select().from(orgs).where(eq(orgs.id, input.orgId)).limit(1))[0]
   if (!org || org.status !== 'approved') {
@@ -92,6 +136,9 @@ export async function createTask(input: {
   }
 
   const id = randomUUID()
+  const shiftIds = initialShifts.map(() => randomUUID())
+  const shiftId = shiftIds[0]
+  const now = Date.now()
   await db.transaction(async (tx) => {
     await tx.insert(tasks).values({
       id,
@@ -109,7 +156,7 @@ export async function createTask(input: {
       requiredCredentials: JSON.stringify((input.requiredCredentials ?? []).filter(isCredentialKey)),
       catalogEntryId: input.catalogEntryId ?? null,
       createdBy: input.actorId,
-      createdAt: Date.now(),
+      createdAt: now,
     })
     await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
     await appendEvent(
@@ -118,8 +165,66 @@ export async function createTask(input: {
       { taskId: id, orgId: input.orgId, cityId: input.cityId, credits: input.credits, title: input.title.trim() },
       input.actorId,
     )
+    for (let index = 0; index < initialShifts.length; index += 1) {
+      const initialShift = initialShifts[index]
+      const currentShiftId = shiftIds[index]
+      const visibility = initialShift.visibility === 'private' ? 'private' : 'public'
+      const enrollmentMode = visibility === 'private' ? 'organization_managed' : 'open_claims'
+      const endsAt = initialShift.startsAt + initialShift.durationMinutes * MINUTE_MS
+      await tx.insert(shifts).values({
+        id: currentShiftId,
+        taskId: id,
+        orgId: input.orgId,
+        startsAt: initialShift.startsAt,
+        endsAt,
+        label: initialShift.recurring ? recurringShiftLabel(initialShift.startsAt) : '',
+        capacity: initialShift.capacity,
+        status: 'open',
+        visibility,
+        enrollmentMode,
+        checkInCode: shiftCode(),
+        createdAt: now,
+      })
+      await appendEvent(tx, EventTypes.TEMPLATE_EVENT_PUBLISHED, {
+        taskId: id,
+        orgId: input.orgId,
+        cityId: input.cityId,
+        shiftId: currentShiftId,
+        startsAt: initialShift.startsAt,
+        durationMinutes: initialShift.durationMinutes,
+        capacity: initialShift.capacity,
+        recurring: initialShift.recurring,
+        visibility,
+        enrollmentMode,
+      }, input.actorId)
+      if (initialShift.recurring) {
+        const nextStartsAt = advanceDays(initialShift.startsAt, 7)
+        await tx.insert(recurringEventSchedules).values({
+          id: randomUUID(),
+          taskId: id,
+          orgId: input.orgId,
+          intervalDays: 7,
+          nextStartsAt,
+          durationMinutes: initialShift.durationMinutes,
+          capacity: initialShift.capacity,
+          visibility,
+          enrollmentMode,
+          lastPublishedShiftId: currentShiftId,
+          active: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        await appendEvent(tx, EventTypes.TEMPLATE_EVENT_RECURRENCE_SET, {
+          taskId: id,
+          orgId: input.orgId,
+          cityId: input.cityId,
+          nextStartsAt,
+          waitsForShiftId: currentShiftId,
+        }, input.actorId)
+      }
+    }
   })
-  return { ok: true, id }
+  return { ok: true, id, shiftId, visibility: initialShifts[0]?.visibility }
 }
 
 /**
@@ -281,14 +386,33 @@ export async function assignVolunteersToShift(input: {
   if (task.orgId !== input.orgId || task.status !== 'open' || shift.status !== 'open') return { ok: false, error: 'This shift is not accepting roster assignments.' }
   if (shift.startsAt && shift.startsAt <= Date.now()) return { ok: false, error: 'Roster assignments are available only before the shift begins.' }
 
-  const rosterRows = await db
-    .select({ userId: claims.userId })
-    .from(claims)
-    .innerJoin(tasks, eq(claims.taskId, tasks.id))
-    .where(and(eq(tasks.orgId, input.orgId), inArray(claims.userId, userIds), ne(claims.status, 'unclaimed')))
-  const rosterIds = new Set(rosterRows.map(({ userId }) => userId))
+  const staffRows = await db
+    .select({ userId: organizationDelegations.userId })
+    .from(organizationDelegations)
+    .where(and(
+      eq(organizationDelegations.orgId, input.orgId),
+      inArray(organizationDelegations.userId, userIds),
+      eq(organizationDelegations.status, 'active'),
+    ))
+  if (staffRows.length) {
+    return { ok: false, error: 'Staff members cannot be assigned as volunteers within the same organization.' }
+  }
+
+  const rosterIds = new Set((await getRoster(input.orgId)).volunteers.map(v=>v.userId))
+  if (task.isOnboarding === 1) {
+    for (const userId of userIds) {
+      const gate = await intakeReservationGate(task.id, userId)
+      if (!gate.ok) return gate
+    }
+  }
   const invalidIds = userIds.filter((userId) => !rosterIds.has(userId))
   if (invalidIds.length) return { ok: false, error: 'Only people already in your organization roster can be assigned.' }
+  if(task.isOnboarding!==1){
+    for(const userId of userIds){
+      const error=await programAccessError(input.orgId,scopeOf(task.programId),userId)
+      if(error)return {ok:false,error}
+    }
+  }
 
   const existingRows = await db
     .select()
@@ -466,7 +590,7 @@ export async function deleteOpportunityTemplate(input: {
   }
 
   const shiftIds = openShifts.map((shift) => shift.id)
-  const [activeClaims, plannedAssignments] = await Promise.all([
+  const [activeClaims, plannedAssignments, plannedStaffAssignments] = await Promise.all([
     shiftIds.length
       ? db.select({ shiftId: claims.shiftId, userId: claims.userId }).from(claims).where(and(
         inArray(claims.shiftId, shiftIds),
@@ -477,6 +601,11 @@ export async function deleteOpportunityTemplate(input: {
       eq(plannedRecurringAssignments.taskId, input.taskId),
       eq(plannedRecurringAssignments.orgId, input.orgId),
       eq(plannedRecurringAssignments.status, 'planned'),
+    )),
+    db.select().from(plannedRecurringStaffAssignments).where(and(
+      eq(plannedRecurringStaffAssignments.taskId, input.taskId),
+      eq(plannedRecurringStaffAssignments.orgId, input.orgId),
+      eq(plannedRecurringStaffAssignments.status, 'planned'),
     )),
   ])
   const participantsByShift = new Map<string, string[]>()
@@ -497,6 +626,13 @@ export async function deleteOpportunityTemplate(input: {
         eq(plannedRecurringAssignments.taskId, input.taskId),
         eq(plannedRecurringAssignments.orgId, input.orgId),
         eq(plannedRecurringAssignments.status, 'planned'),
+      ))
+    }
+    if (plannedStaffAssignments.length) {
+      await tx.update(plannedRecurringStaffAssignments).set({ status: 'removed', updatedAt: now }).where(and(
+        eq(plannedRecurringStaffAssignments.taskId, input.taskId),
+        eq(plannedRecurringStaffAssignments.orgId, input.orgId),
+        eq(plannedRecurringStaffAssignments.status, 'planned'),
       ))
     }
     if (shiftIds.length) {
@@ -520,7 +656,7 @@ export async function deleteOpportunityTemplate(input: {
       cityId: row.task.cityId,
       reason: 'template_deleted',
       cancelledShiftCount: shiftIds.length,
-      removedPlannedAssignmentCount: plannedAssignments.length,
+      removedPlannedAssignmentCount: plannedAssignments.length + plannedStaffAssignments.length,
     }, input.actorId)
   })
 
@@ -830,7 +966,30 @@ export async function checkClaimGate(
     return { ok: false, reason: 'error', error: 'The issuing organization is not active.' }
   }
 
+  const staffAccess = (
+    await db
+      .select({ id: organizationDelegations.id })
+      .from(organizationDelegations)
+      .where(and(
+        eq(organizationDelegations.orgId, task.orgId),
+        eq(organizationDelegations.userId, userId),
+        eq(organizationDelegations.status, 'active'),
+      ))
+      .limit(1)
+  )[0]
+  if (staffAccess) {
+    return { ok: false, reason: 'error', error: 'You have staff access to this organization, so you cannot claim one of its volunteer shifts.' }
+  }
+  if(task.isOnboarding!==1){
+    const error=await programAccessError(task.orgId,scopeOf(task.programId),userId)
+    if(error)return {ok:false,reason:'error',error}
+  }
+
   const cityGate = await checkCityParticipationGate({ userId, taskId: task.id, cityId: task.cityId })
+  if ((await getIntake(task.id))?.applicationRequired) {
+    const intakeGate = await intakeReservationGate(task.id, userId)
+    if (!intakeGate.ok) return { ok: false, reason: 'error', error: intakeGate.error }
+  }
   if (!cityGate.ok) return { ok: false, reason: 'error', error: cityGate.error }
 
   const existing = (
@@ -904,8 +1063,9 @@ export async function claimShift(
 
   const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
   if (!shift) return { ok: false, error: 'Shift not found.' }
-  const task = (await db.select({ cityId: tasks.cityId }).from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
+  const task = (await db.select().from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
   if (!task) return { ok: false, error: 'Opportunity not found.' }
+  const welcomePolicy=task.isOnboarding===1 && !(await getIntake(task.id))?await programPolicy(task.orgId,scopeOf(task.programId)):null
 
   const existing = (
     await db.select().from(claims).where(and(eq(claims.shiftId, shiftId), eq(claims.userId, userId))).limit(1)
@@ -938,6 +1098,7 @@ export async function claimShift(
       })
     }
     await appendEvent(tx, EventTypes.TASK_CLAIMED, { taskId: shift.taskId, shiftId, cityId: task.cityId }, userId)
+    if(welcomePolicy&&welcomePolicy.onboardingMode!=='none')await registerProgramCandidate(tx,task.orgId,welcomePolicy.scope,userId)
   })
   // Confirmation + pre-shift reminder (best-effort, outside the ledger).
   await notifyShiftClaimed(userId, shiftId)
@@ -1156,9 +1317,10 @@ export async function verifyShiftAttendance(input: {
   orgId: string
   actorId: string
   note?: string
+  thankYouLetter?: string
   paperWaiverReceived?: boolean
   identityMatchesConfirmed?: boolean
-}): Promise<Result<{ batchId: string | null; verifiedCount: number; noShowCount: number }>> {
+}): Promise<Result<{ batchId: string | null; verifiedCount: number; noShowCount: number; thankYouLetterSent: boolean }>> {
   const now = Date.now()
   const shiftRow = (await db
     .select({ shift: shifts, task: tasks })
@@ -1185,6 +1347,19 @@ export async function verifyShiftAttendance(input: {
     : []
   if (selectedClaims.length !== selectedIds.length) {
     return { ok: false, error: 'One or more selected sign-ups have already been resolved. Refresh the shift roster and try again.' }
+  }
+  const thankYouLetter = input.thankYouLetter?.trim() ?? ''
+  if (thankYouLetter.length > 3_000) {
+    return { ok: false, error: 'Keep the thank-you letter to 3,000 characters or fewer.' }
+  }
+  if (thankYouLetter && !selectedClaims.length) {
+    return { ok: false, error: 'Select at least one attendee before sending a thank-you letter.' }
+  }
+  const selectedParticipants = selectedClaims.length
+    ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, selectedClaims.map((claim) => claim.userId)))
+    : []
+  if (selectedParticipants.length !== new Set(selectedClaims.map((claim) => claim.userId)).size) {
+    return { ok: false, error: 'One or more selected attendee profiles could not be found.' }
   }
   const needsPaperWaiver = selectedClaims.some((claim) => claim.waiverCollectionMethod === 'in_person' && !claim.paperWaiverConfirmedAt)
   if (needsPaperWaiver && !input.paperWaiverReceived) {
@@ -1298,6 +1473,57 @@ export async function verifyShiftAttendance(input: {
   })
 
   await db.transaction(async (tx) => {
+    if (thankYouLetter) {
+      const recognitionId = randomUUID()
+      const messageId = randomUUID()
+      await tx.insert(programRecognitions).values({
+        id: recognitionId,
+        orgId: input.orgId,
+        scope: scopeOf(shiftRow.task.programId),
+        shiftId: shiftRow.shift.id,
+        userId: null,
+        kind: 'letter',
+        message: thankYouLetter,
+        recipientNames: selectedParticipants.map((participant) => participant.name).join(', '),
+        actorId: input.actorId,
+        createdAt: now,
+      })
+      await tx.insert(orgMessages).values({
+        id: messageId,
+        orgId: input.orgId,
+        senderUserId: input.actorId,
+        scope: 'members',
+        taskId: shiftRow.task.id,
+        groupId: null,
+        subject: `Thank you — ${shiftRow.task.title}`,
+        body: thankYouLetter,
+        recipientCount: selectedParticipants.length,
+        createdAt: now,
+      })
+      await tx.insert(messageRecipients).values(selectedParticipants.map((participant) => ({
+        id: randomUUID(),
+        messageId,
+        userId: participant.id,
+        readAt: null,
+        createdAt: now,
+      })))
+      await appendEvent(
+        tx,
+        EventTypes.PROGRAM_RECOGNITION_CREATED,
+        {
+          orgId: input.orgId,
+          programId: scopeOf(shiftRow.task.programId),
+          recognitionId,
+          shiftId: shiftRow.shift.id,
+          taskId: shiftRow.task.id,
+          kind: 'letter',
+          recipientIds: selectedParticipants.map((participant) => participant.id),
+          messageId,
+        },
+        input.actorId,
+        shiftRow.task.cityId,
+      )
+    }
     await tx
       .update(shifts)
       .set({ status: 'closed' })
@@ -1319,7 +1545,7 @@ export async function verifyShiftAttendance(input: {
     )
   })
   await cancelRemindersForShift(shiftRow.shift.id)
-  return { ok: true, batchId, verifiedCount: selectedClaims.length, noShowCount: noShows.marked }
+  return { ok: true, batchId, verifiedCount: selectedClaims.length, noShowCount: noShows.marked, thankYouLetterSent: Boolean(thankYouLetter) }
 }
 
 /**

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, FileText, FolderKanban, Plus, Repeat2, UsersRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, FileText, FolderKanban, Plus, UsersRound } from 'lucide-react'
 import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
@@ -62,7 +62,6 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
           <nav className={styles.workspaceSectionNav} aria-label="Workspace navigation">
             <Link href="/aesthetic-lab/issuer/catalog?workspace=programs"><FolderKanban size={15} /> Volunteer Programs</Link>
             <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation"><FileText size={15} /> Documentation</Link>
-            <Link href="/aesthetic-lab/issuer/catalog?workspace=onboarding"><Repeat2 size={15} /> Onboarding</Link>
             <Link href={redirectTo} data-active="true" aria-current="page"><UsersRound size={15} /> Opportunities</Link>
           </nav>
 

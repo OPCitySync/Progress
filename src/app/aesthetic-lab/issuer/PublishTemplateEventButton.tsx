@@ -2,7 +2,8 @@
 
 import { CalendarPlus, Check, Repeat2, Search, UsersRound, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { publishTemplateEventAction } from '@/app/actions'
+import {useWorkspaceSave} from './useWorkspaceSave'
+import {createPortal} from 'react-dom'
 import styles from '../prototype.module.css'
 
 function localDateTimeValue(timestamp: number) {
@@ -21,7 +22,7 @@ export function PublishTemplateEventButton({
   volunteers = [],
   redirectTo,
   suggestedStartsAt,
-  buttonLabel = 'Publish shift',
+  buttonLabel = 'Schedule shift',
   defaultVisibility = 'public',
   defaultDurationMinutes = 120,
 }: {
@@ -76,26 +77,27 @@ export function PublishTemplateEventButton({
     setSelectedVolunteerIds((current) => current.slice(0, nextCapacity))
   }
 
+  const {submit,pending,error}=useWorkspaceSave('publishShift',close)
   return <>
     <button
       type="button"
       className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton}`}
       disabled={!hasTemplates}
-      title={hasTemplates ? 'Publish an event from a saved template' : 'Create an opportunity template first'}
+      title={hasTemplates ? 'Choose a volunteer role, then schedule its next shift' : 'Create a volunteer role first'}
       onClick={() => setOpen(true)}
     ><CalendarPlus size={15} /> {buttonLabel}</button>
 
-    {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={close}>
+    {open ? createPortal(<div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={close}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby="publish-template-event-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
-          <div><p className={styles.eyebrow}>Published shift</p><h2 id="publish-template-event-title">Schedule a volunteer shift.</h2><p>Set the date, then open the shift for signup or keep it within your organization for direct assignment.</p></div>
+          <div><p className={styles.eyebrow}>Shift planning</p><h2 id="publish-template-event-title">Schedule a shift for a volunteer role.</h2><p>Choose the work first, then set its time and decide whether people can sign up or be assigned directly.</p></div>
           <button type="button" aria-label="Close" onClick={close}><X size={18} /></button>
         </div>
-        <form action={publishTemplateEventAction} className={styles.issuerCalendarForm} onSubmit={close}>
+        <form action={submit} aria-busy={pending} className={styles.issuerCalendarForm}>
           <input type="hidden" name="redirectTo" value={redirectTo} />
-          {oneTemplate ? <input type="hidden" name="taskId" value={templates[0].id} /> : <label>Opportunity template
+          {oneTemplate ? <input type="hidden" name="taskId" value={templates[0].id} /> : <label>Volunteer role
             <select name="taskId" required value={selectedTemplateId} onChange={(event) => setTemplate(event.target.value)}>
-              <option value="" disabled>Select a template</option>
+              <option value="" disabled>Select a volunteer role</option>
               {templates.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}
             </select>
           </label>}
@@ -132,12 +134,13 @@ export function PublishTemplateEventButton({
             ? 'This shift will stay out of City/Sync’s public opportunities. Selected volunteers will be notified when it is published.'
             : 'Eligible Civic Participants can find this shift and claim an open spot. You can still add roster members directly later.'}</p>
           <label className={styles.onboardingRecurringChoice}><span><input type="checkbox" name="recurring" value="true" /> <Repeat2 size={15} /> Set up as recurring</span><small>City/Sync keeps one active occurrence at a time, then publishes the next date after the current shift ends.</small></label>
-          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={close}>Cancel</button><button type="submit"><CalendarPlus size={15} /> Publish shift</button></div>
+          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={close}>Cancel</button><button type="submit" disabled={pending}><CalendarPlus size={15} /> Schedule shift</button></div>
+          {error?<p role="alert" style={{color:'#99463f',fontSize:12}}>{error}</p>:null}
         </form>
       </section>
-    </div> : null}
+    </div>,document.body) : null}
 
-    {open && rosterOpen ? <div className={styles.issuerNestedModalBackdrop} role="presentation" onMouseDown={() => setRosterOpen(false)}>
+    {open && rosterOpen ? createPortal(<div className={styles.issuerNestedModalBackdrop} role="presentation" onMouseDown={() => setRosterOpen(false)}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby="private-shift-roster-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
           <div><p className={styles.eyebrow}>Private shift roster</p><h2 id="private-shift-roster-title">Add volunteers.</h2><p>Select up to {capacity} person{capacity === 1 ? '' : 's'} from your organization’s full roster. They will receive the shift after it is published.</p></div>
@@ -161,6 +164,6 @@ export function PublishTemplateEventButton({
           <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setRosterOpen(false)}>Done</button></div>
         </div>
       </section>
-    </div> : null}
+    </div>,document.body) : null}
   </>
 }

@@ -2,7 +2,8 @@
 
 import { FileText, X } from 'lucide-react'
 import { useState } from 'react'
-import { createOrganizationDocumentAction } from '@/app/actions'
+import { useWorkspaceSave } from './useWorkspaceSave'
+import { createPortal } from 'react-dom'
 import type { OrganizationDocumentCategory } from '@/lib/services/organization-documents'
 import styles from '../prototype.module.css'
 
@@ -73,15 +74,17 @@ export function DocumentCreateButton({
   const formCopy = category ? copy[category] : generalDocumentCopy
   const dialogId = `add-${category ?? 'program'}-document-title`
 
+  const {submit,pending,error}=useWorkspaceSave('document',() => setOpen(false))
+
   return <>
     <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.documentCreateTrigger}`} style={documentTriggerDimensions} aria-haspopup="dialog" onClick={() => setOpen(true)}>{buttonLabel}</button>
-    {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setOpen(false)}>
+    {open ? createPortal(<div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setOpen(false)}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby={dialogId} onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
           <div><p className={styles.eyebrow}>{formCopy.eyebrow}</p><h2 id={dialogId}>{formCopy.title}</h2><p>{formCopy.helper}</p></div>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
-        <form action={createOrganizationDocumentAction} className={styles.issuerCalendarForm} onSubmit={() => setOpen(false)}>
+        <form action={submit} aria-busy={pending} className={styles.issuerCalendarForm}>
           <input type="hidden" name="redirectTo" value={redirectTo} />
           <input type="hidden" name="successRedirectTo" value={redirectTo} />
           {category ? <input type="hidden" name="category" value={category} /> : null}
@@ -95,9 +98,10 @@ export function DocumentCreateButton({
             <legend>Attach to opportunities <span>(optional)</span></legend>
             {tasks.length > 0 ? <div>{tasks.map((task) => <label key={task.id}><input type="checkbox" name="taskIds" value={task.id} /><span>{task.title}</span></label>)}</div> : <p>No opportunities are available in this city yet. You can attach this document later.</p>}
           </fieldset>
-          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="submit"><FileText size={15} /> Save Document</button></div>
+          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setOpen(false)}>Cancel</button><button type="submit" disabled={pending}><FileText size={15} /> Save Document</button></div>
+          {error?<p role="alert" style={{color:'#99463f',fontSize:12}}>{error}</p>:null}
         </form>
       </section>
-    </div> : null}
+    </div>,document.body) : null}
   </>
 }

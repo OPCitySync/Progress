@@ -15,7 +15,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { claims, orgs, tasks } from '@/lib/db/schema'
+import { claims, orgs, tasks, onboardingIntakes } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
 import { aggregateOpportunities, listPublicIssuers, type PublicOpportunity } from '@/lib/services/profile'
@@ -29,6 +29,13 @@ import styles from '../prototype.module.css'
 export const dynamic = 'force-dynamic'
 
 type OpportunityRow = { card: PublicOpportunity; orgName: string; isOnboarding: boolean; savedByMe: boolean }
+type PublishedVolunteerRole = {
+  id: string
+  orgId: string
+  title: string
+  description: string
+  hasApplicationQuestions: boolean
+}
 
 function opportunityDate(card: PublicOpportunity) {
   if (!card.nextShiftAt) return { day: 'TBD', date: '—' }
@@ -95,8 +102,33 @@ function OrganizationPublishedOpportunities({ opportunities }: { opportunities: 
   </section>
 }
 
-function OrganizationOnboardingSessions({ opportunities }: { opportunities: PublicOpportunity[] }) {
+function OrganizationVolunteerRoles({ roles }: { roles: PublishedVolunteerRole[] }) {
+  if (roles.length === 0) return null
+
+  return <section className={styles.organizationPublishedOpportunities}>
+    <div className={styles.organizationSessionHeading}>
+      <span><UsersRound size={16} /> Volunteer roles</span>
+      <em>{roles.length} accepting applications</em>
+    </div>
+    <div className={styles.organizationOpportunityList}>
+      {roles.map((role) => (
+        <article key={role.id}>
+          <div>
+            <b>{role.title}</b>
+            <small>{role.description || 'A volunteer role open to Civic-Participants.'}</small>
+            <span>{role.hasApplicationQuestions ? 'Application questions included' : 'Apply with your City/Sync profile'}</span>
+          </div>
+          <Link href={`/aesthetic-lab/opportunities/${role.id}#application`}>Apply <ArrowUpRight size={14} /></Link>
+        </article>
+      ))}
+    </div>
+  </section>
+}
+
+async function OrganizationOnboardingSessions({ opportunities }: { opportunities: PublicOpportunity[] }) {
   const sessions = opportunities.filter((opportunity) => opportunity.isOnboarding)
+  const intakeForms = sessions.length ? await db.select({ taskId: onboardingIntakes.taskId }).from(onboardingIntakes).where(and(inArray(onboardingIntakes.taskId,sessions.map(s=>s.id)),eq(onboardingIntakes.applicationRequired,1))) : []
+  const applicationIds=new Set(intakeForms.map(f=>f.taskId))
   return <section className={styles.organizationOnboardingSessions}>
     <div className={styles.organizationSessionHeading}>
       <span><Sparkles size={16} /> Onboarding sessions</span>
@@ -114,7 +146,7 @@ function OrganizationOnboardingSessions({ opportunities }: { opportunities: Publ
           </summary>
           <div>
             <p>{session.description || 'Meet the organization, learn how its volunteer program works, and take the first step toward participating locally.'}</p>
-            <Link href={`/aesthetic-lab/opportunities/${session.id}`}>Reserve a spot <ArrowUpRight size={14} /></Link>
+            <Link href={`/aesthetic-lab/opportunities/${session.id}${applicationIds.has(session.id)?'#application':''}`}>{applicationIds.has(session.id)?'Apply':'Reserve a spot'} <ArrowUpRight size={14} /></Link>
           </div>
         </details>
       ))}
@@ -156,9 +188,24 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
   const missionAreas = Array.from(new Set(directory.flatMap((organization) => organization.causes))).slice(0, 8)
   const directoryById = new Map(directory.map((organization) => [organization.org.id, organization]))
   const organizationIds = Array.from(new Set([...directory.map((organization) => organization.org.id), ...joinedOrganizations.map((organization) => organization.id)]))
-  const organizationTaskRows = city && organizationIds.length
-    ? await db.select().from(tasks).where(and(inArray(tasks.orgId, organizationIds), eq(tasks.cityId, city.id), eq(tasks.status, 'open')))
-    : []
+  const [organizationTaskRows, publicRoleRows] = city && organizationIds.length
+    ? await Promise.all([
+        db.select().from(tasks).where(and(inArray(tasks.orgId, organizationIds), eq(tasks.cityId, city.id), eq(tasks.status, 'open'))),
+        db.select({
+          id: tasks.id,
+          orgId: tasks.orgId,
+          title: tasks.title,
+          description: tasks.description,
+          activeFormId: onboardingIntakes.activeFormId,
+        }).from(tasks).innerJoin(onboardingIntakes, eq(onboardingIntakes.taskId, tasks.id)).where(and(
+          inArray(tasks.orgId, organizationIds),
+          eq(tasks.cityId, city.id),
+          eq(tasks.status, 'open'),
+          eq(tasks.isOnboarding, 0),
+          eq(onboardingIntakes.applicationPublic, 1),
+        )).orderBy(desc(tasks.createdAt)),
+      ])
+    : [[], []]
   const organizationAggregate = await aggregateOpportunities(organizationTaskRows)
   const opportunitiesByOrganization = new Map<string, PublicOpportunity[]>()
   for (const task of organizationTaskRows) {
@@ -169,6 +216,18 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
     opportunitiesByOrganization.set(task.orgId, list)
   }
   for (const opportunities of Array.from(opportunitiesByOrganization.values())) opportunities.sort((a, b) => (a.nextShiftAt ?? Number.MAX_SAFE_INTEGER) - (b.nextShiftAt ?? Number.MAX_SAFE_INTEGER))
+  const rolesByOrganization = new Map<string, PublishedVolunteerRole[]>()
+  for (const role of publicRoleRows) {
+    const list = rolesByOrganization.get(role.orgId) ?? []
+    list.push({
+      id: role.id,
+      orgId: role.orgId,
+      title: role.title,
+      description: role.description,
+      hasApplicationQuestions: Boolean(role.activeFormId),
+    })
+    rolesByOrganization.set(role.orgId, list)
+  }
   const aggregate = await aggregateOpportunities(rows.map((row) => row.task))
   const savedTaskIds = await savedItemIds(session.sub, 'task', rows.map((row) => row.task.id))
   const cards: OpportunityRow[] = rows
@@ -263,6 +322,7 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
                       <div><span><Sparkles size={14} /> {organizationJoinLabel(joined.claimStatus)}</span><Link href={href}>View organization <ArrowUpRight size={14} /></Link></div>
                     </div>
                   </div>
+                  <OrganizationVolunteerRoles roles={rolesByOrganization.get(joined.id) ?? []} />
                   <OrganizationPublishedOpportunities opportunities={opportunitiesByOrganization.get(joined.id) ?? []} />
                 </article>
               })}
@@ -308,6 +368,7 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
                       <div><span>{organization.onboardingTaskId ? <><Sparkles size={14} /> New volunteer path</> : <><UsersRound size={14} /> {organization.openCount} open opportunit{organization.openCount === 1 ? 'y' : 'ies'}</>}</span><Link href={href}>{organization.onboardingTaskId && isNewParticipant ? 'Start here' : 'Explore organization'} <ArrowUpRight size={14} /></Link></div>
                     </div>
                   </div>
+                  <OrganizationVolunteerRoles roles={rolesByOrganization.get(organization.org.id) ?? []} />
                   <OrganizationOnboardingSessions opportunities={opportunitiesByOrganization.get(organization.org.id) ?? []} />
                 </article>
               })}

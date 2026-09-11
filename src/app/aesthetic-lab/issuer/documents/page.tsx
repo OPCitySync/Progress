@@ -90,7 +90,7 @@ export default async function IssuerDocumentsLabPage({
       <section className={styles.issuerMain} aria-label="Volunteer documents">
         <section className={styles.issuerPageHero}>
           <div><p className={styles.eyebrow}>Workspace · Documentation</p><h1>Keep the work clear and ready.</h1><p>Create guidance your volunteers and team can rely on, then attach it to the opportunities where it belongs.</p></div>
-          <Link href="/aesthetic-lab/issuer/catalog" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
+          <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
         </section>
         <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 

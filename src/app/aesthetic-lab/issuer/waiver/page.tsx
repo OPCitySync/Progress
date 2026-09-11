@@ -29,7 +29,7 @@ export default async function IssuerWaiverLabPage({ searchParams }: { searchPara
       <section className={styles.issuerMain} aria-label="Liability waiver">
         <section className={styles.issuerPageHero}>
           <div><p className={styles.eyebrow}>Organization setup</p><h1>Liability waivers</h1><p>Publish the waivers your organization needs. Every active waiver is automatically included with future onboarding sessions.</p></div>
-          <Link href="/aesthetic-lab/issuer/catalog" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
+          <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
         </section>
         <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 

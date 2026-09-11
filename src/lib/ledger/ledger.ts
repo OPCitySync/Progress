@@ -4,6 +4,7 @@ import { db } from '@/lib/db/client'
 import { cityLedgerOutbox, events, offerings, orgs, redemptions, tasks, users } from '@/lib/db/schema'
 import { sha256Hex, canonicalJson } from './hash'
 import type { EventType } from './events'
+import { isPrivateOnboardingEvent } from './onboarding-privacy'
 
 /** Either the root db or a drizzle transaction handle. */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -91,6 +92,10 @@ export async function appendEvent(
     prevHash,
     hash,
   }).returning({ seq: events.seq })
+
+  // An application/review is an organization-private decision, not a public
+  // city event. The local hash chain still records the action atomically.
+  if (isPrivateOnboardingEvent(type)) return { id, hash }
 
   // A city id can be supplied explicitly by the service that owns the
   // action. When an established source event predates that convention, use

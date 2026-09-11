@@ -14,6 +14,7 @@ import {
   waiverVersions,
 } from '@/lib/db/schema'
 import { hasOrganizationPermission, validateActiveSession } from '@/lib/services/identity-access'
+import { candidateReadiness } from '@/lib/services/program-workspace'
 
 export const dynamic = 'force-dynamic'
 
@@ -123,7 +124,11 @@ export async function GET(
   const issuerAuthorized = session?.role === 'issuer'
     && session.orgId === file.orgId
     && await hasOrganizationPermission(session, issuerPermission)
+  const scope=request.nextUrl.searchParams.get('scope')
+  const welcome=session?.role==='participant'&&scope?await candidateReadiness(file.orgId,scope,session.sub):null
+  const welcomeAuthorized=Boolean(welcome?.application&&(params.kind==='waiver'?welcome.waivers:welcome?.documents||[]).some(item=>item.id===file.id))
   const authorized = issuerAuthorized
+    || welcomeAuthorized
     || (session?.role === 'participant' && taskId
       ? await participantCanReadFile({ kind: params.kind, file, taskId, userId: session.sub })
       : false)

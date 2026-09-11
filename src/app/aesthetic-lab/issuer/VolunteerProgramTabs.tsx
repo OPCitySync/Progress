@@ -3,10 +3,8 @@ import {
   CalendarDays,
   CheckCircle2,
   Circle,
-  FileText,
   FolderKanban,
   LayoutList,
-  Repeat2,
   UsersRound,
 } from 'lucide-react'
 import { VolunteerProgramCreateButton } from './VolunteerProgramCreateButton'
@@ -37,8 +35,6 @@ export type VolunteerProgramTab = {
   description: string
   detailHref: string
   opportunityTemplates: ProgramResource[]
-  onboarding: ProgramResource[]
-  documents: ProgramResource[]
   history: ProgramHistoryItem[]
   upcomingEvents: number
   completedEvents: number
@@ -50,7 +46,7 @@ type ReadinessStep = {
   detail: string
   complete: boolean
   href: string
-  icon: typeof FileText
+  icon: typeof UsersRound
 }
 
 function statusFor(program: VolunteerProgramTab) {
@@ -62,31 +58,17 @@ function statusFor(program: VolunteerProgramTab) {
 function readinessSteps(program: VolunteerProgramTab): ReadinessStep[] {
   return [
     {
-      label: 'Program resources',
-      detail: program.documents.length ? `${program.documents.length} document${program.documents.length === 1 ? '' : 's'} ready` : 'Add guides, waivers, or operating documents',
-      complete: program.documents.length > 0,
-      href: `${program.detailHref}#program-resources`,
-      icon: FileText,
-    },
-    {
-      label: 'Volunteer welcome',
-      detail: program.onboarding.length ? `${program.onboarding.length} onboarding pathway${program.onboarding.length === 1 ? '' : 's'}` : 'Onboarding is optional for this program',
-      complete: program.onboarding.length > 0,
-      href: `${program.detailHref}#program-onboarding`,
-      icon: Repeat2,
-    },
-    {
-      label: 'Repeatable work',
-      detail: program.opportunityTemplates.length ? `${program.opportunityTemplates.length} opportunity template${program.opportunityTemplates.length === 1 ? '' : 's'}` : 'Create the first opportunity template',
+      label: 'Volunteer Roles',
+      detail: program.opportunityTemplates.length ? `${program.opportunityTemplates.length} volunteer role${program.opportunityTemplates.length === 1 ? '' : 's'}` : 'Create the first role to define the work your team needs',
       complete: program.opportunityTemplates.length > 0,
-      href: `${program.detailHref}#program-opportunities`,
+      href: `${program.detailHref}?section=positions`,
       icon: UsersRound,
     },
     {
-      label: 'Published schedule',
-      detail: program.upcomingEvents ? `${program.upcomingEvents} upcoming shift${program.upcomingEvents === 1 ? '' : 's'}` : 'Publish a shift when the work is ready',
+      label: 'Shift Planning',
+      detail: program.upcomingEvents ? `${program.upcomingEvents} upcoming shift${program.upcomingEvents === 1 ? '' : 's'}` : 'Schedule a shift when the work is ready',
       complete: program.upcomingEvents > 0,
-      href: `${program.detailHref}#program-schedule`,
+      href: `${program.detailHref}?section=scheduling`,
       icon: CalendarDays,
     },
   ]
@@ -126,8 +108,7 @@ export function VolunteerProgramTabs({ tabs }: { tabs: VolunteerProgramTab[] }) 
           <div className={styles.volunteerProgramControlGrid}>
             <section className={styles.volunteerProgramReadiness}>
               <div className={styles.volunteerProgramSectionHeading}>
-                <div><p className={styles.eyebrow}>Program capabilities</p><h3>Configure only what this program needs</h3></div>
-                <span>{completedSteps} configured</span>
+                <div><p className={styles.eyebrow}>Program workspace</p><h3>Build on what your team can do</h3></div>
               </div>
               <div className={styles.volunteerProgramChecklist}>
                 {steps.map((step) => {
@@ -151,12 +132,12 @@ export function VolunteerProgramTabs({ tabs }: { tabs: VolunteerProgramTab[] }) 
                 <em>Open</em>
               </Link> : <div className={styles.volunteerProgramNoEvent}>
                 <CalendarDays size={18} />
-                <div><b>No upcoming work published</b><p>Your templates stay ready until your team publishes the next shift.</p></div>
+                <div><b>No upcoming work scheduled</b><p>{program.opportunityTemplates.length ? 'Your volunteer roles are ready whenever your team schedules the next date.' : 'Create a volunteer role first, then schedule the shifts it needs.'}</p></div>
               </div>}
               <div className={styles.volunteerProgramOperationsMetrics}>
                 <span><b>{program.upcomingEvents}</b>Upcoming</span>
                 <span><b>{program.completedEvents}</b>Completed</span>
-                <span><b>{program.opportunityTemplates.length}</b>Templates</span>
+                <span><b>{program.opportunityTemplates.length}</b>Positions</span>
               </div>
               {program.history.length ? <div className={styles.volunteerProgramRecentHistory}>
                 <p className={styles.eyebrow}>Recent history</p>

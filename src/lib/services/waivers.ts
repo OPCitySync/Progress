@@ -130,6 +130,8 @@ export async function getActiveWaivers(orgId: string): Promise<(typeof waiverVer
 export async function getOnboardingWaiverSetup(
   orgId: string,
   overrides?: {
+    id?: string
+    programId?: string | null
     onboardingWaiverMethod?: string | null
     onboardingIdentityCheck?: string | null
   },
@@ -139,7 +141,7 @@ export async function getOnboardingWaiverSetup(
   method: OnboardingWaiverMethod | null
   identityCheck: OnboardingIdentityCheck
 }> {
-  const [waivers, profile] = await Promise.all([
+  const [allWaivers, profile] = await Promise.all([
     getActiveWaivers(orgId),
     db
       .select({
@@ -152,6 +154,10 @@ export async function getOnboardingWaiverSetup(
       .then((rows) => rows[0] ?? null),
   ])
 
+  const intakeWaivers = overrides?.id ? await (await import('./volunteer-intake')).getIntakeWaivers(overrides.id) : null
+  const welcome=intakeWaivers === null && overrides&&'programId' in overrides?await (await import('./program-workspace')).onboardingMaterials(orgId,overrides.programId||'organization'):null
+  const policy=welcome?.policy?.onboardingMode!=='none'?welcome?.policy:null
+  const waivers=intakeWaivers ?? (policy?welcome!.waivers:allWaivers)
   const identityCheck = normalizeOnboardingIdentityCheck(overrides?.onboardingIdentityCheck)
     ?? normalizeOnboardingIdentityCheck(profile?.onboardingIdentityCheck)
     ?? 'not_required'
@@ -161,7 +167,8 @@ export async function getOnboardingWaiverSetup(
   return {
     waiver: waivers[0],
     waivers,
-    method: normalizeOnboardingWaiverMethod(overrides?.onboardingWaiverMethod)
+    method: (policy?.waiverMethod==='paper'?'in_person':policy?.waiverMethod)
+      ?? normalizeOnboardingWaiverMethod(overrides?.onboardingWaiverMethod)
       ?? normalizeOnboardingWaiverMethod(profile?.onboardingWaiverMethod)
       ?? 'digital',
     identityCheck,

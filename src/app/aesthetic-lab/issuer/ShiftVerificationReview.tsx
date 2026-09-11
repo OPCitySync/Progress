@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Check, ClipboardCheck, FileSignature, UserRoundCheck, UsersRound } from 'lucide-react'
+import { Check, ClipboardCheck, FileSignature, HeartHandshake, UserRoundCheck, UsersRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { verifyShiftAttendanceAction } from '@/app/actions'
 import styles from '../prototype.module.css'
@@ -98,6 +98,7 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
         {paperWaiverRequired ? <label className={styles.shiftVerificationWaiver}><input type="checkbox" name="paperWaiverReceived" required /><span><FileSignature size={16} /></span><p><b>Paper waivers received</b> Confirm each selected attendee who requires an in-person waiver provided their signed copy.</p></label> : null}
         {identityMatchRequired ? <label className={styles.shiftVerificationWaiver}><input type="checkbox" name="identityMatchesConfirmed" required /><span><UserRoundCheck size={16} /></span><p><b>Identity matches confirmed</b> Confirm each selected attendee who requires it matches the City/Sync account they used to reserve this session.</p></label> : null}
         <label className={styles.shiftVerificationNote}>Verification note <textarea name="note" rows={3} maxLength={2000} placeholder="Optional note for this verification batch — e.g., hours, weather, or a delivery outcome." /></label>
+        <label className={styles.shiftVerificationLetter}><span><HeartHandshake size={17} /></span><span><b>Thank You Letter</b><small>Optional · sent to everyone marked present</small></span><textarea name="thankYouLetter" rows={5} maxLength={3000} disabled={!selectedCount} placeholder="Tell the team what their contribution made possible." /></label>
         {!shift.canFinalize ? <p className={styles.shiftVerificationUnavailable}>A shift can be finalized once its scheduled start time has arrived.</p> : null}
         <button className={styles.shiftVerificationSubmit} type="submit" disabled={!shift.canFinalize}><ClipboardCheck size={15} /> Finalize Attendance</button>
       </div>

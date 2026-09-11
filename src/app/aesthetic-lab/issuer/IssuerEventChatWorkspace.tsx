@@ -92,6 +92,7 @@ export function IssuerEventChatWorkspace({
   initialShiftId,
   initialPane,
   initialMessageId,
+  initialVolunteerId,
 }: {
   events: UpcomingEvent[]
   archivedChats: ArchivedEventChat[]
@@ -102,6 +103,7 @@ export function IssuerEventChatWorkspace({
   initialShiftId?: string
   initialPane?: string
   initialMessageId?: string
+  initialVolunteerId?: string
 }) {
   const [selectedShiftId, setSelectedShiftId] = useState(() => events.some((event) => event.shiftId === initialShiftId) ? initialShiftId! : events[0]?.shiftId ?? '')
   const [selectedArchiveId, setSelectedArchiveId] = useState(() => archivedChats[0]?.id ?? '')
@@ -110,7 +112,7 @@ export function IssuerEventChatWorkspace({
   const [query, setQuery] = useState('')
   const [recipientKind, setRecipientKind] = useState<'individual' | 'group' | 'roster'>('individual')
   const [volunteerQuery, setVolunteerQuery] = useState('')
-  const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([])
+  const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>(() => volunteers.some((volunteer) => volunteer.userId === initialVolunteerId) ? [initialVolunteerId!] : [])
   const selectedEvent = events.find((event) => event.shiftId === selectedShiftId) ?? events[0] ?? null
   const selectedArchive = archivedChats.find((chat) => chat.id === selectedArchiveId) ?? archivedChats[0] ?? null
   const selectedMessage = outboundMessages.find((message) => message.id === selectedMessageId) ?? outboundMessages[0] ?? null
@@ -136,6 +138,13 @@ export function IssuerEventChatWorkspace({
     }
     if (initialPane === 'archive') setPane('archive')
   }, [initialMessageId, initialPane, outboundMessages])
+
+  useEffect(() => {
+    if (!initialVolunteerId || !volunteers.some((volunteer) => volunteer.userId === initialVolunteerId)) return
+    setRecipientKind('individual')
+    setSelectedVolunteerIds([initialVolunteerId])
+    setVolunteerQuery('')
+  }, [initialVolunteerId, volunteers])
 
   return <section className={styles.issuerEventChatWorkspace}>
     <header className={styles.issuerEventChatWorkspaceHeader}>
@@ -222,7 +231,7 @@ export function IssuerEventChatWorkspace({
       </article>
     </div>
 
-    <div className={styles.issuerInboxComposerWrap} data-open="true">
+    <div id="individual-messages" className={styles.issuerInboxComposerWrap} data-open="true">
       <section className={styles.issuerInboxComposer}>
         <form action={sendOrganizationMessageAction} className={styles.issuerInboxComposerForm}>
           <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/notifications" />

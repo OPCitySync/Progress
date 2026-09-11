@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
-import { and, desc, eq, isNull, lte, notInArray, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, lte, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { notifications, organizationCalendarEntries, organizationDelegations, organizationRoles, reminders, shifts, tasks, orgs, users } from '@/lib/db/schema'
+import { claims, notifications, organizationCalendarEntries, organizationDelegations, organizationQueueAcknowledgements, organizationRoles, reminders, shifts, tasks, orgs, users } from '@/lib/db/schema'
 import { getEmailAdapter } from '@/lib/notify/email'
 
 const PRE_SHIFT_MS = 24 * 60 * 60 * 1000
@@ -405,6 +405,26 @@ export async function getUnreadNotificationCount(userId: string, excludeKinds: s
       .where(and(...base))
   )[0]
   return Number(row?.count ?? 0)
+}
+
+/** Issuer notifications include stored notices plus unreviewed signup activity
+ * that previously appeared only in the Home Action Queue. */
+export async function getUnreadIssuerNotificationCount(userId: string, orgId: string): Promise<number> {
+  const [storedCount, signupRows, acknowledgementRows] = await Promise.all([
+    getUnreadNotificationCount(userId),
+    db
+      .select({ claimId: claims.id })
+      .from(claims)
+      .innerJoin(tasks, eq(claims.taskId, tasks.id))
+      .innerJoin(shifts, eq(claims.shiftId, shifts.id))
+      .where(and(eq(tasks.orgId, orgId), eq(claims.status, 'claimed'), gte(shifts.endsAt, Date.now()))),
+    db
+      .select({ actionKey: organizationQueueAcknowledgements.actionKey })
+      .from(organizationQueueAcknowledgements)
+      .where(eq(organizationQueueAcknowledgements.orgId, orgId)),
+  ])
+  const acknowledged = new Set(acknowledgementRows.map(({ actionKey }) => actionKey))
+  return storedCount + signupRows.filter(({ claimId }) => !acknowledged.has(`signup:${claimId}`)).length
 }
 
 /** Mark one notification as read without allowing another participant to alter it. */

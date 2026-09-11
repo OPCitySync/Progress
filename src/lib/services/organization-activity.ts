@@ -16,6 +16,7 @@ export type OrganizationActivity = {
   hash: string
   postId: string | null
   messageId: string | null
+  programId: string | null
   taskId: string | null
   shiftId: string | null
   taskTitle: string | null
@@ -153,6 +154,7 @@ export async function listOrganizationActivity(orgId: string): Promise<Organizat
         hash: event.hash,
         postId: stringValue(payload, 'postId'),
         messageId: stringValue(payload, 'messageId'),
+        programId: stringValue(payload, 'programId'),
         taskId,
         shiftId,
         taskTitle: taskId ? taskTitles.get(taskId) ?? null : null,

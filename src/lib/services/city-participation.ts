@@ -37,6 +37,12 @@ export async function checkCityParticipationGate(input: {
   if (participation.status === 'active') return { ok: true }
 
   if (!(await isOnboardingTask(input.taskId))) {
+    const task=(await db.select().from(tasks).where(eq(tasks.id,input.taskId)).limit(1))[0]
+    const {programPolicy,programAccessError,scopeOf}=await import('./program-workspace')
+    const policy=task?await programPolicy(task.orgId,scopeOf(task.programId)):null
+    // A configured program may use document-only onboarding or explicitly
+    // require none. This does not remove city membership or suspension gates.
+    if(task&&policy&&(policy.onboardingMode==='none'||!(await programAccessError(task.orgId,scopeOf(task.programId),input.userId))))return {ok:true}
     return { ok: false, error: 'Complete one city onboarding task with a verified check-in before claiming other opportunities.' }
   }
 

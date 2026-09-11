@@ -3,7 +3,7 @@ import { ArrowLeft, BadgeCheck, CalendarDays, ShieldCheck, UserRound } from 'luc
 import { and, desc, eq, ne } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants } from '@/lib/db/schema'
+import { claims, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants, programApplicants, volunteerRosterMembers, onboardingApplications } from '@/lib/db/schema'
 import { participantDisplayName } from '@/lib/participant-name'
 import { attendanceLabel, eligibilityLabel } from '@/lib/services/onboarding-attendance'
 import { setVolunteerIdentityVerificationAction, setVolunteerTaskEligibilityAction } from '@/app/actions'
@@ -45,7 +45,12 @@ export default async function IssuerVolunteerProfilePage({ params, searchParams 
       .from(volunteerTaskEligibilityGrants)
       .where(and(eq(volunteerTaskEligibilityGrants.orgId, orgId), eq(volunteerTaskEligibilityGrants.userId, params.userId), eq(volunteerTaskEligibilityGrants.status, 'active'))),
   ])
-  const isRosterMember = Boolean(participant && history.length)
+  const [candidate,explicitMember,intakeApplicant]=await Promise.all([
+    db.select({id:programApplicants.id}).from(programApplicants).where(and(eq(programApplicants.orgId,orgId),eq(programApplicants.userId,params.userId))).limit(1),
+    db.select({id:volunteerRosterMembers.id}).from(volunteerRosterMembers).where(and(eq(volunteerRosterMembers.orgId,orgId),eq(volunteerRosterMembers.userId,params.userId))).limit(1),
+    db.select({id:onboardingApplications.id}).from(onboardingApplications).where(and(eq(onboardingApplications.orgId,orgId),eq(onboardingApplications.userId,params.userId))).limit(1),
+  ])
+  const isRosterMember = Boolean(participant && (history.length||candidate.length||explicitMember.length||intakeApplicant.length))
   const identityVerifier = identityVerification?.status === 'verified'
     ? (await db.select().from(users).where(eq(users.id, identityVerification.verifiedByUserId)).limit(1))[0] ?? null
     : null

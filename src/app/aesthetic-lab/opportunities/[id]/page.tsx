@@ -14,7 +14,7 @@ import {
 import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, orgs, tasks } from '@/lib/db/schema'
+import { claims, orgs, tasks, onboardingApplications } from '@/lib/db/schema'
 import { claimShiftAction } from '@/app/actions'
 import { getOnboardingWaiverSetup, getWaiverSignatures } from '@/lib/services/waivers'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
@@ -29,6 +29,9 @@ import { SaveTaskButton } from '../../SaveTaskButton'
 import { DigitalWaiverSignature } from '../../DigitalWaiverSignature'
 import { WithdrawCommitmentButton } from '../../WithdrawCommitmentButton'
 import styles from '../../prototype.module.css'
+import {programPolicy,scopeOf} from '@/lib/services/program-workspace'
+import { getIntakeForm, intakeReservationGate, getAdmissionDecision } from '@/lib/services/volunteer-intake'
+import { ParticipantIntakeApplication, ParticipantProfileApplication } from '../../issuer/VolunteerIntakeControls'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,6 +77,14 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
   const claimByShift = new Map(myClaims.map((claim) => [claim.shiftId, claim]))
   const visibleSessions = sessions.filter(({ shift }) => shift.visibility === 'public' || Boolean(claimByShift.get(shift.id) && claimByShift.get(shift.id)?.status !== 'unclaimed'))
   const isOnboarding = task.isOnboarding === 1
+  const intakeSetup = await getIntakeForm(task.id)
+  const roleJoinMode = intakeSetup.form ? 'form' : 'profile'
+  const publicRoleApplication = !isOnboarding && Boolean(intakeSetup.intake?.applicationPublic)
+  const applicationRequired = Boolean(intakeSetup.intake?.applicationRequired && (isOnboarding || publicRoleApplication))
+  const intakeGate = applicationRequired ? await intakeReservationGate(task.id, session.sub) : null
+  const application = applicationRequired ? (await db.select().from(onboardingApplications).where(and(eq(onboardingApplications.taskId,task.id),eq(onboardingApplications.userId,session.sub))).limit(1))[0] : null
+  const admission = isOnboarding ? await getAdmissionDecision(org.id,session.sub) : null
+  const welcomePolicy=intakeSetup?.intake ? null : await programPolicy(org.id,scopeOf(task.programId))
   const waivers = isOnboarding ? waiverSetup.waivers : attachedWaivers
   const waiverCollectionMethod = isOnboarding ? (waiverSetup.method ?? 'digital') : 'digital'
   const usesPaperWaiver = isOnboarding && waiverCollectionMethod === 'in_person'
@@ -101,15 +112,17 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
           <section className={styles.onboardingProcessCard}>
             <p className={styles.eyebrow}>How it works</p>
             <ol>
-              <li><span>1</span><div><b>Review the details</b><small>Read the materials and waiver requirements.</small></div></li>
-              <li><span>2</span><div><b>Choose a session</b><small>Reserve one date that works for you.</small></div></li>
+              <li><span>1</span><div><b>{applicationRequired ? 'Apply to volunteer' : 'Review the details'}</b><small>{applicationRequired ? `Receive application approval before choosing a ${isOnboarding ? 'date' : 'shift'}.` : 'Read the materials and waiver requirements.'}</small></div></li>
+              <li><span>2</span><div><b>{isOnboarding ? 'Choose a session' : 'Choose a shift'}</b><small>{isOnboarding ? 'Reserve one date that works for you.' : 'Sign up for a shift that fits your schedule.'}</small></div></li>
               <li><span>3</span><div><b>Show up and check in</b><small>The organization confirms your attendance.</small></div></li>
+              {isOnboarding && intakeSetup.intake?<li><span>4</span><div><b>Join the volunteer roster</b><small>The organization reviews your paperwork and approves your program access.</small></div></li>:null}
             </ol>
           </section>
         </aside>
 
         <section className={styles.primaryColumn} aria-label={isOnboarding ? 'Onboarding reservation' : 'Opportunity reservation'}>
           <Link href="/aesthetic-lab/opportunities" className={styles.onboardingBackLink}><ArrowLeft size={15} /> {backLabel}</Link>
+          {welcomePolicy&&welcomePolicy.onboardingMode!=='none'?<section className={styles.onboardingProcessCard}><b>Your volunteer welcome</b><p>Complete the organization’s checklist and request a personal profile review before joining its volunteer roster.</p><Link className={styles.catalogWorkspaceAction} href={'/aesthetic-lab/onboarding/'+org.id+'/'+scopeOf(task.programId)}>Open my checklist</Link></section>:null}
           <LabNotice ok={searchParams.ok} error={searchParams.error} />
 
           <section className={styles.onboardingHeroCard}>
@@ -128,6 +141,9 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
               <div><CalendarDays size={18} /><span><b>Scheduled sessions</b><small>{sessionCount} available now</small></span></div>
             </div>
           </section>
+
+          {applicationRequired && (isOnboarding || roleJoinMode==='form') && intakeSetup.form ? <ParticipantIntakeApplication taskId={task.id} title={task.title} form={{id:intakeSetup.form.id,introduction:intakeSetup.form.introduction,questions:intakeSetup.questions}} status={application?.status??null} kind={isOnboarding ? 'onboarding' : 'role'} blocked={admission?.status==='not_approved'?'Your participation at this organization was not approved. Contact the organization to request a review.':null}/> : null}
+          {applicationRequired && !isOnboarding && roleJoinMode==='profile' ? <ParticipantProfileApplication taskId={task.id} title={task.title} status={application?.status??null}/> : null}
 
           <section className={styles.onboardingResourceCard}>
             <div className={styles.onboardingCardHeading}>
@@ -166,7 +182,8 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
             </div>
           </section>
 
-          <section className={styles.onboardingSessionsCard}>
+          {admission?<section className={styles.onboardingProcessCard}><b>{admission.status==='approved'?'Your roster access is approved':admission.status==='needs_paperwork'?'Paperwork is still needed':'Your volunteer participation was not approved'}</b><p>{admission.status==='approved'?(admission.assignmentMode==='all'?'You can join this organization’s volunteer shifts across all programs.':'Your approval applies to the programs selected by the organization. Contact it before joining another program.'):admission.status==='needs_paperwork'?'Complete the unsigned waivers above, or give the organization your signed paper copies. Contact the organization to confirm any other required materials.':'Contact the organization if you would like it to review this decision. Existing commitments have not been cancelled.'}</p></section>:null}
+          <section className={styles.onboardingSessionsCard} id="available-sessions">
             <div className={styles.onboardingCardHeading}>
               <div><p className={styles.eyebrow}>{isOnboarding ? 'Choose your onboarding date' : 'Choose a shift'}</p><h2>{sessionCount ? `${sessionCount} session${sessionCount === 1 ? '' : 's'} currently available` : 'No sessions currently available'}</h2><p>{isOnboarding ? 'A reservation holds one place for one session. It does not create a recurring commitment.' : 'Choose one shift that fits your schedule.'}</p></div>
               <CalendarDays size={20} />
@@ -187,7 +204,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                       <span><CheckCircle2 size={17} /></span>
                       <div><b>{existing?.status === 'claimed' ? (isOnboarding ? 'Your spot is reserved.' : 'You’re signed up.') : existing?.status}</b><p>{isOnboarding ? 'Arrive ready to check in with the organization. Completed onboarding is then verified by their team.' : 'Your attendance will be confirmed by the organization after the shift.'}</p><Link className={styles.onboardingSessionDetailsLink} href={`/aesthetic-lab/opportunities/${task.id}/sessions/${shift.id}`}>View session details</Link></div>
                       {existing?.status === 'claimed' ? <WithdrawCommitmentButton claimId={existing.id} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} organizationName={org.name} label={isOnboarding ? 'Cancel reservation' : 'Withdraw sign-up'} /> : null}
-                    </div> : shift.enrollmentMode === 'organization_managed' ? <p className={styles.onboardingReservationUnavailable}>This session’s roster is managed directly by the organization.</p>
+                    </div> : intakeGate && !intakeGate.ok ? <div className={styles.onboardingReservationUnavailable}><p>{intakeGate.error}</p>{applicationRequired && !application?<Link href="#application">Open application</Link>:null}</div> : shift.enrollmentMode === 'organization_managed' ? <p className={styles.onboardingReservationUnavailable}>This session’s roster is managed directly by the organization.</p>
                       : slotsLeft <= 0 ? <p className={styles.onboardingReservationUnavailable}>This session is currently full. Check back if another place opens.</p>
                         : unsignedWaivers.length > 0 ? <div className={styles.onboardingSignatureRequired}>
                           <ShieldCheck size={17} />
@@ -206,7 +223,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
                         </form>}
                   </div>
                 </details>
-              }) : <div className={styles.onboardingResourceEmpty}><CalendarDays size={17} /><p><b>No dates have been published yet.</b><br />Check the organization profile again soon for a new session.</p></div>}
+              }) : <div className={styles.onboardingResourceEmpty}><CalendarDays size={17} /><p><b>{isOnboarding ? 'No dates have been published yet.' : 'No shifts have been published yet.'}</b><br />{isOnboarding ? 'Check the organization profile again soon for a new session.' : applicationRequired ? 'You can apply now; the organization will publish shifts for approved applicants.' : 'Check the organization profile again soon for a new opportunity.'}</p></div>}
             </div>
           </section>
         </section>

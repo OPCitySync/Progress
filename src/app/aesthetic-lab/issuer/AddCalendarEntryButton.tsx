@@ -1,7 +1,7 @@
 'use client'
 
 import { CalendarDays, CalendarPlus, ChevronDown, X } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { createOrganizationCalendarEntryAction } from '@/app/actions'
 import styles from '../prototype.module.css'
 
@@ -75,7 +75,7 @@ function CalendarTimePart({ label, value, options, onChange }: { label: string, 
   </div>
 }
 
-function CalendarDateTimePicker({ label, value, onChange, onCancel, onDone }: { label: string, value: Date, onChange: (value: Date) => void, onCancel: () => void, onDone: () => void }) {
+export function CalendarDateTimePicker({ label, value, onChange, onCancel, onDone, doneLabel = 'Done', pending = false, children }: { label: string, value: Date, onChange: (value: Date) => void, onCancel: () => void, onDone: () => void, doneLabel?: string, pending?: boolean, children?: ReactNode }) {
   const [displayMonth, setDisplayMonth] = useState(() => new Date(value.getFullYear(), value.getMonth(), 1))
   const days = calendarDaysForMonth(displayMonth)
   const hour = displayHour(value)
@@ -109,7 +109,8 @@ function CalendarDateTimePicker({ label, value, onChange, onCancel, onDone }: { 
       <CalendarTimePart label="Minute" value={String(minute).padStart(2, '0')} options={pickerMinutes.map((option) => String(option).padStart(2, '0'))} onChange={(next) => setTime(hour, Number(next))} />
       <CalendarTimePart label="Period" value={period} options={['AM', 'PM']} onChange={(next) => setTime(hour, minute, next as 'AM' | 'PM')} />
     </div>
-    <div className={styles.issuerCalendarPickerFooter}><span>{displayDateTime(value)}</span><div className={styles.issuerCalendarPickerFooterActions}><button type="button" className={styles.issuerCalendarPickerCancel} onClick={onCancel}>Cancel</button><button type="button" className={styles.issuerCalendarPickerDone} onClick={onDone}>Done</button></div></div>
+    {children}
+    <div className={styles.issuerCalendarPickerFooter}><span>{displayDateTime(value)}</span><div className={styles.issuerCalendarPickerFooterActions}><button type="button" disabled={pending} className={styles.issuerCalendarPickerCancel} onClick={onCancel}>Cancel</button><button type="button" disabled={pending} className={styles.issuerCalendarPickerDone} onClick={onDone}>{pending ? 'Publishing…' : doneLabel}</button></div></div>
   </section>
 }
 

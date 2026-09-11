@@ -73,7 +73,7 @@ function RoleInviteControl({ role, inviteCode }: { role: OrganizationRole; invit
     <details className={styles.manageInviteControl} open={Boolean(inviteCode)}>
       <summary><KeyRound size={15} /> Invite New {role.name}<ChevronDown size={15} /></summary>
       <div>
-        <p>Invite a person to operate as <b>{role.name}</b> in your current City Network. They receive only the powers listed for this role.</p>
+        <p>Invite a person to operate as <b>{role.name}</b> in your current City Network. They receive only the powers listed for this role. Staff access takes priority, so this person cannot also volunteer for your organization while their access is active.</p>
         <form action={createOrganizationInviteAction}>
           <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/manage" />
           <input type="hidden" name="roleId" value={role.id} />

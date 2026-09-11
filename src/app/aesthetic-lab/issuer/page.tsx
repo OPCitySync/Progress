@@ -1,20 +1,15 @@
 import Link from 'next/link'
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import {
   ArrowUpRight,
-  Bell,
   CheckCircle2,
   ClipboardList,
-  UserRoundCheck,
   UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { claims, organizationQueueAcknowledgements, orgs, shifts, tasks, users } from '@/lib/db/schema'
+import { claims, organizationQueueAcknowledgements, orgs, shifts, tasks, users, programApplicants } from '@/lib/db/schema'
 import { acknowledgeOrganizationQueueAction } from '@/app/actions'
 import { requireRole } from '@/lib/auth/session'
-import { participantDisplayName } from '@/lib/participant-name'
-import { getUnreadMessageCount } from '@/lib/services/roster'
-import { getUnreadNotificationCount } from '@/lib/services/notifications'
 import { getOrganizationCalendarEntries } from '@/lib/services/organization-calendar'
 import { LabHeader } from '../LabHeader'
 import { LabNotice } from '../LabNotice'
@@ -48,9 +43,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     scheduledShifts,
     rosterClaimRows,
     pendingShiftClaimRows,
-    newSignupRows,
-    unreadNotificationCount,
-    unreadMessageCount,
     calendarEntries,
     acknowledgedQueueRows,
   ] = await Promise.all([
@@ -85,25 +77,11 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
           ))
           .orderBy(desc(shifts.startsAt), desc(claims.updatedAt))
       : Promise.resolve([]),
-    city
-      ? db
-          .select({ claim: claims, shift: shifts, task: tasks, participant: users })
-          .from(claims)
-          .innerJoin(tasks, eq(claims.taskId, tasks.id))
-          .innerJoin(users, eq(claims.userId, users.id))
-          .innerJoin(shifts, eq(claims.shiftId, shifts.id))
-          .where(and(eq(tasks.orgId, orgId), eq(tasks.cityId, city.id), eq(claims.status, 'claimed'), gte(shifts.endsAt, now)))
-          .orderBy(desc(claims.updatedAt))
-          .limit(3)
-      : Promise.resolve([]),
-    getUnreadNotificationCount(session.sub),
-    getUnreadMessageCount(session.sub),
     city ? getOrganizationCalendarEntries(orgId, city.id, schedule.from, schedule.to) : Promise.resolve([]),
     db.select({ actionKey: organizationQueueAcknowledgements.actionKey }).from(organizationQueueAcknowledgements).where(eq(organizationQueueAcknowledgements.orgId, orgId)),
   ])
   const activeByShift = new Map<string | null, number>()
   for (const { claim } of rosterClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
-  const unreadUpdates = unreadNotificationCount + unreadMessageCount
   const pendingVerificationGroups = Array.from(
     pendingShiftClaimRows.reduce((groups, row) => {
       const current = groups.get(row.shift.id)
@@ -142,7 +120,9 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     .map(({ shift, task }) => ({ shift, task, openSpots: Math.max(0, shift.capacity - (activeByShift.get(shift.id) ?? 0)) }))
     .filter(({ openSpots }) => openSpots > 0)
     .slice(0, 3)
+  const candidates=await db.select({application:programApplicants,name:users.name}).from(programApplicants).innerJoin(users,eq(programApplicants.userId,users.id)).where(and(eq(programApplicants.orgId,orgId),eq(programApplicants.status,'submitted')))
   const queue = [
+    ...candidates.map(({application,name})=>({key:'candidate:'+application.id+':'+application.submittedAt,kind:'candidate' as const,title:'Review '+name+'’s volunteer welcome',detail:'Checklist submitted · Profile approval needed',href:'/aesthetic-lab/issuer/programs/'+application.scope+'?section=onboarding',action:'Review candidate'})),
     ...pendingVerificationGroups.map(({ shift, task, participantCount }) => ({
       key: `verify:${shift.id}`,
       kind: 'verify' as const,
@@ -156,36 +136,15 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       kind: 'staffing' as const,
       title: `${openSpots} open spot${openSpots === 1 ? '' : 's'} · ${task.title}`,
       detail: `${shift.visibility === 'private' ? 'Organization assignment' : 'Open signup'} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Upcoming shift'}`,
-      href: `/aesthetic-lab/issuer/programs/${task.programId ?? 'organization'}#${task.isOnboarding === 1 ? 'program-onboarding' : shift.visibility === 'private' ? 'program-staffing' : 'program-schedule'}`,
+      href: task.isOnboarding === 1
+        ? `/aesthetic-lab/issuer/volunteers?event=${shift.id}#event-${shift.id}`
+        : `/aesthetic-lab/issuer/programs/${task.programId ?? 'organization'}#${shift.visibility === 'private' ? 'program-staffing' : 'program-schedule'}`,
       action: task.isOnboarding === 1 ? 'Review session' : shift.visibility === 'private' ? 'Assign' : 'Review',
     })),
-    ...newSignupRows.map(({ claim, shift, task, participant }) => {
-      const isOnboarding = task.isOnboarding === 1
-      return {
-        key: `signup:${claim.id}`,
-        kind: 'signup' as const,
-        title: `${participantDisplayName(participant)} signed up`,
-        detail: `${isOnboarding ? 'Onboarding session' : 'Volunteer shift'} · ${task.title}${shift.startsAt ? ` · ${new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`,
-        href: `/aesthetic-lab/issuer/programs/${task.programId ?? 'organization'}#${isOnboarding ? 'program-onboarding' : 'program-schedule'}`,
-        action: isOnboarding ? 'View session' : 'View shift',
-      }
-    }),
-    ...(unreadUpdates
-      ? [{
-          key: `updates:${unreadNotificationCount}:${unreadMessageCount}`,
-          kind: 'update' as const,
-          title: `${unreadUpdates} unread update${unreadUpdates === 1 ? '' : 's'}`,
-          detail: unreadMessageCount ? 'Messages and City/Sync updates need your attention.' : 'A City/Sync update needs your attention.',
-          href: '/aesthetic-lab/issuer/notifications',
-          action: 'Open',
-        }]
-      : []),
   ].filter((item) => !acknowledgedQueueKeys.has(item.key)).slice(0, 6)
-  const actionItems = queue.filter((item) => item.kind === 'verify' || item.kind === 'staffing')
-  const notificationItems = queue.filter((item) => item.kind !== 'verify' && item.kind !== 'staffing')
   const renderQueueItem = (item: typeof queue[number]) => (
     <article key={item.key} data-queue-kind={item.kind}>
-      <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : item.kind === 'staffing' ? <UsersRound size={17} /> : item.kind === 'signup' ? <UserRoundCheck size={17} /> : <Bell size={17} />}</span>
+      <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : <UsersRound size={17} />}</span>
       <div><b>{item.title}</b><small>{item.detail}</small></div>
       <div className={styles.issuerQueueActions}>
         <form action={acknowledgeOrganizationQueueAction}>
@@ -221,10 +180,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
 
           <ActionQueueCard historyHref="/aesthetic-lab/issuer/notification-history" historyLabel="Open notification history">
             <div className={styles.issuerQueueList}>
-              {queue.length ? <>
-                {actionItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action Items ({actionItems.length})</b></div><div className={styles.issuerQueueGroupItems}>{actionItems.map(renderQueueItem)}</div></section> : null}
-                {notificationItems.length ? <section className={styles.issuerQueueGroup} data-queue-group="notification"><div className={styles.issuerQueueGroupHeading}><b>Notifications ({notificationItems.length})</b></div><div className={styles.issuerQueueGroupItems}>{notificationItems.map(renderQueueItem)}</div></section> : null}
-              </> : <p className={styles.issuerQueueEmpty}><b>Nothing to Review!</b></p>}
+              {queue.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action Items ({queue.length})</b></div><div className={styles.issuerQueueGroupItems}>{queue.map(renderQueueItem)}</div></section> : <p className={styles.issuerQueueEmpty}><b>Nothing to Review!</b></p>}
             </div>
           </ActionQueueCard>
 

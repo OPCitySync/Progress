@@ -324,14 +324,14 @@ export async function publishOnboardingSession(input: {
   startsAt: number | null
   recurring: boolean
 }): Promise<Result<{ mode: 'published' | 'scheduled' }>> {
-  if (!input.startsAt || input.startsAt < Date.now() - 5 * MINUTE_MS) {
+  if (!input.startsAt || !Number.isFinite(input.startsAt) || input.startsAt <= Date.now()) {
     return { ok: false, error: 'Choose a session date and time in the future.' }
   }
   const [task, existingSchedule] = await Promise.all([
     db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(onboardingRecurringSchedules).where(eq(onboardingRecurringSchedules.taskId, input.taskId)).limit(1).then((rows) => rows[0] ?? null),
   ])
-  if (!task || task.isOnboarding !== 1) {
+  if (!task || task.isOnboarding !== 1 || task.status !== 'open') {
     return { ok: false, error: 'That onboarding session is not available to your organization.' }
   }
 
@@ -346,10 +346,12 @@ export async function publishOnboardingSession(input: {
     ))
     .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
   const activeSession = futureSessions[0]
-  const durationMinutes = activeSession ? onboardingDuration(activeSession) : existingSchedule?.durationMinutes ?? 45
+  const intake = await (await import('./volunteer-intake')).getIntake(task.id)
+  const durationMinutes = activeSession ? onboardingDuration(activeSession) : existingSchedule?.durationMinutes ?? (intake ? task.defaultDurationMinutes : 45)
   const capacity = activeSession?.capacity ?? existingSchedule?.capacity ?? task.slots
 
   if (!input.recurring) {
+    if (futureSessions.some(shift => shift.startsAt === input.startsAt)) return { ok: false, error: 'This date and time is already published for this session.' }
     const shiftId = randomUUID()
     await db.transaction(async (tx) => {
       await tx.insert(shifts).values({

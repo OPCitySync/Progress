@@ -15,6 +15,8 @@
     "db:seed:onboarding-demo": "tsx scripts/seed-onboarding-simulations.ts",
     "db:seed:activity-preview": "tsx scripts/seed-activity-feed-preview.ts",
     "verify:city-ledger": "tsx scripts/verify-city-ledger-outbox.ts",
+    "verify:program-workspace": "tsx scripts/verify-program-workspace.ts",
+    "verify:volunteer-intake": "tsx scripts/verify-volunteer-intake.ts",
     "setup": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {

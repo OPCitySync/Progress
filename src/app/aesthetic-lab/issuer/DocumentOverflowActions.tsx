@@ -25,12 +25,12 @@ type Resource = {
 
 type Dialog = 'attach' | 'assign' | 'publish' | 'delete' | null
 
-const redirectTo = '/aesthetic-lab/issuer/catalog?workspace=documentation'
+const defaultRedirectTo = '/aesthetic-lab/issuer/catalog?workspace=documentation'
 
 /** A deliberately shallow action flow: the overflow menu chooses an action,
  * then one focused modal handles the choices. Nested menus are hard to scan
  * and especially fragile on smaller screens. */
-export function DocumentOverflowActions({ resource, tasks, programs }: { resource: Resource; tasks: TaskOption[]; programs: ProgramOption[] }) {
+export function DocumentOverflowActions({ resource, tasks, programs, redirectTo = defaultRedirectTo }: { resource: Resource; tasks: TaskOption[]; programs: ProgramOption[]; redirectTo?: string }) {
   const [dialog, setDialog] = useState<Dialog>(null)
   const menuRef = useRef<HTMLDetailsElement>(null)
   const isWaiver = resource.kind === 'waiver'
@@ -64,7 +64,7 @@ export function DocumentOverflowActions({ resource, tasks, programs }: { resourc
         <button type="button" onClick={() => openDialog('assign')}><FolderKanban size={14} /> Assign to…</button>
         <button type="button" onClick={() => openDialog('attach')}><Paperclip size={14} /> Attach To…</button>
         <button type="button" onClick={() => openDialog('publish')}><Share2 size={14} /> Publish To…</button>
-        <button type="button" className={styles.workspaceDocumentDeleteButton} onClick={() => openDialog('delete')}><Trash2 size={14} /> Delete Document</button>
+        <button type="button" className={styles.workspaceDocumentDeleteButton} onClick={() => openDialog('delete')}><Trash2 size={14} /> Delete {isWaiver ? 'Waiver' : 'Document'}</button>
       </div>
     </details>
 
@@ -86,14 +86,14 @@ export function DocumentOverflowActions({ resource, tasks, programs }: { resourc
     {dialog === 'attach' ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setDialog(null)}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby={`attach-resource-${resource.id}`} onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.issuerCalendarModalHeading}>
-          <div><p className={styles.eyebrow}>Attach to tasks</p><h2 id={`attach-resource-${resource.id}`}>Where should {resource.title} appear?</h2><p>{isWaiver ? 'This adds the waiver as a reference resource for selected tasks. Active waivers remain automatically included with onboarding, and this does not create a new signature requirement.' : 'Volunteers will see this resource when they open each selected opportunity.'}</p></div>
+          <div><p className={styles.eyebrow}>Attach to roles or opportunities</p><h2 id={`attach-resource-${resource.id}`}>Where should {resource.title} appear?</h2><p>{isWaiver ? 'This adds the waiver as a reference resource for selected roles or opportunities. Active waivers remain automatically included with onboarding, and this does not create a new signature requirement.' : 'Volunteers will see this resource when they open each selected role or opportunity.'}</p></div>
           <button type="button" aria-label="Close" onClick={() => setDialog(null)}><X size={18} /></button>
         </div>
         <form action={setOrganizationResourceAssignmentsAction} className={styles.issuerCalendarForm} onSubmit={() => setDialog(null)}>
           {hiddenResourceFields}
           <fieldset className={styles.documentAssignmentFieldset}>
-            <legend>Available tasks</legend>
-            {tasks.length ? <div>{tasks.map((task) => <label key={task.id}><input type="checkbox" name="taskIds" value={task.id} defaultChecked={resource.taskIds.includes(task.id)} /><span>{task.title}</span></label>)}</div> : <p>Your organization does not have any tasks to attach right now.</p>}
+            <legend>Available roles and opportunities</legend>
+            {tasks.length ? <div>{tasks.map((task) => <label key={task.id}><input type="checkbox" name="taskIds" value={task.id} defaultChecked={resource.taskIds.includes(task.id)} /><span>{task.title}</span></label>)}</div> : <p>Your organization does not have any roles or opportunities to attach right now.</p>}
           </fieldset>
           <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setDialog(null)}>Cancel</button><button type="submit"><Paperclip size={15} /> Save attachments</button></div>
         </form>
@@ -129,7 +129,7 @@ export function DocumentOverflowActions({ resource, tasks, programs }: { resourc
         <form action={isWaiver ? retireWaiverAction : archiveOrganizationDocumentAction} className={styles.issuerCalendarForm} onSubmit={() => setDialog(null)}>
           <input type="hidden" name={isWaiver ? 'waiverVersionId' : 'documentId'} value={resource.id} />
           <input type="hidden" name="redirectTo" value={redirectTo} />
-          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setDialog(null)}>Keep it</button><button type="submit" className={styles.resourceDeleteConfirm}><Trash2 size={15} /> Delete Document</button></div>
+          <div className={styles.issuerCalendarFormActions}><button type="button" onClick={() => setDialog(null)}>Keep it</button><button type="submit" className={styles.resourceDeleteConfirm}><Trash2 size={15} /> Delete {isWaiver ? 'Waiver' : 'Document'}</button></div>
         </form>
       </section>
     </div> : null}

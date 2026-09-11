@@ -1,4 +1,6 @@
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
+export * from './program-workspace-schema'
+export * from './volunteer-intake-schema'
 
 // ---------------------------------------------------------------------------
 // Projection tables. Current state, always derivable from the event log.
@@ -692,13 +694,14 @@ export const onboardingRecurringSchedules = sqliteTable(
   }),
 )
 
-// A reusable opportunity can also publish a repeating public event. Like
-// onboarding, the schedule deliberately exposes one upcoming occurrence at a
-// time so the roster and calendar remain clear for volunteers.
+// A reusable opportunity can hold multiple weekly patterns. Each pattern
+// exposes one upcoming occurrence at a time so the roster and calendar remain
+// clear while a role can still cover several days of the week.
 export const recurringEventSchedules = sqliteTable(
-  'recurring_event_schedules',
+  'recurring_event_patterns',
   {
-    taskId: text('task_id').primaryKey(),
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull(),
     orgId: text('org_id').notNull(),
     intervalDays: integer('interval_days').notNull().default(7),
     nextStartsAt: integer('next_starts_at').notNull(),
@@ -712,7 +715,8 @@ export const recurringEventSchedules = sqliteTable(
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({
-    byOrganization: index('recurring_event_schedules_org').on(t.orgId, t.active),
+    byOrganization: index('recurring_event_patterns_org').on(t.orgId, t.active),
+    byTask: index('recurring_event_patterns_task').on(t.taskId, t.active),
   }),
 )
 
@@ -737,6 +741,32 @@ export const plannedRecurringAssignments = sqliteTable(
     occurrenceUserUniq: uniqueIndex('planned_recurring_assignments_occurrence_user').on(t.taskId, t.occurrenceStartsAt, t.userId),
     byOrganization: index('planned_recurring_assignments_org').on(t.orgId, t.occurrenceStartsAt),
     byOccurrence: index('planned_recurring_assignments_occurrence').on(t.taskId, t.occurrenceStartsAt, t.status),
+  }),
+)
+
+// Staff support for future recurring occurrences stays separate from volunteer
+// plans for the same reason live shift staff stays separate from claims. The
+// delegation is checked again when the occurrence publishes, so revoked access
+// can never be carried into a live staff assignment.
+export const plannedRecurringStaffAssignments = sqliteTable(
+  'planned_recurring_staff_assignments',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull(),
+    orgId: text('org_id').notNull(),
+    occurrenceStartsAt: integer('occurrence_starts_at').notNull(),
+    userId: text('user_id').notNull(),
+    delegationId: text('delegation_id').notNull(),
+    assignedByUserId: text('assigned_by_user_id').notNull(),
+    status: text('status', { enum: ['planned', 'applied', 'removed'] }).notNull().default('planned'),
+    shiftId: text('shift_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    occurrenceUserUniq: uniqueIndex('planned_recurring_staff_assignments_occurrence_user').on(t.taskId, t.occurrenceStartsAt, t.userId),
+    byOrganization: index('planned_recurring_staff_assignments_org').on(t.orgId, t.occurrenceStartsAt),
+    byOccurrence: index('planned_recurring_staff_assignments_occurrence').on(t.taskId, t.occurrenceStartsAt, t.status),
   }),
 )
 
@@ -912,7 +942,7 @@ export const volunteerRosterMembers = sqliteTable(
     id: text('id').primaryKey(),
     orgId: text('org_id').notNull(),
     userId: text('user_id').notNull(),
-    source: text('source', { enum: ['invite'] }).notNull().default('invite'),
+    source: text('source', { enum: ['invite', 'approval'] }).notNull().default('invite'),
     invitedByUserId: text('invited_by_user_id'),
     joinedAt: integer('joined_at').notNull(),
   },

@@ -9,10 +9,15 @@ import {
   waiverAcceptances,
   orgMessages,
   messageRecipients,
+  organizationDelegations,
   volunteerGroups,
   volunteerGroupMembers,
   volunteerRosterInvites,
   volunteerRosterMembers,
+  programApplicants,
+  programWorkspaceSettings,
+  onboardingIntakes,
+  volunteerAdmissionDecisions,
 } from '@/lib/db/schema'
 import { getActiveWaivers } from './waivers'
 import { appendEvent } from '@/lib/ledger/ledger'
@@ -68,7 +73,7 @@ function hashVolunteerRosterInviteCode(code: string) {
 }
 
 export async function getRoster(orgId: string, query?: string): Promise<Roster> {
-  const [rows, explicitMembers] = await Promise.all([
+  const [rows, explicitMembers, activeStaff, applicants, intakes, admissions] = await Promise.all([
     db
       .select({ claim: claims, task: tasks, volunteer: users })
       .from(claims)
@@ -81,7 +86,27 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
       .from(volunteerRosterMembers)
       .innerJoin(users, eq(volunteerRosterMembers.userId, users.id))
       .where(eq(volunteerRosterMembers.orgId, orgId)),
+    db
+      .select({ userId: organizationDelegations.userId })
+      .from(organizationDelegations)
+      .where(and(
+        eq(organizationDelegations.orgId, orgId),
+        eq(organizationDelegations.status, 'active'),
+      )),
+    db.select().from(programApplicants).where(eq(programApplicants.orgId,orgId)),
+    db.select({ createdAt: onboardingIntakes.createdAt }).from(onboardingIntakes)
+      .innerJoin(tasks, eq(onboardingIntakes.taskId, tasks.id))
+      .where(and(eq(onboardingIntakes.orgId,orgId), eq(tasks.isOnboarding,1)))
+      .orderBy(asc(onboardingIntakes.createdAt)),
+    db.select().from(volunteerAdmissionDecisions).where(eq(volunteerAdmissionDecisions.orgId,orgId)),
   ])
+  const staffUserIds = new Set(activeStaff.map(({ userId }) => userId))
+  const pendingUserIds=new Set(applicants.filter(a=>a.status!=='approved').map(a=>a.userId))
+  const approvedUserIds=new Set(applicants.filter(a=>a.status==='approved').map(a=>a.userId))
+  for(const admission of admissions) if(admission.status==='approved') approvedUserIds.add(admission.userId)
+  const restrictedUserIds=new Set(admissions.filter(a=>a.status!=='approved').map(a=>a.userId))
+  const intakeBeganAt=intakes[0]?.createdAt
+  const establishedUsers=new Set(rows.filter(r=>intakeBeganAt && r.claim.createdAt<intakeBeganAt && ['claimed','submitted','verified'].includes(r.claim.status)).map(r=>r.volunteer.id))
 
   const waivers = await getActiveWaivers(orgId)
   const acceptedSet = new Set<string>()
@@ -94,10 +119,23 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
         eq(waiverAcceptances.signatureMethod, 'typed_electronic'),
       ))
     const acceptedByUser = new Map<string, Set<string>>()
+    for (const admission of admissions) {
+      try { acceptedByUser.set(admission.userId, new Set<string>(JSON.parse(admission.paperWaiverIds))) } catch {}
+    }
     for (const acceptance of acceptances) {
       const set = acceptedByUser.get(acceptance.userId) ?? new Set<string>()
       set.add(acceptance.waiverVersionId)
       acceptedByUser.set(acceptance.userId, set)
+    }
+    // Program welcome receipts are version-specific staff attestations too.
+    for (const application of applicants) {
+      if (!application.paperWaiverConfirmedAt) continue
+      let ids: unknown
+      try { ids = JSON.parse(application.paperWaiverIds) } catch { continue }
+      if (!Array.isArray(ids)) continue
+      const accepted = acceptedByUser.get(application.userId) ?? new Set<string>()
+      for (const id of ids) if (typeof id === 'string') accepted.add(id)
+      acceptedByUser.set(application.userId, accepted)
     }
 
     // Paper waivers are not a participant click-through. A participant is
@@ -120,6 +158,7 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
 
   const byUser = new Map<string, RosterVolunteer>()
   for (const { member, volunteer } of explicitMembers) {
+    if (staffUserIds.has(volunteer.id) || restrictedUserIds.has(volunteer.id)) continue
     byUser.set(volunteer.id, {
       userId: volunteer.id,
       name: participantDisplayName(volunteer),
@@ -134,7 +173,9 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
     })
   }
   for (const { claim, task, volunteer } of rows) {
-    if (claim.status === 'unclaimed') continue
+    if (claim.status === 'unclaimed' || staffUserIds.has(volunteer.id) || restrictedUserIds.has(volunteer.id)) continue
+    if (intakeBeganAt && !establishedUsers.has(volunteer.id) && !approvedUserIds.has(volunteer.id) && !byUser.has(volunteer.id)) continue
+    if(task.isOnboarding===1&&pendingUserIds.has(volunteer.id)&&!approvedUserIds.has(volunteer.id)&&!byUser.has(volunteer.id))continue
     let v = byUser.get(volunteer.id)
     if (!v) {
       v = {
@@ -195,7 +236,7 @@ export async function getRoster(orgId: string, query?: string): Promise<Roster> 
     volunteers,
     taskGroups,
     counts: {
-      total: byUser.size,
+      total: all.length,
       active: all.filter((v) => v.status === 'active' || v.status === 'committed').length,
       needsWaiver: all.filter((v) => v.status === 'needs-waiver').length,
     },
@@ -257,7 +298,7 @@ export async function getVolunteerRosterInvite(code: string): Promise<VolunteerR
 export async function acceptVolunteerRosterInvite(input: {
   userId: string
   code: string
-}): Promise<Result<{ organizationName: string; alreadyMember: boolean }>> {
+}): Promise<Result<{ organizationName: string; alreadyMember: boolean; next?:string }>> {
   const cleanCode = input.code.trim()
   if (!cleanCode) return { ok: false, error: 'That volunteer invitation is missing its code.' }
 
@@ -280,6 +321,19 @@ export async function acceptVolunteerRosterInvite(input: {
         : { state: 'unavailable' as const }
     }
 
+    const staffAccess = (
+      await tx
+        .select({ id: organizationDelegations.id })
+        .from(organizationDelegations)
+        .where(and(
+          eq(organizationDelegations.orgId, fresh.invite.orgId),
+          eq(organizationDelegations.userId, input.userId),
+          eq(organizationDelegations.status, 'active'),
+        ))
+        .limit(1)
+    )[0]
+    if (staffAccess) return { state: 'staff' as const }
+
     const existing = (
       await tx
         .select({ id: volunteerRosterMembers.id })
@@ -288,7 +342,10 @@ export async function acceptVolunteerRosterInvite(input: {
         .limit(1)
     )[0]
     const now = Date.now()
-    if (!existing) {
+    const welcome=(await tx.select().from(programWorkspaceSettings).where(and(eq(programWorkspaceSettings.orgId,fresh.invite.orgId),eq(programWorkspaceSettings.scope,'organization'),eq(programWorkspaceSettings.onboardingMode,'program'))).limit(1))[0]
+    if(welcome&&!existing){
+      await (await import('./program-workspace')).registerProgramCandidate(tx,fresh.invite.orgId,'organization',input.userId)
+    } else if (!existing) {
       await tx.insert(volunteerRosterMembers).values({
         id: randomUUID(),
         orgId: fresh.invite.orgId,
@@ -308,21 +365,31 @@ export async function acceptVolunteerRosterInvite(input: {
       { orgId: fresh.invite.orgId, userId: input.userId, alreadyMember: Boolean(existing) },
       input.userId,
     )
-    return { state: existing ? 'already-member' as const : 'joined' as const, organizationName: fresh.organizationName }
+    return { state: existing ? 'already-member' as const : 'joined' as const, organizationName: fresh.organizationName, next:welcome&&!existing?'/aesthetic-lab/onboarding/'+fresh.invite.orgId+'/organization':undefined }
   })
 
   if (result.state === 'invalid') return { ok: false, error: 'That volunteer invitation is invalid, expired, or has been revoked.' }
   if (result.state === 'unavailable') return { ok: false, error: 'That volunteer invitation has already been used.' }
-  return { ok: true, organizationName: result.organizationName, alreadyMember: result.state !== 'joined' }
+  if (result.state === 'staff') return { ok: false, error: 'Staff members cannot join the volunteer roster for the same organization. Organization access takes priority.' }
+  return { ok: true, organizationName: result.organizationName, alreadyMember: result.state !== 'joined', next:'next' in result?result.next:undefined }
 }
 
 /** Organization-defined volunteer groupings and their current membership. */
 export async function getVolunteerGroups(orgId: string): Promise<VolunteerGroup[]> {
-  const groups = await db
-    .select()
-    .from(volunteerGroups)
-    .where(eq(volunteerGroups.orgId, orgId))
-    .orderBy(asc(volunteerGroups.name))
+  const [groups, activeStaff] = await Promise.all([
+    db
+      .select()
+      .from(volunteerGroups)
+      .where(eq(volunteerGroups.orgId, orgId))
+      .orderBy(asc(volunteerGroups.name)),
+    db
+      .select({ userId: organizationDelegations.userId })
+      .from(organizationDelegations)
+      .where(and(
+        eq(organizationDelegations.orgId, orgId),
+        eq(organizationDelegations.status, 'active'),
+      )),
+  ])
 
   if (groups.length === 0) return []
 
@@ -330,7 +397,9 @@ export async function getVolunteerGroups(orgId: string): Promise<VolunteerGroup[
     .select({ groupId: volunteerGroupMembers.groupId, userId: volunteerGroupMembers.userId })
     .from(volunteerGroupMembers)
   const membersByGroup = new Map<string, string[]>()
+  const staffUserIds = new Set(activeStaff.map(({ userId }) => userId))
   for (const member of members) {
+    if (staffUserIds.has(member.userId)) continue
     const list = membersByGroup.get(member.groupId) ?? []
     list.push(member.userId)
     membersByGroup.set(member.groupId, list)

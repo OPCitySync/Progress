@@ -42,6 +42,7 @@ const hiddenPayloadFields = new Set([
   'participantId',
   'taskId',
   'shiftId',
+  'programId',
   'claimId',
   'refId',
   // Older local preview data included a hand-written post summary. The source
@@ -114,7 +115,15 @@ function audiencesForActivity(type: string): ActivityAudience[] {
     case 'TASK_CREATED':
     case 'TASK_UPDATED':
     case 'ONBOARDING_SESSION_CREATED':
+    case 'ONBOARDING_APPLICATION_FORM_SAVED':
+    case 'ONBOARDING_APPLICATION_FORM_ARCHIVED':
+    case 'ONBOARDING_APPLICATION_FORM_PUBLISHED':
+    case 'ONBOARDING_APPLICATION_FORM_UNPUBLISHED':
+    case 'ONBOARDING_APPLICATION_SUBMITTED':
+    case 'ONBOARDING_APPLICATION_REVIEWED':
+    case 'VOLUNTEER_ADMISSION_REVIEWED':
     case 'ONBOARDING_SESSION_UPDATED':
+    case 'ONBOARDING_SESSION_INVITATIONS_SENT':
     case 'ONBOARDING_SESSION_RECURRENCE_SET':
     case 'TEMPLATE_EVENT_RECURRENCE_SET':
     case 'TASK_CLOSED':
@@ -200,16 +209,21 @@ export function IssuerActivityFeed({ activity }: { activity: OrganizationActivit
         const isCreditsMinted = entry.type === 'CREDITS_MINTED'
         const audiences = audiencesForActivity(entry.type)
         const eventHref = entry.shiftId
-          ? `/aesthetic-lab/issuer/catalog?workspace=${entry.isOnboarding ? 'onboarding' : 'opportunities'}&event=${entry.shiftId}#event-${entry.shiftId}`
+          ? entry.isOnboarding
+            ? `/aesthetic-lab/issuer/volunteers?event=${entry.shiftId}#event-${entry.shiftId}`
+            : entry.taskId
+              ? `/aesthetic-lab/issuer/opportunities/${entry.taskId}`
+              : '/aesthetic-lab/issuer'
           : entry.taskId
             ? entry.isOnboarding
-              ? '/aesthetic-lab/issuer/catalog?workspace=onboarding'
+              ? '/aesthetic-lab/issuer/volunteers'
               : `/aesthetic-lab/issuer/opportunities/${entry.taskId}`
             : null
         const postHref = entry.postId ? `/aesthetic-lab/issuer/feed#post-${entry.postId}` : null
         const messageHref = entry.messageId
           ? `/aesthetic-lab/issuer/notifications?pane=outbound&message=${encodeURIComponent(entry.messageId)}`
           : null
+        const programHref=entry.programId?'/aesthetic-lab/issuer/programs/'+encodeURIComponent(entry.programId)+'?section='+(entry.type.includes('RECOGNITION')?'recognition':entry.type.includes('ONBOARDING')||entry.type.includes('APPLICATION')||entry.type.includes('CANDIDATE')||entry.type.includes('DOCUMENT_RECEIVED')?'onboarding':'overview'):null
         return <article key={entry.hash}>
           <details className={styles.issuerLedgerDetails}>
             <summary className={styles.issuerLedgerSummary}>
@@ -222,6 +236,7 @@ export function IssuerActivityFeed({ activity }: { activity: OrganizationActivit
               <span className={styles.issuerLedgerDetailsControl}>View recorded details</span>
             </summary>
             <div className={styles.issuerLedgerDetailBody}>
+              {programHref?<p className={styles.issuerLedgerReason}><Link href={programHref}>Open program workspace</Link></p>:null}
               {isCreditsMinted ? <dl className={styles.issuerLedgerPayload}>
                 <div><dt>Amount</dt><dd>{ledgerValue('amount', payload.amount)} Civic Credits</dd></div>
                 <div><dt>Reason</dt><dd className={styles.issuerLedgerReason}>{readableReason(payload.reason)}{eventHref ? <Link href={eventHref}>Open event card</Link> : null}</dd></div>

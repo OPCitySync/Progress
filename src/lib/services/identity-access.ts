@@ -4,13 +4,20 @@ import { db } from '@/lib/db/client'
 import {
   cities,
   cityMemberships,
+  claims,
   identities,
   organizationDelegations,
   organizationInvites,
   organizationRoles,
   orgProfiles,
   orgs,
+  plannedRecurringAssignments,
+  tasks,
   users,
+  volunteerGroupMembers,
+  volunteerGroups,
+  volunteerRosterMembers,
+  volunteerTaskEligibilityGrants,
 } from '@/lib/db/schema'
 import type { Session } from '@/lib/auth/session'
 import { appendEvent, type DbOrTx } from '@/lib/ledger/ledger'
@@ -141,6 +148,87 @@ export async function ensureOrganizationRoles(tx: DbOrTx, orgId: string) {
 }
 
 /**
+ * Active organization authority takes precedence over a volunteer role in the
+ * same organization. Current-state roster links are removed, future volunteer
+ * plans are released, and active claims are retained as unclaimed records so
+ * the append-only history still explains what happened.
+ */
+async function giveStaffPriorityOverVolunteerRole(
+  tx: DbOrTx,
+  input: { orgId: string; userId: string; actorId: string | null },
+) {
+  const now = Date.now()
+  const activeClaims = await tx
+    .select({ claimId: claims.id, taskId: claims.taskId, shiftId: claims.shiftId, cityId: tasks.cityId })
+    .from(claims)
+    .innerJoin(tasks, eq(claims.taskId, tasks.id))
+    .where(and(
+      eq(tasks.orgId, input.orgId),
+      eq(claims.userId, input.userId),
+      eq(claims.status, 'claimed'),
+    ))
+
+  for (const claim of activeClaims) {
+    await tx.update(claims).set({ status: 'unclaimed', updatedAt: now }).where(eq(claims.id, claim.claimId))
+    await appendEvent(
+      tx,
+      EventTypes.CLAIM_UNCLAIMED,
+      {
+        claimId: claim.claimId,
+        taskId: claim.taskId,
+        shiftId: claim.shiftId,
+        cityId: claim.cityId,
+        reason: 'organization_staff_access_granted',
+      },
+      input.actorId,
+    )
+  }
+
+  await tx
+    .delete(volunteerRosterMembers)
+    .where(and(
+      eq(volunteerRosterMembers.orgId, input.orgId),
+      eq(volunteerRosterMembers.userId, input.userId),
+    ))
+
+  const organizationGroups = await tx
+    .select({ id: volunteerGroups.id })
+    .from(volunteerGroups)
+    .where(eq(volunteerGroups.orgId, input.orgId))
+  if (organizationGroups.length) {
+    await tx
+      .delete(volunteerGroupMembers)
+      .where(and(
+        eq(volunteerGroupMembers.userId, input.userId),
+        inArray(volunteerGroupMembers.groupId, organizationGroups.map(({ id }) => id)),
+      ))
+  }
+
+  await tx
+    .update(plannedRecurringAssignments)
+    .set({ status: 'removed', updatedAt: now })
+    .where(and(
+      eq(plannedRecurringAssignments.orgId, input.orgId),
+      eq(plannedRecurringAssignments.userId, input.userId),
+      eq(plannedRecurringAssignments.status, 'planned'),
+    ))
+
+  await tx
+    .update(volunteerTaskEligibilityGrants)
+    .set({
+      status: 'revoked',
+      revokedByUserId: input.actorId ?? input.userId,
+      revokedAt: now,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(volunteerTaskEligibilityGrants.orgId, input.orgId),
+      eq(volunteerTaskEligibilityGrants.userId, input.userId),
+      eq(volunteerTaskEligibilityGrants.status, 'active'),
+    ))
+}
+
+/**
  * Grant or restore one authority identity per person × organization pair.
  * Reinviting a former employee reactivates their existing authority address,
  * preserving the audit trail instead of creating a shared account.
@@ -171,6 +259,11 @@ export async function grantOrganizationAuthority(
 
   const capabilities = JSON.stringify(input.capabilities?.length ? input.capabilities : DEFAULT_TIER_PERMISSIONS)
   const cityIds = JSON.stringify(input.cityIds ?? [])
+  await giveStaffPriorityOverVolunteerRole(tx, {
+    orgId: input.orgId,
+    userId: input.userId,
+    actorId: input.grantedByUserId ?? input.userId,
+  })
   if (existing) {
     await tx
       .update(identities)
@@ -391,6 +484,22 @@ export async function isOrganizationOwner(userId: string, delegationId: string, 
           eq(organizationDelegations.status, 'active'),
         ),
       )
+      .limit(1)
+  )[0]
+  return Boolean(delegation)
+}
+
+/** Organization-scoped role check used anywhere volunteer authority changes. */
+export async function isActiveOrganizationStaff(orgId: string, userId: string) {
+  const delegation = (
+    await db
+      .select({ id: organizationDelegations.id })
+      .from(organizationDelegations)
+      .where(and(
+        eq(organizationDelegations.orgId, orgId),
+        eq(organizationDelegations.userId, userId),
+        eq(organizationDelegations.status, 'active'),
+      ))
       .limit(1)
   )[0]
   return Boolean(delegation)
@@ -723,6 +832,13 @@ export async function acceptOrganizationInvite(input: {
       .limit(1)
   )[0]
   if (existing?.delegation.status === 'active') {
+    await db.transaction(async (tx) => {
+      await giveStaffPriorityOverVolunteerRole(tx, {
+        orgId: invite.orgId,
+        userId: input.userId,
+        actorId: existing.identity.id,
+      })
+    })
     return {
       ok: true,
       identityId: existing.identity.id,

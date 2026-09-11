@@ -1,7 +1,17 @@
 import { randomUUID } from 'crypto'
-import { and, asc, desc, eq, gt, gte, inArray, or } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, plannedRecurringAssignments, recurringEventSchedules, shifts, tasks, volunteerRosterMembers } from '@/lib/db/schema'
+import {
+  claims,
+  organizationDelegations,
+  plannedRecurringAssignments,
+  plannedRecurringStaffAssignments,
+  recurringEventSchedules,
+  shifts,
+  shiftStaffAssignments,
+  tasks,
+  volunteerRosterMembers,
+} from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { notifyShiftAssigned } from '@/lib/services/notifications'
@@ -54,18 +64,6 @@ function durationFor(shiftsForTemplate: Array<typeof shifts.$inferSelect>) {
     : DEFAULT_DURATION_MINUTES
 }
 
-async function getFutureSessions(taskId: string, now: number) {
-  return db
-    .select()
-    .from(shifts)
-    .where(and(
-      eq(shifts.taskId, taskId),
-      eq(shifts.status, 'open'),
-      or(gte(shifts.startsAt, now), gt(shifts.endsAt, now)),
-    ))
-    .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
-}
-
 /**
  * Save a volunteer against a projected recurring occurrence. This deliberately
  * does not create a claim or send a notification: both happen only when the
@@ -79,14 +77,24 @@ export async function planVolunteerForRecurringShift(input: {
   userId: string
   allowOverCapacity?: boolean
 }): Promise<Result<{ assigned: boolean }>> {
-  const [task, schedule, publishedShift] = await Promise.all([
+  const [task, schedules, publishedShift, staffAccess] = await Promise.all([
     db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null),
-    db.select().from(recurringEventSchedules).where(and(eq(recurringEventSchedules.taskId, input.taskId), eq(recurringEventSchedules.orgId, input.orgId), eq(recurringEventSchedules.active, 1))).limit(1).then((rows) => rows[0] ?? null),
+    db.select().from(recurringEventSchedules).where(and(eq(recurringEventSchedules.taskId, input.taskId), eq(recurringEventSchedules.orgId, input.orgId), eq(recurringEventSchedules.active, 1))),
     db.select().from(shifts).where(and(eq(shifts.taskId, input.taskId), eq(shifts.startsAt, input.occurrenceStartsAt))).limit(1).then((rows) => rows[0] ?? null),
+    db.select({ id: organizationDelegations.id }).from(organizationDelegations).where(and(
+      eq(organizationDelegations.orgId, input.orgId),
+      eq(organizationDelegations.userId, input.userId),
+      eq(organizationDelegations.status, 'active'),
+    )).limit(1).then((rows) => rows[0] ?? null),
   ])
   if (!task || task.status !== 'open' || task.isOnboarding === 1) return { ok: false, error: 'This recurring volunteer shift is not available for planning.' }
+  const schedule = schedules.find((candidate) => isPlannableOccurrence(candidate, input.occurrenceStartsAt))
   if (!schedule || !isPlannableOccurrence(schedule, input.occurrenceStartsAt)) return { ok: false, error: 'Choose a future occurrence from this recurring shift plan.' }
   if (publishedShift) return { ok: false, error: 'This occurrence is already published. Add the volunteer directly to the shift instead.' }
+  if (staffAccess) return { ok: false, error: 'Staff members cannot be planned as volunteers within the same organization.' }
+  const {programAccessError,scopeOf}=await import('./program-workspace')
+  const accessError=await programAccessError(input.orgId,scopeOf(task.programId),input.userId)
+  if(accessError)return {ok:false,error:accessError}
 
   const [rosterMember, priorParticipation] = await Promise.all([
     db.select({ userId: volunteerRosterMembers.userId }).from(volunteerRosterMembers).where(and(eq(volunteerRosterMembers.orgId, input.orgId), eq(volunteerRosterMembers.userId, input.userId))).limit(1),
@@ -146,10 +154,81 @@ export async function removeVolunteerFromRecurringShiftPlan(input: {
   return { ok: true }
 }
 
+/** Save staff support for an unpublished recurring occurrence. */
+export async function planStaffForRecurringShift(input: {
+  taskId: string
+  orgId: string
+  actorId: string
+  occurrenceStartsAt: number
+  userId: string
+}): Promise<Result<{ assigned: boolean }>> {
+  const [task, schedules, publishedShift, delegation] = await Promise.all([
+    db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null),
+    db.select().from(recurringEventSchedules).where(and(eq(recurringEventSchedules.taskId, input.taskId), eq(recurringEventSchedules.orgId, input.orgId), eq(recurringEventSchedules.active, 1))),
+    db.select().from(shifts).where(and(eq(shifts.taskId, input.taskId), eq(shifts.startsAt, input.occurrenceStartsAt))).limit(1).then((rows) => rows[0] ?? null),
+    db.select().from(organizationDelegations).where(and(
+      eq(organizationDelegations.orgId, input.orgId),
+      eq(organizationDelegations.userId, input.userId),
+      eq(organizationDelegations.status, 'active'),
+    )).limit(1).then((rows) => rows[0] ?? null),
+  ])
+  if (!task || task.status !== 'open' || task.isOnboarding === 1) return { ok: false, error: 'This recurring shift is not available for planning.' }
+  const schedule = schedules.find((candidate) => isPlannableOccurrence(candidate, input.occurrenceStartsAt))
+  if (!schedule || !isPlannableOccurrence(schedule, input.occurrenceStartsAt)) return { ok: false, error: 'Choose a future occurrence from this recurring shift plan.' }
+  if (publishedShift) return { ok: false, error: 'This occurrence is already published. Add staff directly to the shift instead.' }
+  if (!delegation) return { ok: false, error: 'That person does not have active organization access.' }
+
+  const existing = await db.select().from(plannedRecurringStaffAssignments).where(and(
+    eq(plannedRecurringStaffAssignments.taskId, input.taskId),
+    eq(plannedRecurringStaffAssignments.orgId, input.orgId),
+    eq(plannedRecurringStaffAssignments.occurrenceStartsAt, input.occurrenceStartsAt),
+    eq(plannedRecurringStaffAssignments.userId, input.userId),
+  )).limit(1).then((rows) => rows[0] ?? null)
+  if (existing?.status === 'planned' && existing.delegationId === delegation.id) return { ok: true, assigned: false }
+
+  const now = Date.now()
+  await db.insert(plannedRecurringStaffAssignments).values({
+    id: existing?.id ?? randomUUID(),
+    taskId: input.taskId,
+    orgId: input.orgId,
+    occurrenceStartsAt: input.occurrenceStartsAt,
+    userId: input.userId,
+    delegationId: delegation.id,
+    assignedByUserId: input.actorId,
+    status: 'planned',
+    shiftId: null,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: [plannedRecurringStaffAssignments.taskId, plannedRecurringStaffAssignments.occurrenceStartsAt, plannedRecurringStaffAssignments.userId],
+    set: { delegationId: delegation.id, assignedByUserId: input.actorId, status: 'planned', shiftId: null, updatedAt: now },
+  })
+  return { ok: true, assigned: true }
+}
+
+/** Remove staff support from an unpublished recurring occurrence. */
+export async function removeStaffFromRecurringShiftPlan(input: {
+  taskId: string
+  orgId: string
+  occurrenceStartsAt: number
+  userId: string
+}): Promise<Result> {
+  const assignment = await db.select().from(plannedRecurringStaffAssignments).where(and(
+    eq(plannedRecurringStaffAssignments.taskId, input.taskId),
+    eq(plannedRecurringStaffAssignments.orgId, input.orgId),
+    eq(plannedRecurringStaffAssignments.occurrenceStartsAt, input.occurrenceStartsAt),
+    eq(plannedRecurringStaffAssignments.userId, input.userId),
+    eq(plannedRecurringStaffAssignments.status, 'planned'),
+  )).limit(1).then((rows) => rows[0] ?? null)
+  if (!assignment) return { ok: false, error: 'That planned staff assignment is no longer available.' }
+  await db.update(plannedRecurringStaffAssignments).set({ status: 'removed', updatedAt: Date.now() }).where(eq(plannedRecurringStaffAssignments.id, assignment.id))
+  return { ok: true }
+}
+
 /**
- * Publish a dated occurrence of a reusable opportunity. Recurring schedules
- * mirror onboarding: only one public future occurrence is released at a time,
- * then the next weekly date is published after the current one has ended.
+ * Publish a dated occurrence of a reusable opportunity. Each weekly pattern
+ * releases one occurrence at a time, then publishes its next date after the
+ * current occurrence has ended.
  */
 export async function publishTemplateEvent(input: {
   taskId: string
@@ -166,9 +245,8 @@ export async function publishTemplateEvent(input: {
   if (!startsAt || startsAt < Date.now() - 5 * MINUTE_MS) {
     return { ok: false, error: 'Choose an event date and time in the future.' }
   }
-  const [task, existingSchedule, priorSessions] = await Promise.all([
+  const [task, priorSessions] = await Promise.all([
     db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId))).limit(1).then((rows) => rows[0] ?? null),
-    db.select().from(recurringEventSchedules).where(eq(recurringEventSchedules.taskId, input.taskId)).limit(1).then((rows) => rows[0] ?? null),
     db.select().from(shifts).where(eq(shifts.taskId, input.taskId)).orderBy(desc(shifts.createdAt)),
   ])
   if (!task) return { ok: false, error: 'That opportunity is not available to your organization.' }
@@ -189,9 +267,6 @@ export async function publishTemplateEvent(input: {
 
   const now = Date.now()
   const durationMinutes = requestedDuration ?? task.defaultDurationMinutes ?? durationFor(priorSessions)
-  const futureSessions = await getFutureSessions(task.id, now)
-  const activeSession = futureSessions[0]
-
   if (!input.recurring) {
     const shiftId = randomUUID()
     await db.transaction(async (tx) => {
@@ -225,50 +300,10 @@ export async function publishTemplateEvent(input: {
     return { ok: true, mode: 'published', taskId: task.id, shiftId, visibility }
   }
 
-  if (futureSessions.length > 1) {
-    return { ok: false, error: 'This opportunity already has multiple future events published. Finish or close them before enabling one-at-a-time recurring publication.' }
-  }
-  if (activeSession?.endsAt && startsAt <= activeSession.endsAt) {
-    return { ok: false, error: 'Choose a recurring event time after the currently published event ends.' }
-  }
-
-  let publishedShiftId: string | null = null
+  const publishedShiftId = randomUUID()
   await db.transaction(async (tx) => {
-    if (activeSession?.endsAt && activeSession.endsAt > now) {
-      await tx
-        .insert(recurringEventSchedules)
-        .values({
-          taskId: task.id,
-          orgId: input.orgId,
-          intervalDays: 7,
-          nextStartsAt: startsAt,
-          durationMinutes,
-          capacity,
-          visibility,
-          enrollmentMode,
-          lastPublishedShiftId: activeSession.id,
-          active: 1,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: recurringEventSchedules.taskId,
-          set: { intervalDays: 7, nextStartsAt: startsAt, durationMinutes, capacity, visibility, enrollmentMode, lastPublishedShiftId: activeSession.id, active: 1, updatedAt: now },
-        })
-      await appendEvent(tx, EventTypes.TEMPLATE_EVENT_RECURRENCE_SET, {
-        taskId: task.id,
-        orgId: input.orgId,
-        cityId: task.cityId,
-        nextStartsAt: startsAt,
-        waitsForShiftId: activeSession.id,
-      }, input.actorId)
-      return
-    }
-
-    const shiftId = randomUUID()
-    publishedShiftId = shiftId
     await tx.insert(shifts).values({
-      id: shiftId,
+      id: publishedShiftId,
       taskId: task.id,
       orgId: input.orgId,
       startsAt,
@@ -284,6 +319,7 @@ export async function publishTemplateEvent(input: {
     await tx
       .insert(recurringEventSchedules)
       .values({
+        id: randomUUID(),
         taskId: task.id,
         orgId: input.orgId,
         intervalDays: 7,
@@ -292,20 +328,16 @@ export async function publishTemplateEvent(input: {
         capacity,
         visibility,
         enrollmentMode,
-        lastPublishedShiftId: shiftId,
+        lastPublishedShiftId: publishedShiftId,
         active: 1,
         createdAt: now,
         updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: recurringEventSchedules.taskId,
-        set: { intervalDays: 7, nextStartsAt: advanceDays(startsAt, 7), durationMinutes, capacity, visibility, enrollmentMode, lastPublishedShiftId: shiftId, active: 1, updatedAt: now },
       })
     await appendEvent(tx, EventTypes.TEMPLATE_EVENT_PUBLISHED, {
       taskId: task.id,
       orgId: input.orgId,
       cityId: task.cityId,
-      shiftId,
+      shiftId: publishedShiftId,
       startsAt,
       durationMinutes,
         capacity,
@@ -318,11 +350,11 @@ export async function publishTemplateEvent(input: {
       orgId: input.orgId,
       cityId: task.cityId,
       nextStartsAt: advanceDays(startsAt, 7),
-      waitsForShiftId: shiftId,
+      waitsForShiftId: publishedShiftId,
     }, input.actorId)
   })
 
-  return { ok: true, mode: activeSession?.endsAt && activeSession.endsAt > now ? 'scheduled' : 'published', taskId: task.id, shiftId: publishedShiftId, visibility }
+  return { ok: true, mode: 'published', taskId: task.id, shiftId: publishedShiftId, visibility }
 }
 
 /** Release the next event only after the prior recurring event has finished. */
@@ -336,9 +368,6 @@ export async function publishDueRecurringTemplateEvents(now = Date.now()) {
       schedule.lastPublishedShiftId ? db.select().from(shifts).where(eq(shifts.id, schedule.lastPublishedShiftId)).limit(1).then((rows) => rows[0] ?? null) : Promise.resolve(null),
     ])
     if (!task || !lastShift?.endsAt || lastShift.endsAt > now) continue
-
-    const existingFuture = await getFutureSessions(schedule.taskId, now)
-    if (existingFuture[0]) continue
 
     let startsAt = schedule.nextStartsAt
     while (startsAt <= now + 5 * MINUTE_MS) startsAt = advanceDays(startsAt, schedule.intervalDays)
@@ -368,10 +397,37 @@ export async function publishDueRecurringTemplateEvents(now = Date.now()) {
           eq(plannedRecurringAssignments.occurrenceStartsAt, startsAt),
           eq(plannedRecurringAssignments.status, 'planned'),
         ))
+      const plannedUserIds = plannedAssignments.map((assignment) => assignment.userId)
+      const activeStaff = plannedUserIds.length
+        ? await tx
+            .select({ userId: organizationDelegations.userId })
+            .from(organizationDelegations)
+            .where(and(
+              eq(organizationDelegations.orgId, schedule.orgId),
+              inArray(organizationDelegations.userId, plannedUserIds),
+              eq(organizationDelegations.status, 'active'),
+            ))
+        : []
+      const staffUserIds = new Set(activeStaff.map(({ userId }) => userId))
+      const supersededPlanUserIds = plannedUserIds.filter((userId) => staffUserIds.has(userId))
+      if (supersededPlanUserIds.length) {
+        await tx
+          .update(plannedRecurringAssignments)
+          .set({ status: 'removed', updatedAt: now })
+          .where(and(
+            eq(plannedRecurringAssignments.taskId, task.id),
+            eq(plannedRecurringAssignments.orgId, schedule.orgId),
+            eq(plannedRecurringAssignments.occurrenceStartsAt, startsAt),
+            eq(plannedRecurringAssignments.status, 'planned'),
+            inArray(plannedRecurringAssignments.userId, supersededPlanUserIds),
+          ))
+      }
       // An issuer can deliberately plan above the template capacity after a
       // confirmation. Preserve every such planned assignment as the shift is
       // materialized rather than silently dropping people from the roster.
-      plannedVolunteerIds = plannedAssignments.map((assignment) => assignment.userId)
+      // Active staff are the exception: their organization authority always
+      // takes precedence over a volunteer plan for this same organization.
+      plannedVolunteerIds = plannedUserIds.filter((userId) => !staffUserIds.has(userId))
       for (const userId of plannedVolunteerIds) {
         await tx.insert(claims).values({
           id: randomUUID(),
@@ -402,10 +458,62 @@ export async function publishDueRecurringTemplateEvents(now = Date.now()) {
             inArray(plannedRecurringAssignments.userId, plannedVolunteerIds),
           ))
       }
+      const plannedStaffAssignments = await tx
+        .select({ assignment: plannedRecurringStaffAssignments })
+        .from(plannedRecurringStaffAssignments)
+        .innerJoin(organizationDelegations, and(
+          eq(organizationDelegations.id, plannedRecurringStaffAssignments.delegationId),
+          eq(organizationDelegations.orgId, plannedRecurringStaffAssignments.orgId),
+          eq(organizationDelegations.userId, plannedRecurringStaffAssignments.userId),
+          eq(organizationDelegations.status, 'active'),
+        ))
+        .where(and(
+          eq(plannedRecurringStaffAssignments.taskId, task.id),
+          eq(plannedRecurringStaffAssignments.orgId, schedule.orgId),
+          eq(plannedRecurringStaffAssignments.occurrenceStartsAt, startsAt),
+          eq(plannedRecurringStaffAssignments.status, 'planned'),
+        ))
+      const plannedStaffUserIds = plannedStaffAssignments.map(({ assignment }) => assignment.userId)
+      for (const { assignment } of plannedStaffAssignments) {
+        await tx.insert(shiftStaffAssignments).values({
+          id: randomUUID(),
+          shiftId,
+          orgId: schedule.orgId,
+          userId: assignment.userId,
+          delegationId: assignment.delegationId,
+          assignedByUserId: assignment.assignedByUserId,
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+      if (plannedStaffUserIds.length) {
+        await tx
+          .update(plannedRecurringStaffAssignments)
+          .set({ status: 'applied', shiftId, updatedAt: now })
+          .where(and(
+            eq(plannedRecurringStaffAssignments.taskId, task.id),
+            eq(plannedRecurringStaffAssignments.orgId, schedule.orgId),
+            eq(plannedRecurringStaffAssignments.occurrenceStartsAt, startsAt),
+            eq(plannedRecurringStaffAssignments.status, 'planned'),
+            inArray(plannedRecurringStaffAssignments.userId, plannedStaffUserIds),
+          ))
+      }
+      // A planned staff member may lose organization access before this future
+      // occurrence publishes. Retire any such plan instead of granting support
+      // access to the materialized shift from a stale delegation.
+      await tx
+        .update(plannedRecurringStaffAssignments)
+        .set({ status: 'removed', updatedAt: now })
+        .where(and(
+          eq(plannedRecurringStaffAssignments.taskId, task.id),
+          eq(plannedRecurringStaffAssignments.orgId, schedule.orgId),
+          eq(plannedRecurringStaffAssignments.occurrenceStartsAt, startsAt),
+          eq(plannedRecurringStaffAssignments.status, 'planned'),
+        ))
       await tx
         .update(recurringEventSchedules)
         .set({ lastPublishedShiftId: shiftId, nextStartsAt: advanceDays(startsAt, schedule.intervalDays), updatedAt: now })
-        .where(eq(recurringEventSchedules.taskId, schedule.taskId))
+        .where(eq(recurringEventSchedules.id, schedule.id))
       await appendEvent(tx, EventTypes.TEMPLATE_EVENT_PUBLISHED, {
         taskId: task.id,
         orgId: schedule.orgId,
