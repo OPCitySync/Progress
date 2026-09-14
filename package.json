@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run build",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:migrate:schema": "tsx scripts/migrate.ts --schema-only",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:onboarding-demo": "tsx scripts/seed-onboarding-simulations.ts",
     "db:seed:activity-preview": "tsx scripts/seed-activity-feed-preview.ts",

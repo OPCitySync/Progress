@@ -16,6 +16,8 @@ const client = createClient({
   authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
 })
 
+const schemaOnly = process.argv.includes('--schema-only')
+
 const statements = [
   ...programWorkspaceDDL,
   ...volunteerIntakeDDL,
@@ -302,10 +304,6 @@ const statements = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
-  `INSERT OR IGNORE INTO recurring_event_patterns
-    (id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at)
-    SELECT 'legacy:' || task_id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at
-    FROM recurring_event_schedules`,
   `CREATE TABLE IF NOT EXISTS planned_recurring_assignments (
     id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL,
@@ -777,6 +775,15 @@ const columnMigrations = [
   `ALTER TABLE waiver_acceptances ADD COLUMN signer_name TEXT`,
   `ALTER TABLE waiver_acceptances ADD COLUMN electronic_consent_at INTEGER`,
   `ALTER TABLE waiver_acceptances ADD COLUMN signed_at INTEGER`,
+]
+
+// Small, deterministic compatibility updates that make existing records agree
+// with newly added schema. These are safe to repeat during deployments.
+const compatibilityMigrations = [
+  `INSERT OR IGNORE INTO recurring_event_patterns
+    (id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at)
+    SELECT 'legacy:' || task_id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at
+    FROM recurring_event_schedules`,
   // The existing profile pointer becomes the designated primary series. New
   // onboarding series are stored directly on their task records.
   `UPDATE tasks SET is_onboarding = 1 WHERE id IN (SELECT onboarding_task_id FROM org_profiles WHERE onboarding_task_id IS NOT NULL)`,
@@ -1489,16 +1496,36 @@ async function backfillLegacyCityLedgerOutbox() {
 }
 
 async function main() {
-  for (const sql of statements) {
+  // Production builds only need additive tables and columns. Index changes,
+  // city-ledger delivery, and historical backfills remain part of the explicit
+  // full migration command.
+  const selectedStatements = schemaOnly
+    ? statements.filter((sql) => /^\s*CREATE TABLE\b/i.test(sql))
+    : statements
+
+  for (const sql of selectedStatements) {
     await client.execute(sql)
   }
   for (const sql of columnMigrations) {
     try {
       await client.execute(sql)
-    } catch {
-      /* column already exists */
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!message.toLowerCase().includes('duplicate column name')) throw error
     }
   }
+  for (const sql of compatibilityMigrations) {
+    await client.execute(sql)
+  }
+
+  if (schemaOnly) {
+    console.log(
+      `✓ Deployment schema ready (${selectedStatements.length} table checks + ${columnMigrations.length} column checks + ${compatibilityMigrations.length} compatibility updates)`,
+    )
+    client.close()
+    return
+  }
+
   for (const sql of indexes) {
     await client.execute(sql)
   }
@@ -1513,7 +1540,7 @@ async function main() {
   const legacyOutbox = await backfillLegacyCityLedgerOutbox()
   const delivery = await flushAllCityLedgerOutbox()
   console.log(
-    `✓ Schema ready (${statements.length} statements + ${columnMigrations.length} column checks + ${indexes.length} indexes; ` +
+    `✓ Schema ready (${statements.length} statements + ${columnMigrations.length} column checks + ${compatibilityMigrations.length} compatibility updates + ${indexes.length} indexes; ` +
       `${filled} org slug(s) backfilled; ${organizationLocations.saved} organization location(s) saved (${organizationLocations.defaults} default(s)); ${shiftRes.created} shift(s) created, ${shiftRes.linked} claim(s) linked; ${codes} check-in code(s) set; ${cityData.memberships} city membership(s) and ${cityData.statuses} participant status record(s) added; ${cityFinance.walletCount} city wallet(s), ${cityFinance.legacyEntries} opening ledger entry/entries, ${legacyOutbox} legacy city-ledger event(s) queued)`,
   )
   console.log(`✓ City ledger delivery ready (${delivery.map((result) => `${result.cityId}: ${result.delivered} delivered${result.pending ? `, ${result.pending} pending` : ''}${result.failed ? ' (retrying)' : ''}`).join('; ') || 'no pending events'})`)
