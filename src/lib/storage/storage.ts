@@ -8,7 +8,7 @@ import { put } from '@vercel/blob'
  * local adapter for the Vercel Blob adapter changes nothing else in the app.
  *
  *   STORAGE_MODE=local  -> writes to /public/uploads, served from /uploads/...  (dev default)
- *   STORAGE_MODE=blob   -> Vercel Blob (needs BLOB_READ_WRITE_TOKEN)            (Vercel default)
+ *   STORAGE_MODE=blob   -> Vercel Blob using separate public/private stores     (production)
  *
  * Vercel's runtime filesystem is read-only, so the local adapter is for dev
  * only; production should run with STORAGE_MODE=blob.
@@ -76,6 +76,21 @@ export async function readPrivateLocalFile(url:string):Promise<Buffer|null>{
 
 type BlobAccess = 'private' | 'public'
 
+function blobToken(access: BlobAccess) {
+  const name = access === 'public'
+    ? 'BLOB_PUBLIC_READ_WRITE_TOKEN'
+    : 'BLOB_PRIVATE_READ_WRITE_TOKEN'
+  const token = process.env[name] || process.env.BLOB_READ_WRITE_TOKEN
+  if (!token) {
+    throw new Error(`Missing ${name}. Configure a ${access} Vercel Blob store for production uploads.`)
+  }
+  return token
+}
+
+export function getPrivateBlobToken() {
+  return blobToken('private')
+}
+
 class BlobStorageAdapter implements StorageAdapter {
   backend = 'vercel-blob'
   constructor(private readonly access: BlobAccess) {}
@@ -83,7 +98,7 @@ class BlobStorageAdapter implements StorageAdapter {
     const { url } = await put(key, bytes, {
       access: this.access,
       contentType,
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token: blobToken(this.access),
     })
     return { url }
   }

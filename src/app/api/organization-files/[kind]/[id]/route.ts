@@ -15,7 +15,7 @@ import {
 } from '@/lib/db/schema'
 import { hasOrganizationPermission, validateActiveSession } from '@/lib/services/identity-access'
 import { candidateReadiness } from '@/lib/services/program-workspace'
-import { readPrivateLocalFile } from '@/lib/storage/storage'
+import { getPrivateBlobToken, readPrivateLocalFile } from '@/lib/storage/storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -154,6 +154,7 @@ export async function GET(
   const result = await get(file.url, {
     access: 'private',
     ifNoneMatch: request.headers.get('if-none-match') ?? undefined,
+    token: getPrivateBlobToken(),
   })
   if (!result) return new NextResponse('Not found', { status: 404 })
   if (result.statusCode === 304) {

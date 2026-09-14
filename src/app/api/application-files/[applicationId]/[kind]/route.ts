@@ -5,7 +5,7 @@ import { getSession } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { onboardingApplications } from '@/lib/db/schema'
 import { hasOrganizationPermission, validateActiveSession } from '@/lib/services/identity-access'
-import { readPrivateLocalFile } from '@/lib/storage/storage'
+import { getPrivateBlobToken, readPrivateLocalFile } from '@/lib/storage/storage'
 
 export const dynamic = 'force-dynamic'
 type FileData={name:string;url:string;type?:string}
@@ -30,7 +30,7 @@ export async function GET(request:NextRequest,{params}:{params:{applicationId:st
     if(!bytes)return new NextResponse('Not found',{status:404})
     return new NextResponse(new Uint8Array(bytes),{headers:{'Content-Type':file.type||'application/octet-stream','Content-Disposition':`inline; filename="${name}"`,'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-cache'}})
   }
-  const result=await get(file.url,{access:'private',ifNoneMatch:request.headers.get('if-none-match')??undefined})
+  const result=await get(file.url,{access:'private',ifNoneMatch:request.headers.get('if-none-match')??undefined,token:getPrivateBlobToken()})
   if(!result)return new NextResponse('Not found',{status:404})
   if(result.statusCode===304)return new NextResponse(null,{status:304,headers:{ETag:result.blob.etag,'Cache-Control':'private, no-cache'}})
   if(result.statusCode!==200||!result.stream)return new NextResponse('Not found',{status:404})
