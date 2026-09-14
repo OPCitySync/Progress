@@ -1,25 +1,38 @@
 import Link from 'next/link'
-import { ArrowLeft, BadgeCheck, CalendarDays, ShieldCheck, UserRound } from 'lucide-react'
+import type { CSSProperties } from 'react'
+import { BadgeCheck, CalendarDays, ShieldCheck, UserRound } from 'lucide-react'
 import { and, desc, eq, ne } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants, programApplicants, volunteerRosterMembers, onboardingApplications } from '@/lib/db/schema'
+import { claims, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, waiverAcceptances, waiverVersions, programApplicants, volunteerRosterMembers, onboardingApplications, orgs } from '@/lib/db/schema'
+import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { participantDisplayName } from '@/lib/participant-name'
 import { attendanceLabel, eligibilityLabel } from '@/lib/services/onboarding-attendance'
-import { setVolunteerIdentityVerificationAction, setVolunteerTaskEligibilityAction } from '@/app/actions'
+import { getProfile } from '@/lib/services/profile'
+import { setVolunteerIdentityVerificationAction } from '@/app/actions'
 import { getLabWorkspace } from '../../../lab-workspace'
 import { LabHeader } from '../../../LabHeader'
+import { HistoryBackButton } from '../../../HistoryBackButton'
 import { LabNotice } from '../../../LabNotice'
 import { IssuerLabSidebar } from '../../IssuerLabSidebar'
 import styles from '../../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
+type VolunteerProfilePaletteVariables = CSSProperties & {
+  '--volunteer-profile-deep': string
+  '--volunteer-profile-mid': string
+  '--volunteer-profile-accent': string
+  '--volunteer-profile-accent-deep': string
+}
+
 export default async function IssuerVolunteerProfilePage({ params, searchParams }: { params: { userId: string }; searchParams: { ok?: string; error?: string } }) {
   const session = await requireRole('issuer')
   const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
-  const [participant, history, eligibility, identityVerification, taskTemplates, taskEligibilityGrants] = await Promise.all([
+  const [org, profile, participant, history, eligibility, identityVerification, waiverProofs] = await Promise.all([
+    db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
+    getProfile(orgId),
     db.select().from(users).where(eq(users.id, params.userId)).limit(1).then((rows) => rows[0] ?? null),
     db
       .select({ claim: claims, task: tasks })
@@ -39,15 +52,20 @@ export default async function IssuerVolunteerProfilePage({ params, searchParams 
       .where(and(eq(volunteerIdentityVerifications.orgId, orgId), eq(volunteerIdentityVerifications.userId, params.userId)))
       .limit(1)
       .then((rows) => rows[0] ?? null),
-    db.select({ id: tasks.id, title: tasks.title, status: tasks.status }).from(tasks).where(eq(tasks.orgId, orgId)).orderBy(desc(tasks.createdAt)),
     db
       .select()
-      .from(volunteerTaskEligibilityGrants)
-      .where(and(eq(volunteerTaskEligibilityGrants.orgId, orgId), eq(volunteerTaskEligibilityGrants.userId, params.userId), eq(volunteerTaskEligibilityGrants.status, 'active'))),
+      .from(waiverAcceptances)
+      .innerJoin(waiverVersions, eq(waiverAcceptances.waiverVersionId, waiverVersions.id))
+      .where(and(
+        eq(waiverAcceptances.orgId, orgId),
+        eq(waiverAcceptances.userId, params.userId),
+        eq(waiverAcceptances.signatureMethod, 'typed_electronic'),
+      ))
+      .orderBy(desc(waiverAcceptances.signedAt)),
   ])
   const [candidate,explicitMember,intakeApplicant]=await Promise.all([
     db.select({id:programApplicants.id}).from(programApplicants).where(and(eq(programApplicants.orgId,orgId),eq(programApplicants.userId,params.userId))).limit(1),
-    db.select({id:volunteerRosterMembers.id}).from(volunteerRosterMembers).where(and(eq(volunteerRosterMembers.orgId,orgId),eq(volunteerRosterMembers.userId,params.userId))).limit(1),
+    db.select({id:volunteerRosterMembers.id,joinedAt:volunteerRosterMembers.joinedAt,source:volunteerRosterMembers.source}).from(volunteerRosterMembers).where(and(eq(volunteerRosterMembers.orgId,orgId),eq(volunteerRosterMembers.userId,params.userId))).limit(1),
     db.select({id:onboardingApplications.id}).from(onboardingApplications).where(and(eq(onboardingApplications.orgId,orgId),eq(onboardingApplications.userId,params.userId))).limit(1),
   ])
   const isRosterMember = Boolean(participant && (history.length||candidate.length||explicitMember.length||intakeApplicant.length))
@@ -55,51 +73,84 @@ export default async function IssuerVolunteerProfilePage({ params, searchParams 
     ? (await db.select().from(users).where(eq(users.id, identityVerification.verifiedByUserId)).limit(1))[0] ?? null
     : null
   const identityVerified = identityVerification?.status === 'verified'
-  const allTaskEligibility = taskEligibilityGrants.find((grant) => grant.scope === 'all') ?? null
-  const specificTaskEligibility = taskEligibilityGrants.filter((grant) => grant.scope === 'task')
-  const taskTitleById = new Map(taskTemplates.map((task) => [task.id, task.title]))
+  const organizationPalette = organizationBannerPalette(profile?.bannerPalette)
+  const volunteerProfilePalette: VolunteerProfilePaletteVariables = {
+    '--volunteer-profile-deep': organizationPalette.colors[0],
+    '--volunteer-profile-mid': organizationPalette.colors[1],
+    '--volunteer-profile-accent': organizationPalette.colors[2],
+    '--volunteer-profile-accent-deep': organizationPalette.colors[3],
+  }
+  const rosterMembership = explicitMember[0] ?? null
+  // Older roster members may only have an opportunity claim because claims
+  // historically established roster membership implicitly. Preserve a useful
+  // milestone for them by using the date of their first organization claim.
+  const rosterJoinedAt = rosterMembership?.joinedAt ?? (history.length
+    ? Math.min(...history.map(({ claim }) => claim.createdAt))
+    : null)
+  const profileActivity = [
+    ...history.map(({ claim, task }) => ({ kind: 'participation' as const, timestamp: claim.updatedAt, id: claim.id, claim, task })),
+    ...(rosterJoinedAt === null ? [] : [{
+      kind: 'roster' as const,
+      timestamp: rosterJoinedAt,
+      id: `roster-${participant!.id}`,
+      source: rosterMembership?.source ?? 'opportunity',
+    }]),
+  ].sort((a, b) => b.timestamp - a.timestamp)
 
   return <main className={styles.app}>
     <LabHeader activeSection="issuer-volunteers" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
     <div className={styles.issuerLayout}>
-      <IssuerLabSidebar cityName={city?.name} />
+      <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
       <section className={styles.issuerMain} aria-label="Volunteer profile">
-        {!isRosterMember ? <section className={styles.labPanel}><p className={styles.emptyCopy}>This volunteer is not available in your organization roster.</p><Link href="/aesthetic-lab/issuer/volunteers">Back to volunteers</Link></section> : <>
-          <Link className={styles.volunteerProfileBack} href="/aesthetic-lab/issuer/volunteers"><ArrowLeft size={15} /> Volunteer roster</Link>
-          <section className={styles.volunteerProfileHero}>
+        {!isRosterMember ? <section className={styles.labPanel}><p className={styles.emptyCopy}>This volunteer is not available in your organization roster.</p><HistoryBackButton fallback="/aesthetic-lab/issuer/volunteers" /></section> : <>
+          <section className={styles.volunteerProfileHero} style={volunteerProfilePalette}>
             <span><UserRound size={22} /></span>
             <div><p className={styles.eyebrow}>Volunteer profile</p><h1>{participantDisplayName(participant!)}</h1><p>{participant!.email}</p></div>
+            <HistoryBackButton fallback="/aesthetic-lab/issuer/volunteers" className={styles.volunteerProfileBack} variant="dark" />
           </section>
           <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
           <section className={styles.volunteerProfileGrid}>
             <div className={styles.volunteerProfileInfoStack}>
-              <section className={styles.volunteerEligibilityCard}>
-                <span><ShieldCheck size={19} /></span>
-                <div><p className={styles.eyebrow}>Eligibility record</p><h2>{eligibilityLabel(eligibility?.status ?? 'pending')}</h2><p>{eligibility?.verifiedAt ? `Recorded ${new Date(eligibility.verifiedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.` : 'No age-eligibility outcome has been recorded for this organization.'}</p></div>
-                <small>Only the outcome is stored—never an ID, date of birth, or guardian document.</small>
-              </section>
-              <section className={styles.volunteerIdentityVerificationCard}>
-                <span><BadgeCheck size={19} /></span>
-                <div><p className={styles.eyebrow}>Identity verification</p><h2>{identityVerified ? 'In-person identity match recorded' : 'No in-person identity match recorded'}</h2><p>{identityVerified && identityVerification ? `Recorded ${new Date(identityVerification.verifiedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}${identityVerifier ? ` by ${participantDisplayName(identityVerifier)}` : ''}.` : 'Record this only after an authorized staff member confirms that the person who appeared matches this City/Sync account.'}</p></div>
-                {identityVerified ? <form action={setVolunteerIdentityVerificationAction}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="revoke" /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><button type="submit">Remove record</button></form> : <form action={setVolunteerIdentityVerificationAction}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="verify" /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><label><input type="checkbox" name="identityConfirmed" required /> I confirmed this person in person.</label><button type="submit">Record identity match</button></form>}
-                <small>City/Sync stores the staff attestation only—never an ID image, ID number, or source document.</small>
-              </section>
-              <section className={styles.volunteerTaskEligibilityCard}>
-                <span><ShieldCheck size={19} /></span>
-                <div><p className={styles.eyebrow}>Task eligibility</p><h2>{allTaskEligibility ? 'Eligible for all task templates' : `${specificTaskEligibility.length} specific task template${specificTaskEligibility.length === 1 ? '' : 's'} approved`}</h2><p>Grant organization approval for every task template or only the work this volunteer is cleared to perform.</p></div>
-                <div className={styles.volunteerTaskEligibilityActions}>
-                  {allTaskEligibility ? <form action={setVolunteerTaskEligibilityAction}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="revoke" /><input type="hidden" name="grantId" value={allTaskEligibility.id} /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><button type="submit">Revoke all-template approval</button></form> : <form action={setVolunteerTaskEligibilityAction}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="grant" /><input type="hidden" name="scope" value="all" /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><button type="submit">Mark eligible for all templates</button></form>}
-                  <form action={setVolunteerTaskEligibilityAction} className={styles.volunteerTaskEligibilitySelect}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="grant" /><input type="hidden" name="scope" value="task" /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><select name="taskId" required defaultValue=""><option value="" disabled>Select a task template…</option>{taskTemplates.map((task) => <option value={task.id} key={task.id}>{task.title}{task.status === 'open' ? '' : ' (closed)'}</option>)}</select><button type="submit">Add template</button></form>
+              <section className={styles.organizationVolunteerRecord}>
+                <header>
+                  <span><ShieldCheck size={19} /></span>
+                  <div><p className={styles.eyebrow}>Organization record</p><h2>{org?.name ?? 'Organization record'}</h2><small>Private record for this volunteer</small></div>
+                </header>
+                <div className={styles.organizationVolunteerRecordList}>
+                  <article>
+                    <span><ShieldCheck size={18} /></span>
+                    <div><p>Eligibility record</p><b>{eligibilityLabel(eligibility?.status ?? 'pending')}</b><small>{eligibility?.verifiedAt ? `Recorded ${new Date(eligibility.verifiedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.` : 'No age-eligibility outcome has been recorded.'}</small></div>
+                  </article>
+                  <article>
+                    <span><BadgeCheck size={18} /></span>
+                    <div><p>Identity confirmation</p><b>{identityVerified ? 'In-person identity match recorded' : 'No in-person identity match recorded'}</b><small>{identityVerified && identityVerification ? `Recorded ${new Date(identityVerification.verifiedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}${identityVerifier ? ` by ${participantDisplayName(identityVerifier)}` : ''}.` : 'Record this after an authorized staff member confirms the person matches their account.'}</small></div>
+                    {identityVerified ? <form action={setVolunteerIdentityVerificationAction}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="revoke" /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><button type="submit">Remove record</button></form> : <form action={setVolunteerIdentityVerificationAction}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="verify" /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><label><input type="checkbox" name="identityConfirmed" required /> Confirmed in person</label><button type="submit">Confirm</button></form>}
+                  </article>
+                  {waiverProofs.length ? waiverProofs.map(({ waiver_acceptances: acceptance, waiver_versions: waiver }) => <article key={acceptance.id}>
+                    <span><ShieldCheck size={18} /></span>
+                    <div><p>Signed waiver</p><b>{waiver.title}</b><small>Electronically signed {new Date(acceptance.signedAt ?? acceptance.acceptedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.</small></div>
+                    <Link href={`/aesthetic-lab/issuer/volunteers/${participant!.id}/waivers/${waiver.id}`}>View proof</Link>
+                  </article>) : <article>
+                    <span><ShieldCheck size={18} /></span>
+                    <div><p>Signed waiver</p><b>No digitally signed waiver on record</b><small>Electronically signed waivers will appear here with their proof of signature.</small></div>
+                  </article>}
                 </div>
-                {specificTaskEligibility.length > 0 ? <div className={styles.volunteerTaskEligibilityList}>{specificTaskEligibility.map((grant) => <article key={grant.id}><span>{taskTitleById.get(grant.taskId) ?? 'Archived task template'}</span><form action={setVolunteerTaskEligibilityAction}><input type="hidden" name="userId" value={participant!.id} /><input type="hidden" name="operation" value="revoke" /><input type="hidden" name="grantId" value={grant.id} /><input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/volunteers/${participant!.id}`} /><button type="submit">Revoke</button></form></article>)}</div> : null}
-                <small>These are organization-local approvals. Revoke any approval at any time.</small>
+                <footer>Only the recorded outcome, authorized attestation, and signed-waiver proof are shown here. IDs and birth dates are never stored.</footer>
               </section>
             </div>
             <section className={styles.volunteerHistoryCard}>
               <div><p className={styles.eyebrow}>Activity with your organization</p><h2>Participation history</h2></div>
-              <div>{history.map(({ claim, task }) => {
-                const attendance = claim.status === 'no_show' ? 'no_show' : claim.status === 'verified' ? 'verified' : claim.checkedInAt ? 'checked_in' : 'signed_up'
-                return <article key={claim.id}><CalendarDays size={16} /><div><b>{task.title}</b><small>{attendanceLabel(attendance)} · {new Date(claim.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></div><Link href={`/aesthetic-lab/issuer/opportunities/${task.id}`}>Opportunity</Link></article>
+              <div>{profileActivity.map((activity) => {
+                if (activity.kind === 'roster') {
+                  const source = activity.source === 'approval'
+                    ? 'Approved and added by your organization'
+                    : activity.source === 'invite'
+                      ? 'Joined through an organization invitation'
+                      : 'Joined through their first opportunity'
+                  return <article key={activity.id}><UserRound size={16} /><div><b>Added to the volunteer roster</b><small>{source} · {new Date(activity.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></div></article>
+                }
+                const attendance = activity.claim.status === 'no_show' ? 'no_show' : activity.claim.status === 'verified' ? 'verified' : activity.claim.checkedInAt ? 'checked_in' : 'signed_up'
+                return <article key={activity.id}><CalendarDays size={16} /><div><b>{activity.task.title}</b><small>{attendanceLabel(attendance)} · {new Date(activity.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></div><Link href={`/aesthetic-lab/issuer/opportunities/${activity.task.id}`}>Opportunity</Link></article>
               })}</div>
             </section>
           </section>

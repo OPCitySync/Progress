@@ -4,17 +4,18 @@ import { eq } from 'drizzle-orm'
 import { requireSession } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { orgs, users } from '@/lib/db/schema'
-import { saveAccountSettingsAction, saveOrganizationSettingsAction } from '@/app/actions'
+import { saveAccountSettingsAction } from '@/app/actions'
 import { getEditorProfile } from '@/lib/services/profile'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
 import { LabNotice } from '../LabNotice'
 import { IssuerLabSidebar } from '../issuer/IssuerLabSidebar'
+import { OrganizationManagementSettings } from './OrganizationManagementSettings'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-export default async function LabSettingsPage({ searchParams }: { searchParams: { ok?: string; error?: string } }) {
+export default async function LabSettingsPage({ searchParams }: { searchParams: { ok?: string; error?: string; invite?: string; inviteRole?: string } }) {
   const session = await requireSession()
   const { city, cities, contexts } = await getLabWorkspace(session)
   const [user, org] = await Promise.all([
@@ -30,12 +31,8 @@ export default async function LabSettingsPage({ searchParams }: { searchParams: 
       <div className={styles.issuerLayout}>
         <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
         <section className={styles.issuerMain} aria-label="Organization settings">
-          <section className={styles.issuerPageHero}>
-            <div><p className={styles.eyebrow}>Settings</p><h1>Keep your organization ready.</h1><p>Manage the organization information and account identity used throughout this workspace.</p></div>
-          </section>
           <LabNotice ok={searchParams.ok} error={searchParams.error} />
-          {org && profile ? <section className={`${styles.labPanel} ${styles.labStack}`}><div><p className={styles.eyebrow}>Organization identity</p><h2>{org.name}</h2><p className={styles.waiverHelper}>These details identify the organization inside its private workspace.</p></div><form action={saveOrganizationSettingsAction} className={styles.labForm}><input type="hidden" name="redirectTo" value="/aesthetic-lab/settings" /><label>Organization name<input name="organizationName" defaultValue={org.name} required /></label><div className={styles.labFormGrid}><label>Organization email<input type="email" name="contactEmail" defaultValue={profile.contactEmail} /></label><label>Logo image URL<input name="logoUrl" defaultValue={profile.logoUrl} placeholder="/uploads/… or https://…" /></label></div><div className={styles.labFormActions}><Link className={`${styles.labLinkButton} ${styles.labLinkButtonSecondary}`} href="/aesthetic-lab/issuer/profile/edit">Edit public profile</Link><button className={styles.labButton} type="submit">Save organization</button></div></form></section> : null}
-          <section className={`${styles.labPanel} ${styles.labStack}`}><div><p className={styles.eyebrow}>Account identity</p><h2>Your individual account</h2><p className={styles.waiverHelper}>This is the person authorized to operate within the organization workspace.</p></div><form action={saveAccountSettingsAction} className={styles.labForm}><input type="hidden" name="redirectTo" value="/aesthetic-lab/settings" /><div className={styles.labFormGrid}><label>Name<input name="name" defaultValue={user?.name ?? ''} required /></label><label>Username<input name="username" defaultValue={user?.username ?? ''} /></label></div><label>Email<input type="email" name="email" defaultValue={user?.email ?? session.email} required /></label><label>Avatar image URL (optional)<input name="avatarUrl" defaultValue={user?.avatarUrl ?? ''} placeholder="https://…" /></label><div className={styles.labFormActions}><button className={styles.labButton} type="submit">Save account</button></div></form></section>
+          {org && profile ? <OrganizationManagementSettings organization={org} profile={profile} session={session} inviteCode={searchParams.invite} inviteRoleId={searchParams.inviteRole} /> : null}
         </section>
       </div>
     </main>

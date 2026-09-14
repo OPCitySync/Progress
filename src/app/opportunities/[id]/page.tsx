@@ -9,6 +9,7 @@ import { getShiftsWithCounts, type ShiftRow } from '@/lib/services/opportunities
 import { PublicHeader } from '@/components/profile/PublicHeader'
 import { Card, Badge, statusBadge } from '@/components/ui'
 import { fmtDateTime } from '@/lib/format'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,9 +65,7 @@ export default async function PublicOpportunityPage({ params }: { params: { id: 
     <div className="min-h-screen bg-ink-50">
       <PublicHeader />
       <main className="mx-auto max-w-3xl px-6 py-10">
-        <Link href={`/orgs/${org.slug}`} className="mb-4 inline-block text-sm text-ink-400 hover:text-ink-600">
-          ← {org.name}
-        </Link>
+        <HistoryBackButton fallback={`/orgs/${org.slug}`} variant="plain" className="mb-4" />
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="font-display text-3xl font-semibold text-ink-900">{task.title}</h1>
           <Badge tone="gold">{task.credits} credits per shift</Badge>

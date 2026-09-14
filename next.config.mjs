@@ -7,6 +7,35 @@
 const nextConfig = (phase) => ({
   reactStrictMode: true,
   distDir: phase === 'phase-development-server' ? '.next-dev' : '.next',
+  async redirects() {
+    return [
+      {
+        source: '/aesthetic-lab/issuer/onboarding',
+        destination: '/aesthetic-lab/issuer/catalog',
+        permanent: false,
+      },
+      {
+        source: '/aesthetic-lab/chats/:id',
+        destination: '/aesthetic-lab/messages?pane=events&event=:id',
+        permanent: false,
+      },
+      {
+        source: '/aesthetic-lab/issuer/notifications/chats/:id',
+        destination: '/aesthetic-lab/issuer/notifications?pane=events',
+        permanent: false,
+      },
+      {
+        source: '/aesthetic-lab/issuer/profile/edit',
+        destination: '/aesthetic-lab/issuer/profile',
+        permanent: false,
+      },
+      {
+        source: '/aesthetic-lab/issuer/programs/:id/recognition/:recognitionId',
+        destination: '/aesthetic-lab/issuer/programs/:id?section=recognition',
+        permanent: false,
+      },
+    ]
+  },
   experimental: {
     // Organization documents are deliberately capped at 10 MB in the upload
     // actions, so permit that same request size before an action is invoked.

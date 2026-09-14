@@ -1,9 +1,29 @@
-import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { cityMemberships, orgs, orgProfiles, tasks, shifts, claims } from '@/lib/db/schema'
+import {
+  cityMemberships,
+  orgs,
+  orgProfiles,
+  tasks,
+  shifts,
+  claims,
+  onboardingApplicationForms,
+  onboardingIntakes,
+  volunteerPrograms,
+} from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from '@/lib/services/identity'
+import {
+  DEFAULT_ORGANIZATION_BANNER_PALETTE,
+  DEFAULT_ORGANIZATION_BANNER_STYLE,
+  normalizeOrganizationBannerPalette,
+  normalizeOrganizationBannerStyle,
+  organizationAppearanceFromStorage,
+  organizationAppearanceToStorage,
+  type OrganizationBannerPalette,
+  type OrganizationBannerStyle,
+} from '@/lib/profile/organization-appearance'
 import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
 
 export type OrgProfile = {
@@ -17,6 +37,8 @@ export type OrgProfile = {
   phone: string
   location: string
   socials: Record<string, string>
+  bannerStyle: OrganizationBannerStyle
+  bannerPalette: OrganizationBannerPalette
   causes: string[]
   onboardingTaskId: string | null
   published: boolean
@@ -25,20 +47,6 @@ export type OrgProfile = {
 
 export type OrgRow = typeof orgs.$inferSelect
 type ProfileRow = typeof orgProfiles.$inferSelect
-
-function jsonObject(raw: string): Record<string, string> {
-  try {
-    const o = JSON.parse(raw)
-    if (o && typeof o === 'object' && !Array.isArray(o)) {
-      const out: Record<string, string> = {}
-      for (const [k, v] of Object.entries(o)) if (typeof v === 'string' && v.trim()) out[k] = v
-      return out
-    }
-  } catch {
-    /* ignore */
-  }
-  return {}
-}
 
 function jsonStringArray(raw: string): string[] {
   try {
@@ -51,6 +59,7 @@ function jsonStringArray(raw: string): string[] {
 }
 
 function rowToProfile(row: ProfileRow): OrgProfile {
+  const appearance = organizationAppearanceFromStorage(row.socials)
   return {
     orgId: row.orgId,
     tagline: row.tagline,
@@ -61,7 +70,9 @@ function rowToProfile(row: ProfileRow): OrgProfile {
     contactEmail: row.contactEmail,
     phone: row.phone,
     location: row.location,
-    socials: jsonObject(row.socials),
+    socials: appearance.socials,
+    bannerStyle: appearance.bannerStyle,
+    bannerPalette: appearance.bannerPalette,
     causes: jsonStringArray(row.causes),
     onboardingTaskId: row.onboardingTaskId,
     published: row.published === 1,
@@ -90,9 +101,14 @@ export async function getEditorProfile(org: OrgRow): Promise<OrgProfile> {
     phone: '',
     location: '',
     socials: {},
+    bannerStyle: DEFAULT_ORGANIZATION_BANNER_STYLE,
+    bannerPalette: DEFAULT_ORGANIZATION_BANNER_PALETTE,
     causes: [],
     onboardingTaskId: null,
-    published: false,
+    // Approved issuer organizations always have a live public page. The
+    // column remains for backwards-compatible reads while the profile editor
+    // no longer exposes a separate draft/publish lifecycle.
+    published: true,
     updatedAt: null,
   }
 }
@@ -109,6 +125,8 @@ export async function saveProfile(input: {
   phone: string
   location: string
   socials: Record<string, string>
+  bannerStyle?: string
+  bannerPalette?: string
   causes: string[]
   onboardingTaskId: string | null
   published: boolean
@@ -138,10 +156,14 @@ export async function saveProfile(input: {
     contactEmail: input.contactEmail.trim(),
     phone: input.phone.trim(),
     location,
-    socials: JSON.stringify(input.socials ?? {}),
+    socials: organizationAppearanceToStorage(
+      input.socials ?? {},
+      normalizeOrganizationBannerStyle(input.bannerStyle),
+      normalizeOrganizationBannerPalette(input.bannerPalette),
+    ),
     causes: JSON.stringify(input.causes ?? []),
     onboardingTaskId,
-    published: input.published ? 1 : 0,
+    published: 1,
     updatedAt: now,
   }
 
@@ -162,7 +184,7 @@ export async function saveProfile(input: {
     await appendEvent(
       tx,
       EventTypes.ORG_PROFILE_UPDATED,
-      { orgId: input.orgId, published: input.published },
+      { orgId: input.orgId, published: true },
       input.actorId,
     )
   })
@@ -183,6 +205,62 @@ export type PublicOpportunity = {
   nextShiftAt: number | null
   nextShiftLabel: string
   nextEnrollmentMode: 'open_claims' | 'organization_managed'
+}
+
+export type PublicApplication = {
+  taskId: string
+  title: string
+  description: string
+  roleTitles: string[]
+  hasQuestions: boolean
+  resumePolicy: 'none'|'optional'|'required'
+  coverLetterPolicy: 'none'|'optional'|'required'
+}
+
+/**
+ * Public application entry points are derived from the same intake state used
+ * in the issuer workspace. Program-wide applications are intentionally
+ * grouped into one public card even when publication is mirrored across each
+ * role in that program.
+ */
+export async function getPublicApplications(orgId: string): Promise<PublicApplication[]> {
+  const [forms,roleRows,legacyProfilePaths] = await Promise.all([db
+    .select({
+      form:onboardingApplicationForms,
+      taskId:tasks.id,
+      taskTitle:tasks.title,
+      taskDescription:tasks.description,
+      programId: tasks.programId,
+      programName: volunteerPrograms.name,
+    })
+    .from(onboardingApplicationForms)
+    .innerJoin(tasks,eq(onboardingApplicationForms.taskId,tasks.id))
+    .leftJoin(volunteerPrograms, eq(volunteerPrograms.id, tasks.programId))
+    .where(and(
+      eq(tasks.orgId, orgId),
+      eq(tasks.status, 'open'),
+      eq(tasks.isOnboarding, 0),
+      isNotNull(onboardingApplicationForms.publishedAt),
+      isNull(onboardingApplicationForms.archivedAt),
+    ))
+    .orderBy(desc(onboardingApplicationForms.publishedAt)),db.select({id:tasks.id,title:tasks.title,programId:tasks.programId}).from(tasks).where(and(eq(tasks.orgId,orgId),eq(tasks.status,'open'),eq(tasks.isOnboarding,0))),db.select({taskId:tasks.id,taskTitle:tasks.title,taskDescription:tasks.description,programId:tasks.programId,programName:volunteerPrograms.name}).from(tasks).innerJoin(onboardingIntakes,eq(onboardingIntakes.taskId,tasks.id)).leftJoin(volunteerPrograms,eq(volunteerPrograms.id,tasks.programId)).where(and(eq(tasks.orgId,orgId),eq(tasks.status,'open'),eq(tasks.isOnboarding,0),eq(onboardingIntakes.applicationPublic,1),isNull(onboardingIntakes.activeFormId)))])
+
+  const current=forms.map((row) => {
+    const roleTitles=row.form.scope==='all'?roleRows.filter(role=>role.programId===row.programId).map(role=>role.title):[roleRows.find(role=>role.id===(row.form.targetTaskId??row.taskId))?.title??row.taskTitle]
+    let questionCount=0
+    try{const questions:unknown=JSON.parse(row.form.questions);questionCount=Array.isArray(questions)?questions.length:0}catch{}
+    return {
+      taskId: row.form.scope==='role'?(row.form.targetTaskId??row.taskId):row.taskId,
+      title: row.form.scope==='all'?(row.programName ?? 'General Volunteer Application'):`${roleTitles[0]} Application`,
+      description: row.form.introduction||(row.form.scope==='all'?(row.programName?`Apply to volunteer in ${row.programName}.`:'Apply to volunteer with this organization.'):(row.taskDescription||`Apply for the ${roleTitles[0]} role.`)),
+      roleTitles,
+      hasQuestions:questionCount>0,
+      resumePolicy:row.form.resumePolicy,
+      coverLetterPolicy:row.form.coverLetterPolicy,
+    }
+  })
+  const legacy=legacyProfilePaths.map(row=>({taskId:row.taskId,title:row.programName??`${row.taskTitle} Application`,description:row.taskDescription||'Apply with your City/Sync profile for organization review.',roleTitles:roleRows.filter(role=>role.programId===row.programId).map(role=>role.title),hasQuestions:false,resumePolicy:'none' as const,coverLetterPolicy:'none' as const}))
+  return [...current,...legacy]
 }
 
 const ACTIVE = ['claimed', 'submitted', 'verified'] as const
@@ -323,7 +401,7 @@ export async function getOrgImpact(orgId: string): Promise<OrgImpact> {
 export type PublicProfile = {
   org: OrgRow
   profile: OrgProfile | null
-  /** Whether the org has published a profile (vs. the default fallback view). */
+  /** Kept for compatibility. Approved issuer profiles are always live. */
   published: boolean
 }
 
@@ -338,7 +416,7 @@ export async function getPublicProfileBySlug(slug: string): Promise<PublicProfil
   )[0]
   if (!org) return null
   const profile = await getProfile(org.id)
-  return { org, profile, published: !!profile && profile.published }
+  return { org, profile, published: true }
 }
 
 export type DirectoryEntry = {

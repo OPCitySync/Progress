@@ -7,6 +7,7 @@ import { EventTypes } from '@/lib/ledger/events'
 import { canonicalJson, sha256Hex } from '@/lib/ledger/hash'
 import type { Result } from './identity'
 import { programBelongsToOrganization } from './volunteer-programs'
+import { getWaiversAttachedToTask } from './organization-resources'
 
 export type OnboardingWaiverMethod = 'digital' | 'in_person' | 'either'
 export type OnboardingIdentityCheck = 'not_required' | 'staff_attested'
@@ -154,7 +155,12 @@ export async function getOnboardingWaiverSetup(
       .then((rows) => rows[0] ?? null),
   ])
 
-  const intakeWaivers = overrides?.id ? await (await import('./volunteer-intake')).getIntakeWaivers(overrides.id) : null
+  const assignedWaivers = overrides?.id ? await getWaiversAttachedToTask(overrides.id) : []
+  const intakeWaivers = assignedWaivers.length
+    ? assignedWaivers
+    : overrides?.id
+      ? await (await import('./volunteer-intake')).getIntakeWaivers(overrides.id)
+      : null
   const welcome=intakeWaivers === null && overrides&&'programId' in overrides?await (await import('./program-workspace')).onboardingMaterials(orgId,overrides.programId||'organization'):null
   const policy=welcome?.policy?.onboardingMode!=='none'?welcome?.policy:null
   const waivers=intakeWaivers ?? (policy?welcome!.waivers:allWaivers)

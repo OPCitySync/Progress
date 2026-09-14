@@ -1,10 +1,11 @@
 import Link from 'next/link'
-import { ArrowLeft, Building2, CheckCircle2, Heart, Lightbulb, Sparkles } from 'lucide-react'
+import { Building2, CheckCircle2, Heart, Lightbulb, Sparkles } from 'lucide-react'
 import { submitVolunteerReflectionAction } from '@/app/actions'
 import { requireRole } from '@/lib/auth/session'
 import { getVolunteerReflectionPrompt } from '@/lib/services/volunteer-reflections'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
+import { HistoryBackButton } from '../../HistoryBackButton'
 import { LabNotice } from '../../LabNotice'
 import styles from '../../prototype.module.css'
 
@@ -43,7 +44,7 @@ export default async function VolunteerReflectionPage({
   return <main className={styles.app}>
     <LabHeader activeSection="history" session={session} city={city} cities={cities} contexts={contexts} />
     <section className={styles.reflectionPage}>
-      <Link href="/aesthetic-lab/history" className={styles.reflectionBack}><ArrowLeft size={15} /> Back to service history</Link>
+      <HistoryBackButton fallback="/aesthetic-lab/history" className={styles.reflectionBack} />
 
       {reflection ? <section className={styles.reflectionSharedCard}>
         <div className={styles.reflectionSharedMark}><CheckCircle2 size={28} /></div>

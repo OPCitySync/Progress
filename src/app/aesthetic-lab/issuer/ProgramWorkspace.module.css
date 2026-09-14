@@ -10,7 +10,9 @@
 .heading h2, .dialog h2 { font:500 23px/1.2 Georgia,serif; color:#363c4c; letter-spacing:-.5px; margin:4px 0; }
 .eyebrow { color:#6e7c7e; font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:1.1px; margin:0; }
 .hint { margin:7px 0; color:#747a88; font-size:12px; line-height:1.6; }
-.approvedVolunteerSection{display:grid;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid #aab8d866}
+.onboardingWorkspaceColumns{display:grid;grid-template-columns:minmax(300px,.8fr) minmax(0,1.2fr);gap:18px;align-items:start}
+.recognitionWorkspaceColumns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+.approvedVolunteerSection{display:grid;gap:10px}
 .approvedVolunteerHeading{display:flex;align-items:end;justify-content:space-between;gap:12px}.approvedVolunteerHeading h3{margin:3px 0 0;color:#3e4558;font-size:14px}
 .approvedVolunteerList{display:grid;gap:8px}
 .approvedVolunteerRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px;border:1px solid #c4cfe7;border-radius:10px;background:rgba(255,255,255,.67);box-shadow:inset 0 1px rgba(255,255,255,.8)}
@@ -58,7 +60,7 @@
 .standalone{color:#454b5b;max-width:940px;margin:35px auto;padding:0 20px;display:grid;gap:18px;}.standalone h1{font:500 32px Georgia,serif;margin:7px 0 15px;}.standalone a{color:#35488b;}
 .letter {max-width:750px;margin:35px auto;padding:55px;border:1px solid #c9b98d;border-radius:16px;background:#fffefa;color:#35415d;}.letter h1{font:36px Georgia,serif;}.letter p{line-height:1.8;white-space:pre-wrap;}.letter footer{margin-top:50px;border-top:1px solid #c9b98d;padding-top:20px;}
 @keyframes arrive{from{opacity:.5;transform:translateY(4px)}to{opacity:1;transform:none}}
-@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tabs button{flex:1;font-size:11px;padding:8px;}}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tabs button{flex:1;font-size:11px;padding:8px}.onboardingWorkspaceColumns,.recognitionWorkspaceColumns{grid-template-columns:1fr}}
 @media(max-width:600px){.grid,.twoColumns,.two,.shiftCreationFields{grid-template-columns:1fr}.heading,.shiftCreationHeading{align-items:flex-start;flex-direction:column}.shiftCreationFooter{align-items:flex-start;flex-direction:column}.row{align-items:flex-start;flex-wrap:wrap}.card{padding:17px}.backdrop{padding:12px}.dialog{max-height:calc(100dvh - 24px)}.approvedVolunteerRow{grid-template-columns:auto minmax(0,1fr)}.approvedVolunteerRow>a{grid-column:1/-1;justify-self:start}}
 @media(prefers-reduced-motion:reduce){.panel{animation:none}}
 @media print{.letter{margin:0;padding:25px;border:0;box-shadow:none;max-width:none}.letter .actions{display:none}.letter h1{color:#35488b}}

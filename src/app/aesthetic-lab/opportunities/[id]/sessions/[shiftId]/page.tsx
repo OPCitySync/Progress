@@ -16,6 +16,7 @@ import { getProfile } from '@/lib/services/profile'
 import { organizationFileDownloadUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../../../lab-workspace'
 import { LabHeader } from '../../../../LabHeader'
+import { HistoryBackButton } from '../../../../HistoryBackButton'
 import { LabNotice } from '../../../../LabNotice'
 import { DigitalWaiverSignature } from '../../../../DigitalWaiverSignature'
 import styles from '../../../../prototype.module.css'
@@ -162,7 +163,7 @@ export default async function ReservedSessionPage({
       </aside>
 
       <section className={styles.primaryColumn} aria-label="Session preparation">
-        <Link href={opportunityUrl} className={styles.onboardingBackLink}>← Opportunity</Link>
+        <HistoryBackButton fallback={opportunityUrl} className={styles.onboardingBackLink} />
         {isOnboarding&&welcomePolicy&&welcomePolicy.onboardingMode!=='none'?<section className={styles.onboardingProcessCard}><b>Finish your volunteer welcome</b><p>Your session is part of the organization’s onboarding. Review your checklist and request profile approval when everything is ready.</p><Link className={styles.catalogWorkspaceAction} href={'/aesthetic-lab/onboarding/'+record.task.orgId+'/'+(record.task.programId||'organization')}>Open my onboarding checklist</Link></section>:null}
         <LabNotice ok={searchParams.ok} error={searchParams.error} />
 

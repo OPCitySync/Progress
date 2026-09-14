@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import { desc, eq } from 'drizzle-orm'
-import { ArrowLeft, Bell, CheckCheck } from 'lucide-react'
+import { Bell, CheckCheck } from 'lucide-react'
 import { markIssuerNotificationReadAction } from '@/app/actions'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { notifications, organizationQueueAcknowledgements, orgs, users } from '@/lib/db/schema'
 import { participantDisplayName } from '@/lib/participant-name'
 import { LabHeader } from '../../LabHeader'
+import { HistoryBackButton } from '../../HistoryBackButton'
 import { getLabWorkspace } from '../../lab-workspace'
 import { IssuerLabSidebar } from '../IssuerLabSidebar'
 import styles from '../../prototype.module.css'
@@ -85,7 +86,7 @@ export default async function IssuerNotificationHistoryPage() {
               <div>
                 <p className={styles.eyebrow}>Notification history</p>
               </div>
-              <Link className={styles.issuerHistoryBack} href="/aesthetic-lab/issuer"><ArrowLeft size={15} />Home</Link>
+              <HistoryBackButton fallback="/aesthetic-lab/issuer" className={styles.issuerHistoryBack} />
             </div>
 
             <div className={styles.issuerNotificationHistoryList}>

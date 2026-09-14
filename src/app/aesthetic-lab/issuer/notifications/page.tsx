@@ -1,4 +1,8 @@
+import { and, desc, eq, gte } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
+import { db } from '@/lib/db/client'
+import { claims, notifications, organizationQueueAcknowledgements, shifts, tasks, users } from '@/lib/db/schema'
+import { participantDisplayName } from '@/lib/participant-name'
 import { getArchivedEventChatsForOrg, getEventChatForOrg, getEventChatsForOrg, getUpcomingShiftsForEventChat } from '@/lib/services/event-chat'
 import { getRoster, getSentMessages, getVolunteerGroups } from '@/lib/services/roster'
 import { getLabWorkspace } from '../../lab-workspace'
@@ -9,16 +13,30 @@ import styles from '../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-/** The issuer Inbox contains event chats and outbound volunteer messages. */
-export default async function IssuerNotificationsPage({ searchParams }: { searchParams: { ok?: string; error?: string; event?: string; pane?: string; message?: string; recipient?: string } }) {
+/** One issuer communication center for messages, event chats, and notifications. */
+export default async function IssuerNotificationsPage({ searchParams }: { searchParams: { ok?: string; error?: string; event?: string; pane?: string; message?: string; recipient?: string; notice?: string } }) {
   const session = await requireRole('issuer')
   if (!session.orgId) return null
   const orgId = session.orgId
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [roster, groups, sentMessages] = await Promise.all([
+  const [roster, groups, sentMessages, storedNotifications, signupRows, acknowledgementRows] = await Promise.all([
     getRoster(orgId),
     getVolunteerGroups(orgId),
     getSentMessages(orgId, 100),
+    db.select().from(notifications).where(eq(notifications.userId, session.sub)).orderBy(desc(notifications.createdAt)).limit(100),
+    db
+      .select({ claim: claims, shift: shifts, task: tasks, participant: users })
+      .from(claims)
+      .innerJoin(tasks, eq(claims.taskId, tasks.id))
+      .innerJoin(users, eq(claims.userId, users.id))
+      .innerJoin(shifts, eq(claims.shiftId, shifts.id))
+      .where(and(eq(tasks.orgId, orgId), eq(claims.status, 'claimed'), gte(shifts.endsAt, Date.now())))
+      .orderBy(desc(claims.updatedAt))
+      .limit(100),
+    db
+      .select({ actionKey: organizationQueueAcknowledgements.actionKey })
+      .from(organizationQueueAcknowledgements)
+      .where(eq(organizationQueueAcknowledgements.orgId, orgId)),
   ])
   // Both helpers clean up expired rooms. Keep them sequential so an expired
   // room is never processed twice during a single Inbox render.
@@ -64,14 +82,43 @@ export default async function IssuerNotificationsPage({ searchParams }: { search
     archivedAt: item.archivedAt,
     deleteAt: item.deleteAt,
   }] : [])
+  const acknowledged = new Set(acknowledgementRows.map(({ actionKey }) => actionKey))
+  const notificationItems = [
+    ...storedNotifications.map((notice) => ({
+      id: notice.id,
+      actionKey: '',
+      kind: 'notification' as const,
+      title: notice.title,
+      body: notice.body,
+      link: notice.link,
+      createdAt: notice.createdAt,
+      unread: notice.readAt === null,
+    })),
+    ...signupRows.map(({ claim, shift, task, participant }) => {
+      const isOnboarding = task.isOnboarding === 1
+      const actionKey = `signup:${claim.id}`
+      return {
+        id: `signup-${claim.id}`,
+        actionKey,
+        kind: 'signup' as const,
+        title: `${participantDisplayName(participant)} signed up`,
+        body: `${isOnboarding ? 'Onboarding session' : 'Volunteer shift'} · ${task.title}${shift.startsAt ? ` · ${new Date(shift.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}`,
+        link: isOnboarding
+          ? `/aesthetic-lab/issuer/volunteers?event=${shift.id}#event-${shift.id}`
+          : `/aesthetic-lab/issuer/programs/${task.programId ?? 'organization'}?section=scheduling`,
+        createdAt: claim.updatedAt,
+        unread: !acknowledged.has(actionKey),
+      }
+    }),
+  ].sort((left, right) => right.createdAt - left.createdAt)
 
   return (
     <main className={`${styles.app} ${styles.issuerMessagesApp}`}>
       <LabHeader activeSection="issuer-utility" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
       <div className={styles.issuerInboxLayout}>
-        <section className={styles.issuerMain} aria-label="Organization inbox">
+        <section className={styles.issuerMain} aria-label="Organization Communication Center">
           <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
-          <IssuerEventChatWorkspace events={upcomingEvents} archivedChats={archive} outboundMessages={sentMessages} volunteers={roster.volunteers} groups={groups} actorId={session.sub} initialShiftId={searchParams.event} initialPane={searchParams.pane} initialMessageId={searchParams.message} initialVolunteerId={searchParams.recipient} />
+          <IssuerEventChatWorkspace events={upcomingEvents} archivedChats={archive} outboundMessages={sentMessages} notifications={notificationItems} volunteers={roster.volunteers} groups={groups} actorId={session.sub} initialShiftId={searchParams.event} initialPane={searchParams.pane} initialMessageId={searchParams.message} initialVolunteerId={searchParams.recipient} initialNotificationId={searchParams.notice} />
         </section>
       </div>
     </main>

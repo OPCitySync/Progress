@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir, readFile, writeFile } from 'fs/promises'
 import path from 'path'
 import { put } from '@vercel/blob'
 
@@ -54,6 +54,26 @@ class LocalStorageAdapter implements StorageAdapter {
   }
 }
 
+const PRIVATE_LOCAL_PREFIX = 'local-private:'
+class LocalPrivateStorageAdapter implements StorageAdapter {
+  backend = 'local-private'
+  async put({ key, bytes }: { key: string; bytes: Buffer; contentType: string }) {
+    const dest = path.join(process.cwd(), '.private-uploads', key)
+    await mkdir(path.dirname(dest), { recursive: true })
+    await writeFile(dest, bytes)
+    return { url: `${PRIVATE_LOCAL_PREFIX}${key}` }
+  }
+}
+
+export async function readPrivateLocalFile(url:string):Promise<Buffer|null>{
+  if(!url.startsWith(PRIVATE_LOCAL_PREFIX))return null
+  const key=url.slice(PRIVATE_LOCAL_PREFIX.length)
+  const root=path.resolve(process.cwd(),'.private-uploads')
+  const file=path.resolve(root,key)
+  if(!file.startsWith(root+path.sep))return null
+  try{return await readFile(file)}catch{return null}
+}
+
 type BlobAccess = 'private' | 'public'
 
 class BlobStorageAdapter implements StorageAdapter {
@@ -79,5 +99,5 @@ export function getStorageAdapter(): StorageAdapter {
  * streams it to an allowed reader.
  */
 export function getPrivateStorageAdapter(): StorageAdapter {
-  return process.env.STORAGE_MODE === 'blob' ? new BlobStorageAdapter('private') : new LocalStorageAdapter()
+  return process.env.STORAGE_MODE === 'blob' ? new BlobStorageAdapter('private') : new LocalPrivateStorageAdapter()
 }

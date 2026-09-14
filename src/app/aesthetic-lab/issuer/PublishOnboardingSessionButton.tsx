@@ -43,7 +43,7 @@ export function PublishOnboardingSessionButton({
   const openPicker=()=>{setPickerOriginal(new Date(startsAt));setPickerOpen(true)}
   const closePicker=(save:boolean)=>{if(!save&&pickerOriginal)setStartsAt(pickerOriginal);setPickerOriginal(null);setPickerOpen(false)}
   return <>
-    <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton}`} onClick={openModal}><CalendarPlus size={15} /> Add Date</button>
+    <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton}`} onClick={openModal}><CalendarPlus size={15} /> Schedule</button>
     {open ? createPortal(<div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={close}>
       <section className={`${styles.issuerCalendarModal} ${pickerOpen?styles.issuerCalendarModalPicker:''}`} role="dialog" aria-modal="true" aria-label={pickerOpen?'Onboarding session date and time picker':'Add another onboarding date'} onMouseDown={(event) => event.stopPropagation()}>
         {pickerOpen?null:<div className={styles.issuerCalendarModalHeading}>
@@ -59,7 +59,7 @@ export function PublishOnboardingSessionButton({
             <div className={styles.issuerCalendarDatePicker}><span>Date and time</span><button type="button" className={styles.issuerCalendarDateTrigger} onClick={openPicker}><CalendarDays size={14} aria-hidden="true"/><span>{displayDateTime(startsAt)}</span><ChevronDown size={14} aria-hidden="true"/></button></div>
             <label className={styles.onboardingRecurringChoice}><span><input type="checkbox" name="recurring" value="true" /> <Repeat2 size={15} /> Repeat weekly</span><small>City/Sync keeps one recurring session public at a time and publishes the next occurrence after the current one ends.</small></label>
             {existingFutureSessions > 1 ? <p className={styles.onboardingRecurringNotice}>This onboarding template already has {existingFutureSessions} future dates. You can add another single date, but finish those dates before switching to one-at-a-time recurring publication.</p> : null}
-            <div className={styles.issuerCalendarFormActions}><button type="button" onClick={close}>Cancel</button><button type="submit" disabled={pending}><CalendarPlus size={15} /> Add Date</button></div>
+            <div className={styles.issuerCalendarFormActions}><button type="button" onClick={close}>Cancel</button><button type="submit" disabled={pending}><CalendarPlus size={15} /> Schedule</button></div>
             {error?<p role="alert" style={{color:'#99463f',fontSize:12}}>{error}</p>:null}
           </div>
         </form>

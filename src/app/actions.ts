@@ -62,7 +62,7 @@ import {
 import { isOrganizationDocumentCategory } from '@/lib/services/organization-documents'
 import { RESOURCE_DESTINATIONS, type OrganizationResourceKind } from '@/lib/services/organization-resources'
 import { saveProfile } from '@/lib/services/profile'
-import { cancelOnboardingSession, createRecurringOnboardingSession, publishOnboardingSession, updateRecurringOnboardingSession } from '@/lib/services/onboarding-session'
+import { cancelOnboardingSession, createRecurringOnboardingSession, deleteOnboardingSessionTemplate, publishOnboardingSession, updateRecurringOnboardingSession } from '@/lib/services/onboarding-session'
 import {
   planStaffForRecurringShift,
   planVolunteerForRecurringShift,
@@ -374,6 +374,10 @@ export async function saveOrganizationSettingsAction(formData: FormData) {
     name: str(formData, 'organizationName'),
     logoUrl: str(formData, 'logoUrl'),
     contactEmail: str(formData, 'contactEmail'),
+    phone: formData.has('phone') ? str(formData, 'phone') : undefined,
+    location: formData.has('location') ? str(formData, 'location') : undefined,
+    bannerStyle: formData.has('bannerStyle') ? str(formData, 'bannerStyle') : undefined,
+    bannerPalette: formData.has('bannerPalette') ? str(formData, 'bannerPalette') : undefined,
   })
   back(formData, '/settings', result.ok ? { ok: 'Organization settings saved.' } : { error: result.error })
 }
@@ -732,6 +736,8 @@ export async function createOnboardingSessionAction(formData: FormData) {
   const city = await getActiveCity(session)
   if (!city) back(formData, '/issuer/catalog', { error: 'Your organization must be onboarded into a city before it can create an onboarding session.' })
 
+  const hasResourcePackage = formData.has('resourcePackage')
+  const firstStartsAt = parseDateTime(formData, 'firstStartsAt')
   const result = await createRecurringOnboardingSession({
     orgId: session.orgId,
     cityId: city.id,
@@ -742,21 +748,24 @@ export async function createOnboardingSessionAction(formData: FormData) {
     beforeSession: str(formData, 'beforeSession'),
     bringItems: str(formData, 'bringItems'),
     credits: int(formData, 'credits'),
-    firstStartsAt: parseDateTime(formData, 'firstStartsAt'),
-    durationMinutes: int(formData, 'durationMinutes'),
+    firstStartsAt,
+    durationMinutes: int(formData, 'durationMinutes') || 45,
     weeklyCapacity: int(formData, 'weeklyCapacity'),
     programId: str(formData, 'programId') || null,
     onboardingWaiverMethod: normalizeOnboardingWaiverMethod(str(formData, 'onboardingWaiverMethod')),
     onboardingIdentityCheck: normalizeOnboardingIdentityCheck(str(formData, 'onboardingIdentityCheck')),
+    documentIds: hasResourcePackage ? strList(formData, 'documentIds') : undefined,
+    waiverVersionIds: hasResourcePackage ? strList(formData, 'waiverVersionIds') : undefined,
   })
   const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=onboarding'
-  if (result.ok) await notifyMatchingParticipants(result.taskId)
-  back(formData, destination, result.ok ? { ok: 'Onboarding session created.' } : { error: result.error })
+  if (result.ok && firstStartsAt) await notifyMatchingParticipants(result.taskId)
+  back(formData, destination, result.ok ? { ok: 'Onboarding template created.' } : { error: result.error })
 }
 
 export async function updateOnboardingSessionAction(formData: FormData) {
   const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
+  const hasResourcePackage = formData.has('resourcePackage')
   const result = await updateRecurringOnboardingSession({
     taskId: str(formData, 'taskId'),
     orgId: session.orgId,
@@ -773,8 +782,11 @@ export async function updateOnboardingSessionAction(formData: FormData) {
     programId: str(formData, 'programId') || null,
     onboardingWaiverMethod: normalizeOnboardingWaiverMethod(str(formData, 'onboardingWaiverMethod')),
     onboardingIdentityCheck: normalizeOnboardingIdentityCheck(str(formData, 'onboardingIdentityCheck')),
+    documentIds: hasResourcePackage ? strList(formData, 'documentIds') : undefined,
+    waiverVersionIds: hasResourcePackage ? strList(formData, 'waiverVersionIds') : undefined,
   })
-  back(formData, '/aesthetic-lab/issuer/catalog?workspace=onboarding', result.ok ? { ok: 'Onboarding session saved.' } : { error: result.error })
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/volunteers'
+  back(formData, destination, result.ok ? { ok: 'Onboarding session saved.' } : { error: result.error })
 }
 
 export async function publishOnboardingSessionAction(formData: FormData) {
@@ -807,6 +819,13 @@ export async function scheduleNewShiftAction(formData: FormData) {
   const visibility = str(formData, 'visibility') === 'private' ? 'private' : 'public'
   const recurring = str(formData, 'recurring') === 'true'
   const templateId = str(formData, 'taskId')
+  const description = visibility === 'public' ? str(formData, 'description').trim() : ''
+  const hasResourcePackage = visibility === 'public' && formData.has('resourcePackage')
+  const documentIds = hasResourcePackage ? strList(formData, 'documentIds') : []
+  const waiverVersionIds = hasResourcePackage ? strList(formData, 'waiverVersionIds') : []
+  if (visibility === 'public' && !description) {
+    back(formData, destination, { error: 'Add a public description so Civic Participants know what to expect.' })
+  }
   const assignedUserIds = visibility === 'private' ? strList(formData, 'assignedUserId') : []
   if (assignedUserIds.length) await requireActor('issuer', 'participants.manage')
 
@@ -846,13 +865,15 @@ export async function scheduleNewShiftAction(formData: FormData) {
     cityId: city.id,
     actorId: session.sub,
     title: str(formData, 'title'),
-    description: str(formData, 'description'),
+    description,
     location: str(formData, 'location'),
     credits: 10,
     slots: capacity,
     defaultDurationMinutes: durationMinutes,
     startsAt: '',
     programId: str(formData, 'programId') || null,
+    documentIds,
+    waiverVersionIds,
     initialShift: {
       startsAt,
       capacity,
@@ -1087,6 +1108,26 @@ export async function cancelOnboardingSessionAction(formData: FormData) {
   back(formData, destination, result.ok
     ? { ok: result.notified > 0 ? `Session cancelled and ${result.notified} participant${result.notified === 1 ? '' : 's'} notified.` : 'Session cancelled.' }
     : { error: result.error })
+}
+
+export async function deleteOnboardingSessionTemplateInlineAction(input: { taskId: string }) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) return { ok: false as const, error: 'Choose an organization before deleting an onboarding template.' }
+  const result = await deleteOnboardingSessionTemplate({
+    taskId: input.taskId,
+    orgId: session.orgId,
+    actorId: session.sub,
+  })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  revalidatePath('/aesthetic-lab/issuer/programs/[id]', 'page')
+  revalidatePath('/aesthetic-lab/issuer/catalog')
+  revalidatePath('/aesthetic-lab/issuer/volunteers')
+  revalidatePath('/aesthetic-lab/opportunities')
+  return {
+    ok: true as const,
+    cancelledShiftCount: result.cancelledShiftCount,
+    notifiedParticipantCount: result.notifiedParticipantCount,
+  }
 }
 
 export async function closeShiftAction(formData: FormData) {
@@ -1378,7 +1419,7 @@ export const setOnboardingWaiverMethodAction = setOnboardingWaiverRequirementsAc
 export async function retireWaiverAction(formData: FormData) {
   const session = await requireActor('issuer', 'waiver.manage')
   if (!session.orgId) redirect('/issuer')
-  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=documentation'
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/documents'
   const result = await retireWaiverVersion({
     orgId: session.orgId,
     waiverVersionId: str(formData, 'waiverVersionId'),
@@ -1560,7 +1601,7 @@ export async function setOrganizationResourceAssignmentsAction(formData: FormDat
   const kind = resourceKind(formData)
   const session = await requireActor('issuer', kind === 'waiver' ? 'waiver.manage' : 'documents.manage')
   if (!session.orgId) redirect('/issuer')
-  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=documentation'
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/documents'
   const resourceId = str(formData, 'resourceId')
   if (!kind || !resourceId || !await assertOrganizationResource({ orgId: session.orgId, kind, id: resourceId })) {
     back(formData, destination, { error: 'That resource is no longer available.' })
@@ -1595,7 +1636,7 @@ export async function setOrganizationResourcePublicationsAction(formData: FormDa
   const kind = resourceKind(formData)
   const session = await requireActor('issuer', kind === 'waiver' ? 'waiver.manage' : 'documents.manage')
   if (!session.orgId) redirect('/issuer')
-  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=documentation'
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/documents'
   const resourceId = str(formData, 'resourceId')
   if (!kind || !resourceId || !await assertOrganizationResource({ orgId: session.orgId, kind, id: resourceId })) {
     back(formData, destination, { error: 'That resource is no longer available.' })
@@ -1740,7 +1781,10 @@ export async function saveProfileAction(formData: FormData) {
     back(formData, '/issuer/profile', { error: 'Could not read the profile data. Please try again.' })
   }
 
-  const published = str(formData, 'published') === 'true'
+  // An approved issuer always has one live public organization page. Saving
+  // edits updates that page; applications, opportunities, and resources keep
+  // their own independent publication controls.
+  const published = true
   const socialsRaw = data.socials
   const socials =
     socialsRaw && typeof socialsRaw === 'object' && !Array.isArray(socialsRaw)
@@ -1768,6 +1812,8 @@ export async function saveProfileAction(formData: FormData) {
     phone: s('phone'),
     location: s('location'),
     socials,
+    bannerStyle: s('bannerStyle'),
+    bannerPalette: s('bannerPalette'),
     causes,
     onboardingTaskId,
     published,
@@ -1776,7 +1822,7 @@ export async function saveProfileAction(formData: FormData) {
   back(
     formData,
     '/issuer/profile',
-    result.ok ? { ok: published ? 'Profile published.' : 'Draft saved.' } : { error: result.error },
+    result.ok ? { ok: 'Public profile updated.' } : { error: result.error },
   )
 }
 
@@ -1825,7 +1871,7 @@ export async function sendOrganizationMessageAction(formData: FormData) {
     formData,
     '/aesthetic-lab/issuer/notifications',
     result.ok
-      ? { ok: `Message sent to ${result.recipientCount} volunteer${result.recipientCount === 1 ? '' : 's'}.`, pane: 'outbound', message: result.id }
+      ? { ok: `Message sent to ${result.recipientCount} volunteer${result.recipientCount === 1 ? '' : 's'}.`, pane: 'messages', message: result.id }
       : { error: result.error },
   )
 }
@@ -1860,7 +1906,7 @@ export async function postIssuerEventChatMessageAction(formData: FormData) {
   })
   back(
     formData,
-    `/aesthetic-lab/issuer/notifications/chats/${chatId}`,
+    '/aesthetic-lab/issuer/notifications?pane=events',
     result.ok ? { ok: 'Message sent.' } : { error: result.error },
   )
 }
@@ -1875,7 +1921,7 @@ export async function postParticipantEventChatMessageAction(formData: FormData) 
   })
   back(
     formData,
-    `/aesthetic-lab/chats/${chatId}`,
+    `/aesthetic-lab/messages?pane=events&event=${encodeURIComponent(chatId)}`,
     result.ok ? { ok: 'Message sent.' } : { error: result.error },
   )
 }

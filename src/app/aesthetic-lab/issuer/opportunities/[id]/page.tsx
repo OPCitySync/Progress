@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, FileText, FolderKanban, Plus, UsersRound } from 'lucide-react'
+import { CalendarDays, FileText, FolderKanban, Plus, UsersRound } from 'lucide-react'
 import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
@@ -9,6 +9,7 @@ import { getShiftsWithCounts } from '@/lib/services/opportunities'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getLabWorkspace } from '../../../lab-workspace'
 import { LabHeader } from '../../../LabHeader'
+import { HistoryBackButton } from '../../../HistoryBackButton'
 import { LabNotice } from '../../../LabNotice'
 import { IssuerLabSidebar } from '../../IssuerLabSidebar'
 import styles from '../../../prototype.module.css'
@@ -37,7 +38,7 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
     return (
       <main className={styles.app}>
         <LabHeader activeSection="issuer-catalog" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
-        <section className={styles.primaryColumn}><p className={styles.emptyCopy}>This opportunity is unavailable.</p><Link href={returnToWorkspace}>Back to Workspace</Link></section>
+        <section className={styles.primaryColumn}><p className={styles.emptyCopy}>This opportunity is unavailable.</p><HistoryBackButton fallback={returnToWorkspace} /></section>
       </main>
     )
   }
@@ -56,12 +57,12 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
         <section className={styles.issuerMain} aria-label="Workspace">
           <section className={styles.issuerPageHero}>
             <div><p className={styles.eyebrow}>Workspace · Opportunities</p><h1>Manage template.</h1><p>Update the reusable volunteer plan here. Its published sessions and past activity stay connected to it.</p></div>
-            <Link href={returnToWorkspace} className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Back to Workspace</Link>
+            <HistoryBackButton fallback={returnToWorkspace} />
           </section>
 
           <nav className={styles.workspaceSectionNav} aria-label="Workspace navigation">
             <Link href="/aesthetic-lab/issuer/catalog?workspace=programs"><FolderKanban size={15} /> Volunteer Programs</Link>
-            <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation"><FileText size={15} /> Documentation</Link>
+            <Link href="/aesthetic-lab/issuer/documents"><FileText size={15} /> Document Library</Link>
             <Link href={redirectTo} data-active="true" aria-current="page"><UsersRound size={15} /> Opportunities</Link>
           </nav>
 

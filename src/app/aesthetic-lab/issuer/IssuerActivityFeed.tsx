@@ -221,7 +221,7 @@ export function IssuerActivityFeed({ activity }: { activity: OrganizationActivit
             : null
         const postHref = entry.postId ? `/aesthetic-lab/issuer/feed#post-${entry.postId}` : null
         const messageHref = entry.messageId
-          ? `/aesthetic-lab/issuer/notifications?pane=outbound&message=${encodeURIComponent(entry.messageId)}`
+          ? `/aesthetic-lab/issuer/notifications?pane=messages&message=${encodeURIComponent(entry.messageId)}`
           : null
         const programHref=entry.programId?'/aesthetic-lab/issuer/programs/'+encodeURIComponent(entry.programId)+'?section='+(entry.type.includes('RECOGNITION')?'recognition':entry.type.includes('ONBOARDING')||entry.type.includes('APPLICATION')||entry.type.includes('CANDIDATE')||entry.type.includes('DOCUMENT_RECEIVED')?'onboarding':'overview'):null
         return <article key={entry.hash}>
@@ -250,7 +250,7 @@ export function IssuerActivityFeed({ activity }: { activity: OrganizationActivit
               {!isCreditsMinted && (postHref || eventHref || messageHref) ? <dl className={styles.issuerLedgerPayload}>
                 {postHref ? <div><dt>Related post</dt><dd className={styles.issuerLedgerReason}><Link href={postHref}>Open MyCity post</Link></dd></div> : null}
                 {eventHref ? <div><dt>Related event</dt><dd className={styles.issuerLedgerReason}><Link href={eventHref}>{entry.shiftId ? 'Open event card' : 'Open opportunity template'}</Link></dd></div> : null}
-                {messageHref ? <div><dt>Outbound message</dt><dd className={styles.issuerLedgerReason}><Link href={messageHref}>Open in Outbox</Link></dd></div> : null}
+                {messageHref ? <div><dt>Sent message</dt><dd className={styles.issuerLedgerReason}><Link href={messageHref}>Open in Messages</Link></dd></div> : null}
               </dl> : null}
               <dl className={styles.issuerLedgerIntegrity}>
                 <div><dt>Record hash</dt><dd><code>{entry.hash}</code></dd></div>

@@ -768,6 +768,11 @@ const columnMigrations = [
   `ALTER TABLE onboarding_intakes ADD COLUMN application_public INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE onboarding_intakes ADD COLUMN role_join_mode TEXT NOT NULL DEFAULT 'open'`,
   `ALTER TABLE onboarding_application_forms ADD COLUMN archived_at INTEGER`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN scope TEXT NOT NULL DEFAULT 'role'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN target_task_id TEXT`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN resume_policy TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN cover_letter_policy TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN published_at INTEGER`,
   `ALTER TABLE waiver_acceptances ADD COLUMN signature_method TEXT NOT NULL DEFAULT 'acknowledgement'`,
   `ALTER TABLE waiver_acceptances ADD COLUMN signer_name TEXT`,
   `ALTER TABLE waiver_acceptances ADD COLUMN electronic_consent_at INTEGER`,
@@ -775,6 +780,9 @@ const columnMigrations = [
   // The existing profile pointer becomes the designated primary series. New
   // onboarding series are stored directly on their task records.
   `UPDATE tasks SET is_onboarding = 1 WHERE id IN (SELECT onboarding_task_id FROM org_profiles WHERE onboarding_task_id IS NOT NULL)`,
+  // Preserve currently open applications when upgrading to form-level
+  // publication. Existing program intake forms become the all-role path.
+  `UPDATE onboarding_application_forms SET published_at = COALESCE(published_at, created_at), scope = 'all', target_task_id = NULL WHERE id IN (SELECT active_form_id FROM onboarding_intakes WHERE application_public = 1 AND active_form_id IS NOT NULL)`,
 ]
 
 const indexes = [

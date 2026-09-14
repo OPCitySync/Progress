@@ -3,10 +3,12 @@ import type { ReactNode } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, notifications, onboardingApplications, organizationDelegations, programMetricEntries, programMetrics, programRecognitions, programWorkAreas, programWorkspaceSettings, shifts, tasks, users } from '@/lib/db/schema'
+import { claims, notifications, onboardingApplications, organizationDelegations, programMetricEntries, programMetrics, programWorkAreas, programWorkspaceSettings, shifts, tasks, users } from '@/lib/db/schema'
 import { onboardingMaterials, stringIds } from '@/lib/services/program-workspace'
 import { attendedOnboarding } from '@/lib/services/volunteer-intake'
-import { getOrganizationDocuments } from '@/lib/services/organization-documents'
+import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
+import { getWaiverTaskIdsByWaiver } from '@/lib/services/organization-resources'
+import { getOnboardingWaiverSetup } from '@/lib/services/waivers'
 import { DialogForm, WorkspaceDialog, ThankYouLetterComposer, OnboardingSetupEditor } from './ProgramWorkspace'
 import { AddOnboardingSessionButton } from './AddOnboardingSessionButton'
 import { ManageOnboardingSessionButton } from './ManageOnboardingSessionButton'
@@ -72,12 +74,18 @@ export async function ProgramOverviewPanel({orgId,scope,positions,history,impact
 
 export async function ProgramOnboardingPanel({orgId,scope,programName,programs,location}:{orgId:string;scope:string;programName:string;programs:Array<{id:string;name:string}>;location:string}){
   const now=Date.now()
-  const [own,materials,allDocuments]=await Promise.all([
+  const [own,materials,allDocuments,waiverSetup,waiverTaskIds]=await Promise.all([
     db.select().from(programWorkspaceSettings).where(and(eq(programWorkspaceSettings.orgId,orgId),eq(programWorkspaceSettings.scope,scope))).limit(1).then(r=>r[0]),
     onboardingMaterials(orgId,scope),
     getOrganizationDocuments(orgId),
+    getOnboardingWaiverSetup(orgId),
+    getWaiverTaskIdsByWaiver(orgId),
   ])
-  const documents=allDocuments.filter(document=>scope==='organization'?document.programId===null:document.programId===null||document.programId===scope)
+  // The library is organization-wide. A program can reuse any saved document
+  // without creating a duplicate or changing the document's optional tag.
+  const documents=allDocuments
+  const documentOptions=documents.map(document=>({id:document.id,title:document.title,categoryLabel:ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label}))
+  const waiverOptions=waiverSetup.waivers.map(waiver=>({id:waiver.id,title:waiver.title}))
   const effectiveScope=materials.policy?.scope||scope
   const active=Boolean(materials.policy&&materials.policy.onboardingMode!=='none')
   const shared=effectiveScope!==scope
@@ -114,30 +122,31 @@ export async function ProgramOnboardingPanel({orgId,scope,programName,programs,l
   const invitationKeys=new Set(invitationRows.map(row=>`${row.link}:${row.userId}`))
   const volunteersWithReservation=new Set(reservedRows.map(row=>row.userId))
   const invitedVolunteerIds=new Set(invitationRows.map(row=>row.userId))
-  return <>
-    <section className={styles.info}>
-      <header className={styles.heading}><div><p className={styles.eyebrow}>A clear welcome</p><h2>{active?(shared?'Shared organization onboarding':'Your volunteer welcome'):materials.policy?.onboardingMode==='none'?'No onboarding required':'Choose how people get started.'}</h2><p className={styles.hint}>Help people understand the program, get ready, and meet your team. You make the final decision about joining the roster.</p></div>
-        {own?<WorkspaceDialog label="Manage onboarding" title="How should volunteers get started?" icon={false}><OnboardingSetupEditor scope={scope} initial={own} documents={documents.map(d=>({id:d.id,title:d.title}))}/></WorkspaceDialog>:null}
-      </header>
+  return <div className={styles.onboardingWorkspaceColumns}>
+    <section className={styles.card}>
       {!active?<p className={styles.hint}>Onboarding is optional. No requirements are applied until you save an active pathway.</p>:null}
       <div className={styles.approvedVolunteerSection}>
-        <div className={styles.approvedVolunteerHeading}><div><p className={styles.eyebrow}>Awaiting orientation</p><h3>Approved volunteers ready for onboarding</h3></div></div>
+        <div className={styles.approvedVolunteerHeading}><div><p className={styles.eyebrow}>Awaiting orientation</p><h3>Approved volunteers ready for onboarding</h3></div>{own?<WorkspaceDialog label="Manage onboarding" title="How should volunteers get started?" icon={false}><OnboardingSetupEditor scope={scope} initial={own} documents={documents.map(d=>({id:d.id,title:d.title}))}/></WorkspaceDialog>:null}</div>
         {approvedVolunteers.length?<div className={styles.approvedVolunteerList}>{approvedVolunteers.map(volunteer=><article className={styles.approvedVolunteerRow} key={volunteer.id}><span aria-hidden="true">{volunteer.name.split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase()||'V'}</span><div><b>{volunteer.name}</b><small>Approved for {volunteer.roleTitles.join(' · ')}</small>{volunteersWithReservation.has(volunteer.id)?<small>Onboarding session reserved</small>:invitedVolunteerIds.has(volunteer.id)?<small className={styles.invitationSent}><CheckCircle2 size={12}/>Invitation sent</small>:<small>{volunteer.approvedAt?`Approved ${date(volunteer.approvedAt)} · Ready to invite`:'Ready to invite'}</small>}</div><Link className={styles.button} href={'/aesthetic-lab/issuer/volunteers/'+volunteer.id}>View Profile</Link></article>)}</div>:<p className={styles.approvedVolunteerEmpty}>No approved volunteers are currently awaiting orientation.</p>}
       </div>
     </section>
     <section className={styles.card}>
-      <header className={styles.heading}><div><p className={styles.eyebrow}>Meet your volunteers</p><h2>Onboarding sessions</h2></div><AddOnboardingSessionButton programs={programs} defaultProgramId={effectiveScope==='organization'?null:effectiveScope} lockProgramContext activeProgramName={shared?'Organization':programName} defaultLocation={location} redirectTo={redirectTo}/></header>
+      <header className={styles.heading}><div><p className={styles.eyebrow}>Onboarding Templates</p><h2>Volunteer Orientation</h2></div><AddOnboardingSessionButton programs={programs} defaultProgramId={effectiveScope==='organization'?null:effectiveScope} lockProgramContext activeProgramName={shared?'Organization':programName} defaultLocation={location} documents={documentOptions} waivers={waiverOptions} redirectTo={redirectTo}/></header>
       {sessions.length?<div className={styles.onboardingSessionDefinitions}>{sessions.map(({task,dates})=>{
         const upcoming=dates.filter(({shift})=>shift.status==='open'&&Boolean(shift.startsAt&&shift.startsAt>now))
+        const attachedDocumentIds=documents.filter(document=>document.taskIds.includes(task.id)).map(document=>document.id)
+        const explicitlyAttachedWaiverIds=waiverSetup.waivers.filter(waiver=>(waiverTaskIds.get(waiver.id)??[]).includes(task.id)).map(waiver=>waiver.id)
+        const attachedWaiverIds=explicitlyAttachedWaiverIds.length?explicitlyAttachedWaiverIds:waiverOptions.map(waiver=>waiver.id)
+        const packageItemCount=attachedDocumentIds.length+attachedWaiverIds.length
         const inviteSessions=upcoming.map(({shift})=>{
           const link=`/aesthetic-lab/opportunities/${task.id}?invitedSession=${shift.id}#available-sessions`
           return {shiftId:shift.id,label:dateTime(shift.startsAt!),candidates:approvedVolunteers.map(volunteer=>({...volunteer,state:reservedKeys.has(`${shift.id}:${volunteer.id}`)?'reserved' as const:invitationKeys.has(`${link}:${volunteer.id}`)?'invited' as const:'available' as const}))}
         })
         return <article key={task.id} className={styles.onboardingSessionDefinition}>
           <div className={styles.onboardingSessionDefinitionHeading}>
-            <div><b>{task.title}</b><small>Reusable onboarding session · {task.location||'Location to be confirmed'} · {materials.policy?.requireSession?'Attendance required':'Optional welcome session'}</small></div>
+            <div><b>{task.title}</b><small>Reusable onboarding session · {task.location||'Location to be confirmed'} · {packageItemCount} package item{packageItemCount===1?'':'s'}</small></div>
             <div className={styles.actions}>
-              <ManageOnboardingSessionButton task={task} nextStartsAt={upcoming[0]?.shift.startsAt||null} durationMinutes={task.defaultDurationMinutes} weeklyCapacity={task.slots} programs={programs} redirectTo={redirectTo}/>
+              <ManageOnboardingSessionButton task={task} nextStartsAt={upcoming[0]?.shift.startsAt||null} durationMinutes={task.defaultDurationMinutes} weeklyCapacity={task.slots} programs={programs} documents={documentOptions} waivers={waiverOptions} attachedDocumentIds={attachedDocumentIds} attachedWaiverIds={attachedWaiverIds} redirectTo={redirectTo}/>
               <PublishOnboardingSessionButton taskId={task.id} redirectTo={redirectTo} suggestedStartsAt={upcoming.length?Math.max(...upcoming.map(({shift})=>shift.startsAt??now))+7*24*60*60*1000:now+24*60*60*1000} existingFutureSessions={upcoming.length}/>
               <InviteOnboardingVolunteersButton sessions={inviteSessions}/>
             </div>
@@ -146,27 +155,23 @@ export async function ProgramOnboardingPanel({orgId,scope,programName,programs,l
         </article>
       })}</div>:<p className={styles.empty}>Create a reusable onboarding session and invite approved volunteers when you are ready.</p>}
     </section>
-  </>
+  </div>
 }
 export async function ProgramRecognitionPanel({orgId,scope,taskIds}:{orgId:string;scope:string;taskIds:string[]}){
-  const [verified,records,openShiftRows]=await Promise.all([
+  const [verified,openShiftRows]=await Promise.all([
     taskIds.length?db.select({shift:shifts,task:tasks,user:users}).from(claims).innerJoin(shifts,eq(claims.shiftId,shifts.id)).innerJoin(tasks,eq(claims.taskId,tasks.id)).innerJoin(users,eq(claims.userId,users.id)).where(and(inArray(claims.taskId,taskIds),eq(claims.status,'verified'))).orderBy(desc(shifts.startsAt)):Promise.resolve([]),
-    db.select().from(programRecognitions).where(and(eq(programRecognitions.orgId,orgId),eq(programRecognitions.scope,scope))).orderBy(desc(programRecognitions.createdAt)),
     taskIds.length?db.select({shift:shifts}).from(shifts).where(and(eq(shifts.orgId,orgId),eq(shifts.status,'open'),inArray(shifts.taskId,taskIds))).orderBy(desc(shifts.startsAt)):Promise.resolve([]),
   ])
   const now=Date.now()
   const shiftsToVerify=openShiftRows.filter(({shift})=>(shift.endsAt??shift.startsAt??Number.MAX_SAFE_INTEGER)<=now)
   const events=Array.from(new Map(verified.map(r=>[r.shift.id,{id:r.shift.id,title:r.task.title,date:date(r.shift.startsAt||r.shift.createdAt),people:verified.filter(p=>p.shift.id===r.shift.id).map(p=>({id:p.user.id,name:p.user.name}))}])).values())
-  return <>
-    <section className={styles.info}><header className={styles.heading}><h2>Recognition</h2><WorkspaceDialog label="Create Thank You Letter" title="Create Thank You Letter"><ThankYouLetterComposer scope={scope} events={events}/></WorkspaceDialog></header></section>
-    <section className={styles.card}><header className={styles.heading}><div><p className={styles.eyebrow}>Verification</p><h2>Shifts ready for review.</h2></div></header>
+  return <div className={styles.recognitionWorkspaceColumns}>
+    <section className={styles.card}><header className={styles.heading}><h2>Recognition</h2><WorkspaceDialog label="Create Thank You Letter" title="Create Thank You Letter"><ThankYouLetterComposer scope={scope} events={events}/></WorkspaceDialog></header></section>
+    <section className={styles.card}><header className={styles.heading}><h2>Verification</h2></header>
       {shiftsToVerify.length?<div className={styles.rows}>{shiftsToVerify.map(({shift})=>{
         const shiftName=shift.label.trim()||(shift.startsAt?`${new Date(shift.startsAt).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})} shift`:'Scheduled shift')
         return <article className={styles.row} key={shift.id}><div><b>{shiftName}</b><small>{dateTime(shift.startsAt??shift.createdAt)} · Attendance awaiting verification</small></div><Link className={styles.button} href={`/aesthetic-lab/issuer/shifts/${shift.id}/verify`}><CheckCircle2 size={14}/> Verify &amp; Close</Link></article>
       })}</div>:<p className={styles.empty}>No completed shifts are waiting for verification.</p>}
     </section>
-    <section className={styles.card}><header className={styles.heading}><div><p className={styles.eyebrow}>Appreciation shared</p><h2>Small moments worth keeping.</h2></div></header>
-      {records.length?records.map(r=><article className={styles.row} key={r.id}><div><b>{r.recipientNames}</b><small>{date(r.createdAt)} · {r.kind==='letter'?'Printable letter':r.kind==='team'?'Private team message':'Private thank-you'}</small><p>{r.message}</p></div>{r.kind==='letter'?<Link className={styles.button} href={'/aesthetic-lab/issuer/programs/'+scope+'/recognition/'+r.id}>Open letter</Link>:<Link className={styles.button} href="/aesthetic-lab/issuer/notifications?pane=outbound">Messages</Link>}</article>):<p className={styles.empty}>Your personal notes and appreciation letters will collect here.</p>}
-    </section>
-  </>
+  </div>
 }

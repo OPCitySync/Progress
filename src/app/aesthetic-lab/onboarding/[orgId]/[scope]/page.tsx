@@ -7,6 +7,7 @@ import {getSession} from '@/lib/auth/session'
 import {validateActiveSession,isActiveOrganizationStaff} from '@/lib/services/identity-access'
 import {candidateReadiness,onboardingMaterials} from '@/lib/services/program-workspace'
 import {DialogForm,WorkspaceDialog,WorkspaceForm} from '../../../issuer/ProgramWorkspace'
+import {HistoryBackButton} from '../../../HistoryBackButton'
 import styles from '../../../issuer/ProgramWorkspace.module.css'
 export const dynamic='force-dynamic'
 export default async function Welcome({params}:{params:{orgId:string;scope:string}}){
@@ -47,6 +48,6 @@ export default async function Welcome({params}:{params:{orgId:string;scope:strin
       {materials.sessions.length?<section className={styles.card}><p className={styles.eyebrow}>Meet the team</p><h2>Onboarding sessions</h2>{materials.sessions.map(t=><article className={styles.row} key={t.id}><div><b>{t.title}</b><small>{t.location}</small></div><Link className={styles.button} href={'/aesthetic-lab/opportunities/'+t.id}>Choose a session</Link></article>)}</section>:policy.requireSession?<section className={styles.card}><p>The organization will publish an onboarding date here. Your other checklist progress is saved.</p></section>:null}
       {participant&&!staff?<section className={styles.card}><p className={styles.eyebrow}>A personal welcome</p>{readiness?.application?.status==='approved'?<><h2>Welcome to the team.</h2><p>Your profile has been reviewed and you are on the organization’s volunteer roster.</p><Link className={styles.button} href="/aesthetic-lab/opportunities?tab=organizations">Find your next opportunity</Link></>:readiness?.application?.status==='submitted'?<><h2>Your checklist is with the team.</h2><p>You will receive a notification when they review your profile.</p></>:<><h2>Ready to introduce yourself?</h2>{readiness?.application?.status==='declined'?<p>Your previous application was not approved. Contact the organization before requesting another review.</p>:null}<p className={styles.hint}>The organization reviews your profile and checklist before adding you to its roster.</p><WorkspaceForm {...props} operation="submit" submitLabel="Request my review" disabled={!readiness?.complete}/>{!readiness?.complete?<p className={styles.hint}>Complete the remaining requirements above to request review.</p>:null}</>}</section>:null}
     </>:null}
-    <Link href={preview?'/aesthetic-lab/issuer/programs/'+params.scope+'?section=onboarding':'/aesthetic-lab/opportunities'}>← {preview?'Back to program':'Opportunities'}</Link>
+    <HistoryBackButton fallback={preview?'/aesthetic-lab/issuer/programs/'+params.scope+'?section=onboarding':'/aesthetic-lab/opportunities'}/>
   </main>
 }

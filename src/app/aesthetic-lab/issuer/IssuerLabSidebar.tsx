@@ -1,12 +1,18 @@
 import Link from 'next/link'
 import {
+  ArrowLeft,
   BadgeCheck,
+  Compass,
   ShieldCheck,
 } from 'lucide-react'
 import styles from '../prototype.module.css'
 import { IssuerQuickActions } from './IssuerQuickActions'
+import { OrganizationBanner } from '@/components/profile/OrganizationBanner'
+import { getProfile } from '@/lib/services/profile'
+import { OrganizationAppearanceButton } from './OrganizationAppearanceButton'
+import { organizationInitials } from '@/lib/profile/organization-appearance'
 
-export function IssuerLabSidebar({
+export async function IssuerLabSidebar({
   organizationName = 'Issuer organization',
   organizationId,
   cityName,
@@ -17,17 +23,21 @@ export function IssuerLabSidebar({
   cityName?: string
   isMyCityFeed?: boolean
 }) {
+  const profile = organizationId ? await getProfile(organizationId) : null
+  const initials = organizationInitials(organizationName)
   return (
     <aside className={styles.leftRail}>
       <section className={styles.issuerIdentityCard}>
-        <div className={styles.issuerCover}><span>EB</span><i /><i /><i /></div>
+        <OrganizationBanner bannerStyle={profile?.bannerStyle ?? 'original'} bannerPalette={profile?.bannerPalette ?? 'citysync'} coverUrl={profile?.coverUrl} className={styles.issuerCover} />
+        <OrganizationAppearanceButton organizationName={organizationName} initials={initials} profile={profile} />
         <div className={styles.issuerIdentityBody}>
-          <p className={styles.eyebrow}>Issuer organization</p>
           <h1>{organizationName} <BadgeCheck size={17} /></h1>
-          <p>{cityName ? `Issuer Organization · ${cityName}` : 'Issuer Organization'}</p>
+          {cityName ? <p>{cityName}</p> : null}
           <div className={styles.issuerIdentityLinks}>
-            <Link href={isMyCityFeed ? '/aesthetic-lab/issuer' : '/aesthetic-lab/issuer/feed'}>{isMyCityFeed ? 'Home' : 'MyCity Feed'}</Link>
-            <Link href="/aesthetic-lab/issuer/manage">Manage Organization</Link>
+            <Link className={styles.issuerMyCityLink} href={isMyCityFeed ? '/aesthetic-lab/issuer' : '/aesthetic-lab/issuer/feed'}>
+              {isMyCityFeed ? <ArrowLeft size={13} /> : <Compass size={13} />}
+              {isMyCityFeed ? 'Return to Organization' : 'MyCity Feed'}
+            </Link>
           </div>
         </div>
       </section>

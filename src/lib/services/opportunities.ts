@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { tasks, shifts, claims, orgs, users, organizationDelegations, shiftStaffAssignments, verificationBatches, volunteerIdentityVerifications, plannedRecurringAssignments, plannedRecurringStaffAssignments, recurringEventSchedules, programRecognitions, orgMessages, messageRecipients } from '@/lib/db/schema'
+import { tasks, shifts, claims, orgs, users, organizationDelegations, organizationDocumentAssignments, organizationDocuments, shiftStaffAssignments, verificationBatches, volunteerIdentityVerifications, plannedRecurringAssignments, plannedRecurringStaffAssignments, recurringEventSchedules, programRecognitions, orgMessages, messageRecipients, waiverTaskAssignments, waiverVersions } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { getOnboardingWaiverSetup, hasSignedWaiver } from './waivers'
@@ -82,6 +82,8 @@ export async function createTask(input: {
   requiredCredentials?: string[]
   catalogEntryId?: string | null
   programId?: string | null
+  documentIds?: string[]
+  waiverVersionIds?: string[]
   initialShift?: {
     startsAt: number
     capacity: number
@@ -135,6 +137,22 @@ export async function createTask(input: {
     return { ok: false, error: 'Choose a volunteer program belonging to your organization.' }
   }
 
+  const documentIds = Array.from(new Set(input.documentIds ?? [])).filter(Boolean)
+  const waiverVersionIds = Array.from(new Set(input.waiverVersionIds ?? [])).filter(Boolean)
+  if (documentIds.length > 100 || waiverVersionIds.length > 50) {
+    return { ok: false, error: 'Choose no more than 100 documents and 50 waivers for one shift.' }
+  }
+  const [availableDocuments, availableWaivers] = await Promise.all([
+    documentIds.length
+      ? db.select({ id: organizationDocuments.id }).from(organizationDocuments).where(and(eq(organizationDocuments.orgId, input.orgId), eq(organizationDocuments.active, 1), inArray(organizationDocuments.id, documentIds)))
+      : Promise.resolve([]),
+    waiverVersionIds.length
+      ? db.select({ id: waiverVersions.id }).from(waiverVersions).where(and(eq(waiverVersions.orgId, input.orgId), eq(waiverVersions.active, 1), inArray(waiverVersions.id, waiverVersionIds)))
+      : Promise.resolve([]),
+  ])
+  if (availableDocuments.length !== documentIds.length) return { ok: false, error: 'One of the selected documents is no longer available.' }
+  if (availableWaivers.length !== waiverVersionIds.length) return { ok: false, error: 'One of the selected waivers is no longer active.' }
+
   const id = randomUUID()
   const shiftIds = initialShifts.map(() => randomUUID())
   const shiftId = shiftIds[0]
@@ -162,9 +180,15 @@ export async function createTask(input: {
     await appendEvent(
       tx,
       EventTypes.TASK_CREATED,
-      { taskId: id, orgId: input.orgId, cityId: input.cityId, credits: input.credits, title: input.title.trim() },
+      { taskId: id, orgId: input.orgId, cityId: input.cityId, credits: input.credits, title: input.title.trim(), documentIds, waiverVersionIds },
       input.actorId,
     )
+    if (documentIds.length) {
+      await tx.insert(organizationDocumentAssignments).values(documentIds.map((documentId) => ({ id: randomUUID(), documentId, taskId: id, createdAt: now })))
+    }
+    if (waiverVersionIds.length) {
+      await tx.insert(waiverTaskAssignments).values(waiverVersionIds.map((waiverVersionId) => ({ id: randomUUID(), waiverVersionId, taskId: id, createdAt: now })))
+    }
     for (let index = 0; index < initialShifts.length; index += 1) {
       const initialShift = initialShifts[index]
       const currentShiftId = shiftIds[index]

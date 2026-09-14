@@ -25,6 +25,7 @@ import {
 import { requireSession } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { orgProfiles, orgs, users } from '@/lib/db/schema'
+import { organizationAppearanceFromStorage } from '@/lib/profile/organization-appearance'
 
 export const dynamic = 'force-dynamic'
 
@@ -216,6 +217,7 @@ export default async function SettingsPage({
   ])
   const org = organization[0]
   if (!org) return null
+  const appearance = organizationAppearanceFromStorage(profile[0]?.socials ?? '{}')
   const activeTab: OrganizationSettingsTab =
     searchParams.tab === 'permissions' || searchParams.tab === 'activity' || searchParams.tab === 'locations' ? searchParams.tab : 'profile'
   const subtitleByTab: Record<OrganizationSettingsTab, string> = {
@@ -235,7 +237,7 @@ export default async function SettingsPage({
 
       {activeTab === 'profile' ? (
         isOwner ? (
-          <OrganizationIdentityForm initial={{ name: org.name, logoUrl: profile[0]?.logoUrl ?? '', contactEmail: profile[0]?.contactEmail ?? '' }} />
+          <OrganizationIdentityForm initial={{ name: org.name, logoUrl: profile[0]?.logoUrl ?? '', contactEmail: profile[0]?.contactEmail ?? '', bannerStyle: appearance.bannerStyle, bannerPalette: appearance.bannerPalette }} />
         ) : (
           <Card><p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Organizational Name</p><p className="mt-1 text-sm font-medium text-ink-900">{org.name}</p></Card>
         )

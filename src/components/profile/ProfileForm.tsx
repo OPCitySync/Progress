@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { ImageIcon } from 'lucide-react'
 import { Card, Input, Textarea, Label, Button } from '@/components/ui'
 import { saveProfileAction } from '@/app/actions'
+import { OrganizationAppearancePicker } from '@/components/profile/OrganizationAppearancePicker'
+import type { OrganizationBannerPalette, OrganizationBannerStyle } from '@/lib/profile/organization-appearance'
 
 type Socials = { twitter?: string; instagram?: string; facebook?: string; linkedin?: string }
 
@@ -18,6 +20,8 @@ export type ProfileFormInitial = {
   phone: string
   location: string
   socials: Record<string, string>
+  bannerStyle: OrganizationBannerStyle
+  bannerPalette: OrganizationBannerPalette
   causes: string[]
   onboardingTaskId: string | null
   published: boolean
@@ -115,6 +119,8 @@ export function ProfileForm({
   })
   const [causesStr, setCausesStr] = useState(initial.causes.join(', '))
   const [onboardingTaskId, setOnboardingTaskId] = useState(initial.onboardingTaskId ?? '')
+  const [bannerStyle, setBannerStyle] = useState(initial.bannerStyle)
+  const [bannerPalette, setBannerPalette] = useState(initial.bannerPalette)
 
   const setM = (k: keyof typeof meta, v: string) => setMeta((m) => ({ ...m, [k]: v }))
 
@@ -122,6 +128,8 @@ export function ProfileForm({
     ...meta,
     mission,
     socials,
+    bannerStyle,
+    bannerPalette,
     causes: causesStr.split(',').map((s) => s.trim()).filter(Boolean),
     onboardingTaskId,
   })
@@ -130,6 +138,7 @@ export function ProfileForm({
     <form action={saveProfileAction}>
       <input type="hidden" name="payload" value={payload} />
       <input type="hidden" name="redirectTo" value="/issuer/profile" />
+      <input type="hidden" name="published" value="true" />
 
       <Card className="mb-5">
         <p className="text-sm font-semibold text-ink-800">Header</p>
@@ -137,6 +146,9 @@ export function ProfileForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <ImageField label="Logo" value={meta.logoUrl} onChange={(u) => setM('logoUrl', u)} />
           <ImageField label="Cover image" value={meta.coverUrl} onChange={(u) => setM('coverUrl', u)} />
+        </div>
+        <div className="mt-5 border-t border-ink-100 pt-5">
+          <OrganizationAppearancePicker bannerStyle={bannerStyle} bannerPalette={bannerPalette} onStyleChange={setBannerStyle} onPaletteChange={setBannerPalette} />
         </div>
         <div className="mt-4">
           <Label htmlFor="tagline">Tagline</Label>
@@ -222,15 +234,8 @@ export function ProfileForm({
       </Card>
 
       <div className="sticky bottom-4 flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-ink-200 bg-white/95 px-5 py-3 shadow-card backdrop-blur">
-        <span className="mr-auto text-xs text-ink-400">
-          {initial.published ? 'Your page is live.' : 'Draft — not visible to the public yet.'}
-        </span>
-        <Button type="submit" name="published" value="false" variant="secondary">
-          Save draft
-        </Button>
-        <Button type="submit" name="published" value="true">
-          Publish
-        </Button>
+        <span className="mr-auto text-xs text-ink-400">Saved changes appear on your live organization page.</span>
+        <Button type="submit">Save changes</Button>
       </div>
     </form>
   )

@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import {
-  ArrowLeft,
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
@@ -11,10 +10,10 @@ import {
   ShieldCheck,
   UsersRound,
 } from 'lucide-react'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
-import { claims, orgs, tasks, onboardingApplications } from '@/lib/db/schema'
+import { claims, orgs, tasks, onboardingApplications, volunteerPrograms } from '@/lib/db/schema'
 import { claimShiftAction } from '@/app/actions'
 import { getOnboardingWaiverSetup, getWaiverSignatures } from '@/lib/services/waivers'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
@@ -24,13 +23,14 @@ import { savedItemIds } from '@/lib/services/saved-items'
 import { organizationFileDownloadUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
+import { HistoryBackButton } from '../../HistoryBackButton'
 import { LabNotice } from '../../LabNotice'
 import { SaveTaskButton } from '../../SaveTaskButton'
 import { DigitalWaiverSignature } from '../../DigitalWaiverSignature'
 import { WithdrawCommitmentButton } from '../../WithdrawCommitmentButton'
 import styles from '../../prototype.module.css'
 import {programPolicy,scopeOf} from '@/lib/services/program-workspace'
-import { getIntakeForm, intakeReservationGate, getAdmissionDecision } from '@/lib/services/volunteer-intake'
+import { getIntakeForm, getPublishedApplicationForTask, intakeApplicationForTaskScope, intakeReservationGate, getAdmissionDecision } from '@/lib/services/volunteer-intake'
 import { ParticipantIntakeApplication, ParticipantProfileApplication } from '../../issuer/VolunteerIntakeControls'
 
 export const dynamic = 'force-dynamic'
@@ -61,28 +61,37 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
   if (!task || !org || task.status !== 'open' || (city && task.cityId !== city.id)) {
     return <main className={styles.app}>
       <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
-      <section className={styles.primaryColumn}><p className={styles.emptyCopy}>This opportunity is no longer available in your active city.</p><Link href="/aesthetic-lab/opportunities">Back to opportunities</Link></section>
+      <section className={styles.primaryColumn}><p className={styles.emptyCopy}>This opportunity is no longer available in your active city.</p><HistoryBackButton fallback="/aesthetic-lab/opportunities" /></section>
     </main>
   }
 
-  const [sessions, waiverSetup, myClaims, savedTaskIds, organizationDocuments, attachedWaivers] = await Promise.all([
+  const isOnboarding = task.isOnboarding === 1
+  const [sessions, waiverSetup, myClaims, savedTaskIds, organizationDocuments, attachedWaivers, roleInterestRows, programRow] = await Promise.all([
     getShiftsWithCounts(task.id),
     getOnboardingWaiverSetup(org.id, task),
     db.select().from(claims).where(and(eq(claims.taskId, task.id), eq(claims.userId, session.sub))),
     savedItemIds(session.sub, 'task', [task.id]),
     getOrganizationDocuments(org.id),
     getWaiversAttachedToTask(task.id),
+    !isOnboarding ? db.select({id:tasks.id,title:tasks.title}).from(tasks).where(and(
+      eq(tasks.orgId,task.orgId),
+      eq(tasks.cityId,task.cityId),
+      eq(tasks.status,'open'),
+      eq(tasks.isOnboarding,0),
+      task.programId?eq(tasks.programId,task.programId):isNull(tasks.programId),
+    )) : Promise.resolve([]),
+    task.programId ? db.select({name:volunteerPrograms.name}).from(volunteerPrograms).where(eq(volunteerPrograms.id,task.programId)).limit(1).then(rows=>rows[0]??null) : Promise.resolve(null),
   ])
 
   const claimByShift = new Map(myClaims.map((claim) => [claim.shiftId, claim]))
   const visibleSessions = sessions.filter(({ shift }) => shift.visibility === 'public' || Boolean(claimByShift.get(shift.id) && claimByShift.get(shift.id)?.status !== 'unclaimed'))
-  const isOnboarding = task.isOnboarding === 1
   const intakeSetup = await getIntakeForm(task.id)
-  const roleJoinMode = intakeSetup.form ? 'form' : 'profile'
-  const publicRoleApplication = !isOnboarding && Boolean(intakeSetup.intake?.applicationPublic)
+  const publishedApplication = isOnboarding ? null : await getPublishedApplicationForTask(task.id)
+  const roleJoinMode = publishedApplication?.form ? 'form' : 'profile'
+  const publicRoleApplication = !isOnboarding && Boolean(publishedApplication||intakeSetup.intake?.applicationPublic)
   const applicationRequired = Boolean(intakeSetup.intake?.applicationRequired && (isOnboarding || publicRoleApplication))
   const intakeGate = applicationRequired ? await intakeReservationGate(task.id, session.sub) : null
-  const application = applicationRequired ? (await db.select().from(onboardingApplications).where(and(eq(onboardingApplications.taskId,task.id),eq(onboardingApplications.userId,session.sub))).limit(1))[0] : null
+  const application = applicationRequired ? await intakeApplicationForTaskScope(task,session.sub) : null
   const admission = isOnboarding ? await getAdmissionDecision(org.id,session.sub) : null
   const welcomePolicy=intakeSetup?.intake ? null : await programPolicy(org.id,scopeOf(task.programId))
   const waivers = isOnboarding ? waiverSetup.waivers : attachedWaivers
@@ -96,7 +105,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
     : []
   const includedDocuments = organizationDocuments.filter((document) => document.taskIds.includes(task.id))
   const sessionCount = visibleSessions.length
-  const backLabel = isOnboarding ? 'Back to onboarding' : 'Back to opportunities'
+  const volunteerIntakeTitle = programRow?.name ?? `Volunteer with ${org.name}`
 
   return (
     <main className={styles.app}>
@@ -121,7 +130,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
         </aside>
 
         <section className={styles.primaryColumn} aria-label={isOnboarding ? 'Onboarding reservation' : 'Opportunity reservation'}>
-          <Link href="/aesthetic-lab/opportunities" className={styles.onboardingBackLink}><ArrowLeft size={15} /> {backLabel}</Link>
+          <HistoryBackButton fallback="/aesthetic-lab/opportunities" className={styles.onboardingBackLink} />
           {welcomePolicy&&welcomePolicy.onboardingMode!=='none'?<section className={styles.onboardingProcessCard}><b>Your volunteer welcome</b><p>Complete the organization’s checklist and request a personal profile review before joining its volunteer roster.</p><Link className={styles.catalogWorkspaceAction} href={'/aesthetic-lab/onboarding/'+org.id+'/'+scopeOf(task.programId)}>Open my checklist</Link></section>:null}
           <LabNotice ok={searchParams.ok} error={searchParams.error} />
 
@@ -142,8 +151,8 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
             </div>
           </section>
 
-          {applicationRequired && (isOnboarding || roleJoinMode==='form') && intakeSetup.form ? <ParticipantIntakeApplication taskId={task.id} title={task.title} form={{id:intakeSetup.form.id,introduction:intakeSetup.form.introduction,questions:intakeSetup.questions}} status={application?.status??null} kind={isOnboarding ? 'onboarding' : 'role'} blocked={admission?.status==='not_approved'?'Your participation at this organization was not approved. Contact the organization to request a review.':null}/> : null}
-          {applicationRequired && !isOnboarding && roleJoinMode==='profile' ? <ParticipantProfileApplication taskId={task.id} title={task.title} status={application?.status??null}/> : null}
+          {applicationRequired && (isOnboarding || roleJoinMode==='form') && (isOnboarding?intakeSetup.form:publishedApplication?.form) ? <ParticipantIntakeApplication taskId={task.id} title={isOnboarding?task.title:volunteerIntakeTitle} form={isOnboarding?{id:intakeSetup.form!.id,introduction:intakeSetup.form!.introduction,questions:intakeSetup.questions}:{id:publishedApplication!.form.id,introduction:publishedApplication!.form.introduction,questions:publishedApplication!.questions,scope:publishedApplication!.form.scope,resumePolicy:publishedApplication!.form.resumePolicy,coverLetterPolicy:publishedApplication!.form.coverLetterPolicy}} status={application?.status??null} kind={isOnboarding ? 'onboarding' : 'role'} roles={roleInterestRows} blocked={admission?.status==='not_approved'?'Your participation at this organization was not approved. Contact the organization to request a review.':null}/> : null}
+          {applicationRequired && !isOnboarding && roleJoinMode==='profile' ? <ParticipantProfileApplication taskId={task.id} title={volunteerIntakeTitle} status={application?.status??null} roles={roleInterestRows}/> : null}
 
           <section className={styles.onboardingResourceCard}>
             <div className={styles.onboardingCardHeading}>

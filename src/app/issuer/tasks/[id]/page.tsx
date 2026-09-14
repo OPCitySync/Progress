@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
@@ -18,6 +17,7 @@ import { CredentialPicker } from '@/components/CredentialPicker'
 import { parseCredentialList } from '@/lib/credentials'
 import { fmtDateTime } from '@/lib/format'
 import { participantDisplayName } from '@/lib/participant-name'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,9 +59,7 @@ export default async function IssuerTaskDetail({
 
   return (
     <>
-      <Link href="/issuer" className="mb-4 inline-block text-sm text-ink-400 hover:text-ink-600">
-        ← Dashboard
-      </Link>
+      <HistoryBackButton fallback="/issuer" variant="plain" className="mb-4" />
       <PageHeader
         title={task.title}
         subtitle={`${task.credits} credits per completion · ${shiftRows.length} shift${shiftRows.length === 1 ? '' : 's'}`}

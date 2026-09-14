@@ -1,10 +1,10 @@
-import Link from 'next/link'
 import { and, asc, eq, gte, lt } from 'drizzle-orm'
-import { ArrowLeft, CalendarDays, Clock3, MapPin, UsersRound } from 'lucide-react'
+import { CalendarDays, Clock3, MapPin, UsersRound } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { orgs, shifts, tasks } from '@/lib/db/schema'
 import { LabHeader } from '../../LabHeader'
+import { HistoryBackButton } from '../../HistoryBackButton'
 import { getLabWorkspace } from '../../lab-workspace'
 import { IssuerLabSidebar } from '../IssuerLabSidebar'
 import styles from '../../prototype.module.css'
@@ -51,7 +51,7 @@ export default async function IssuerCityEventsPage() {
         <section className={styles.issuerMain} aria-label="Today’s city events">
           <section className={styles.issuerPageHero}>
             <div><p className={styles.eyebrow}>City-wide schedule</p><h1>Events in {cityLabel}</h1></div>
-            <Link href="/aesthetic-lab/issuer/feed" className={styles.issuerHistoryBack}><ArrowLeft size={15} /> Back to MyCity Feed</Link>
+            <HistoryBackButton fallback="/aesthetic-lab/issuer/feed" className={styles.issuerHistoryBack} />
           </section>
 
           <section className={styles.issuerEventsCard}>

@@ -66,7 +66,7 @@ export async function programWorkspaceAction(form: FormData) {
       if (scope === 'organization' && mode === 'organization') return fail('Configure shared onboarding here, or choose no onboarding.')
       const documents = await db.select().from(organizationDocuments).where(and(eq(organizationDocuments.orgId, orgId), eq(organizationDocuments.active, 1)))
       const selected = ids(form, 'documentId')
-      if (selected.some(id => !documents.some(d => d.id === id && (!d.programId || d.programId === scope)))) return fail('Choose documents belonging to this program or the organization.')
+      if (selected.some(id => !documents.some(d => d.id === id))) return fail('Choose an active document from your organization library.')
       const value = { onboardingMode: mode as 'organization' | 'program' | 'none', headline: field(form, 'headline').slice(0,180), welcome: field(form, 'welcome').slice(0,2000), requireSession: form.has('requireSession') ? 1 : 0, waiverMethod: method as 'digital' | 'paper' | 'either', documentIds: JSON.stringify(selected), updatedAt: now }
       if(mode!=='program'){
         const previous=(await db.select().from(programWorkspaceSettings).where(and(eq(programWorkspaceSettings.orgId,orgId),eq(programWorkspaceSettings.scope,scope))).limit(1))[0]

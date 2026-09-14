@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import { ArrowLeft, ChevronDown, ShieldCheck, Trash2 } from 'lucide-react'
+import { ChevronDown, ShieldCheck, Trash2 } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { retireWaiverAction, setOnboardingWaiverRequirementsAction, setWaiverProgramAction } from '@/app/actions'
 import { getOnboardingWaiverSetup } from '@/lib/services/waivers'
@@ -7,6 +6,7 @@ import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
+import { HistoryBackButton } from '../../HistoryBackButton'
 import { LabNotice } from '../../LabNotice'
 import { IssuerLabSidebar } from '../IssuerLabSidebar'
 import { WaiverCreateButton } from '../WaiverCreateButton'
@@ -29,7 +29,7 @@ export default async function IssuerWaiverLabPage({ searchParams }: { searchPara
       <section className={styles.issuerMain} aria-label="Liability waiver">
         <section className={styles.issuerPageHero}>
           <div><p className={styles.eyebrow}>Organization setup</p><h1>Liability waivers</h1><p>Publish the waivers your organization needs. Every active waiver is automatically included with future onboarding sessions.</p></div>
-          <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
+          <HistoryBackButton fallback="/aesthetic-lab/issuer/documents" />
         </section>
         <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 

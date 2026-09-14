@@ -1,12 +1,14 @@
-import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { and, asc, eq, inArray } from 'drizzle-orm'
-import { ArrowLeft } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { claims, orgs, shifts, tasks, users, volunteerIdentityVerifications } from '@/lib/db/schema'
 import { participantDisplayName } from '@/lib/participant-name'
+import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
+import { getProfile } from '@/lib/services/profile'
 import { getLabWorkspace } from '../../../../lab-workspace'
+import { HistoryBackButton } from '../../../../HistoryBackButton'
 import { LabHeader } from '../../../../LabHeader'
 import { IssuerLabSidebar } from '../../../IssuerLabSidebar'
 import { ShiftVerificationReview } from '../../../ShiftVerificationReview'
@@ -14,13 +16,20 @@ import styles from '../../../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
+type ShiftVerificationPaletteVariables = CSSProperties & {
+  '--shift-verification-deep': string
+  '--shift-verification-mid': string
+  '--shift-verification-accent': string
+  '--shift-verification-accent-deep': string
+}
+
 /** End a shift once, while preserving individual service records. */
 export default async function ShiftVerificationPage({ params }: { params: { shiftId: string } }) {
   const session = await requireRole('issuer')
   if (!session.orgId) notFound()
   const orgId = session.orgId
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [shiftRow, org] = await Promise.all([
+  const [shiftRow, org, profile] = await Promise.all([
     db
       .select({ shift: shifts, task: tasks })
       .from(shifts)
@@ -29,6 +38,7 @@ export default async function ShiftVerificationPage({ params }: { params: { shif
       .limit(1)
       .then((rows) => rows[0] ?? null),
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
+    getProfile(orgId),
   ])
   if (!shiftRow) notFound()
   const pendingParticipants = await db
@@ -50,17 +60,21 @@ export default async function ShiftVerificationPage({ params }: { params: { shif
         ))
     : []
   const verifiedIdentityUserIds = new Set(identityMatches.map((row) => row.userId))
+  const organizationPalette = organizationBannerPalette(profile?.bannerPalette)
+  const verificationPalette: ShiftVerificationPaletteVariables = {
+    '--shift-verification-deep': organizationPalette.colors[0],
+    '--shift-verification-mid': organizationPalette.colors[1],
+    '--shift-verification-accent': organizationPalette.colors[2],
+    '--shift-verification-accent-deep': organizationPalette.colors[3],
+  }
 
   return <main className={styles.app}>
     <LabHeader activeSection="issuer-overview" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
     <div className={styles.issuerLayout}>
       <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
-      <section className={styles.issuerMain} aria-label="Shift attendance">
-        <section className={styles.issuerPageHero}>
-          <div><h1>Shift Verification</h1></div>
-          <Link href="/aesthetic-lab/issuer" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Back to Home</Link>
-        </section>
+      <section className={styles.issuerMain} aria-label="Shift attendance" style={verificationPalette}>
         <ShiftVerificationReview
+          headerAction={<HistoryBackButton fallback="/aesthetic-lab/issuer" />}
           shift={{
             id: shiftRow.shift.id,
             title: shiftRow.task.title,

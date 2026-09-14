@@ -1,10 +1,11 @@
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, Plus } from 'lucide-react'
+import { CalendarDays, Plus } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { createTaskAction } from '@/app/actions'
 import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
+import { HistoryBackButton } from '../../HistoryBackButton'
 import { LabNotice } from '../../LabNotice'
 import styles from '../../prototype.module.css'
 
@@ -25,7 +26,7 @@ export default async function NewLabOpportunityPage({ searchParams }: { searchPa
             <Plus size={20} />
             <h2>New opportunity</h2>
             <p>Describe the repeatable volunteer work first. Add public sessions whenever you are ready.</p>
-            <Link href="/aesthetic-lab/issuer/catalog"><ArrowLeft size={14} /> Workspace</Link>
+            <HistoryBackButton fallback="/aesthetic-lab/issuer/catalog" />
           </section>
         </aside>
 

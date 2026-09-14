@@ -15,6 +15,7 @@ import {
 } from '@/lib/db/schema'
 import { hasOrganizationPermission, validateActiveSession } from '@/lib/services/identity-access'
 import { candidateReadiness } from '@/lib/services/program-workspace'
+import { readPrivateLocalFile } from '@/lib/storage/storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -140,6 +141,14 @@ export async function GET(
   // same authorization gate, then lets the local dev server serve that file.
   if (file.url.startsWith('/uploads/')) {
     return NextResponse.redirect(new URL(file.url, request.url))
+  }
+
+  if(file.url.startsWith('local-private:')){
+    const bytes=await readPrivateLocalFile(file.url)
+    if(!bytes)return new NextResponse('Not found',{status:404})
+    const download=request.nextUrl.searchParams.get('download')==='1'
+    const name=safeFileName(file.name,`${params.kind}-${file.id}`)
+    return new NextResponse(new Uint8Array(bytes),{headers:{'Content-Type':file.contentType||'application/octet-stream','Content-Disposition':`${download?'attachment':'inline'}; filename="${name}"`,'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-cache'}})
   }
 
   const result = await get(file.url, {

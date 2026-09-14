@@ -1,7 +1,7 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm'
-import { ArrowLeft, CalendarDays, CheckCircle2, XCircle } from 'lucide-react'
-import { cancelShiftAndNotifyAction } from '@/app/actions'
+import { CheckCircle2 } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { claims, onboardingApplicationForms, onboardingApplications, orgs, plannedRecurringAssignments, plannedRecurringStaffAssignments, recurringEventSchedules, shiftStaffAssignments, tasks, users } from '@/lib/db/schema'
@@ -10,17 +10,21 @@ import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { getRoster } from '@/lib/services/roster'
 import { listOrganizationDelegations } from '@/lib/services/identity-access'
 import { LabHeader } from '../../../LabHeader'
+import { HistoryBackButton } from '../../../HistoryBackButton'
 import { getLabWorkspace } from '../../../lab-workspace'
 import { IssuerLabSidebar } from '../../IssuerLabSidebar'
 import { ScheduleNewShiftButton } from '../../ScheduleNewShiftButton'
 import { VolunteerRoleWorkspace } from '../../VolunteerRoleWorkspace'
 import { ProgramRosterScheduler } from '../../ProgramRosterScheduler'
-import { ShiftRosterAssignmentButton } from '../../ShiftRosterAssignmentButton'
 import { ProgramNavigation } from '../../ProgramWorkspace'
 import { ProgramOnboardingPanel, ProgramOverviewPanel, ProgramRecognitionPanel } from '../../ProgramWorkspacePanels'
 import { programPolicy } from '@/lib/services/program-workspace'
 import { getOrganizationLocations } from '@/lib/services/organization-locations'
+import { getProfile } from '@/lib/services/profile'
 import { getIntakeForm, intakeQuestions } from '@/lib/services/volunteer-intake'
+import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
+import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
+import { getActiveWaivers } from '@/lib/services/waivers'
 import styles from '../../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -31,18 +35,11 @@ function formatDate(timestamp: number | null) {
     : 'Date to be confirmed'
 }
 
-function formatDateTime(timestamp: number | null) {
-  return timestamp
-    ? new Date(timestamp).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-    : 'Date and time to be confirmed'
-}
-
-function shiftDisplayName(label: string, startsAt: number | null) {
-  const savedLabel = label.trim()
-  if (savedLabel) return savedLabel
-  return startsAt
-    ? `${new Date(startsAt).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} shift`
-    : 'Scheduled shift'
+type ProgramControlPaletteVariables = CSSProperties & {
+  '--program-palette-deep': string
+  '--program-palette-mid': string
+  '--program-palette-accent': string
+  '--program-palette-accent-deep': string
 }
 
 export default async function IssuerVolunteerProgramDetailsPage({ params, searchParams }: { params: { id: string }; searchParams: {section?:string} }) {
@@ -50,7 +47,7 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
   const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
   const isOrganizationArea = params.id === 'organization'
-  const [org, programs, taskRows, roster, approvedRoleRows, delegations, organizationLocations] = await Promise.all([
+  const [org, programs, taskRows, roster, approvedRoleRows, delegations, organizationLocations, profile, organizationDocuments, activeWaivers] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     getVolunteerPrograms(orgId),
     city
@@ -75,6 +72,9 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
       )),
     listOrganizationDelegations(orgId),
     getOrganizationLocations(orgId),
+    getProfile(orgId),
+    getOrganizationDocuments(orgId),
+    getActiveWaivers(orgId),
   ])
   const program = isOrganizationArea
     ? {
@@ -100,7 +100,7 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
           <section className={styles.issuerMain} aria-label="Volunteer program">
             <section className={styles.issuerPageHero}>
               <div><p className={styles.eyebrow}>Volunteer programs</p><h1>Program unavailable.</h1><p>This volunteer program may have been removed or belongs to another organization.</p></div>
-              <Link href={workspaceHref} className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
+              <HistoryBackButton fallback={workspaceHref} />
             </section>
           </section>
         </div>
@@ -119,6 +119,11 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
     version:onboardingApplicationForms.version,
     introduction:onboardingApplicationForms.introduction,
     questions:onboardingApplicationForms.questions,
+    scope:onboardingApplicationForms.scope,
+    targetTaskId:onboardingApplicationForms.targetTaskId,
+    resumePolicy:onboardingApplicationForms.resumePolicy,
+    coverLetterPolicy:onboardingApplicationForms.coverLetterPolicy,
+    publishedAt:onboardingApplicationForms.publishedAt,
     createdAt:onboardingApplicationForms.createdAt,
     roleTitle:tasks.title,
   }).from(onboardingApplicationForms)
@@ -169,7 +174,7 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
     : [[], []]
   const publishedEvents = standardTemplates.flatMap(({ task, sessions }) => sessions
     .filter(({ shift }) => shift.status === 'open' && Boolean(shift.startsAt && shift.startsAt > now))
-    .map(({ shift, taken, slotsLeft }) => ({ task, shift, taken, slotsLeft })))
+    .map(({ shift, taken }) => ({ task, shift, taken })))
     .sort((a, b) => (a.shift.startsAt ?? Number.MAX_SAFE_INTEGER) - (b.shift.startsAt ?? Number.MAX_SAFE_INTEGER))
   const pastEvents = standardTemplates.flatMap(({ task, sessions }) => sessions
     .filter(({ shift }) => hasEnded(shift.endsAt, shift.startsAt))
@@ -264,6 +269,13 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
     { label: 'Verified shifts', value: new Set(programClaims.filter(c=>c.status==='verified').map(c=>c.shiftId)).size, detail: 'Shifts with verified participation' },
     { label: 'Upcoming events', value: publishedEvents.length, detail: 'Public and private scheduled shifts' },
   ]
+  const organizationPalette = organizationBannerPalette(profile?.bannerPalette)
+  const programControlPalette: ProgramControlPaletteVariables = {
+    '--program-palette-deep': organizationPalette.colors[0],
+    '--program-palette-mid': organizationPalette.colors[1],
+    '--program-palette-accent': organizationPalette.colors[2],
+    '--program-palette-accent-deep': organizationPalette.colors[3],
+  }
 
   return (
     <main className={styles.app}>
@@ -271,16 +283,12 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
       <div className={styles.issuerLayout}>
         <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
         <section className={styles.issuerMain} aria-label={`${program.name} details`}>
-          <section className={styles.issuerPageHero}>
-            <div><p className={styles.eyebrow}>Workspace · Volunteer Programs</p><h1>{program.name}</h1><p>{program.description || 'This program brings its volunteer work and participation history together in one place.'}</p></div>
-            <Link href={workspaceHref} className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
-          </section>
-
-          <div className={styles.programControlCenterShell}>
+          <div className={styles.programControlCenterShell} style={programControlPalette}>
           <section className={styles.programControlCenterCard}>
             <div className={styles.programControlCenterHeading}>
-              <div><p className={styles.eyebrow}>Program control center</p><h2>Build, schedule, and grow this program in one place.</h2><p>Welcome people, define their work, plan together, and recognize what they make possible.</p></div>
+              <div><p className={styles.eyebrow}>Program Control Center</p><h1>{program.name}</h1><p>{program.description || 'This program brings its volunteer work and participation history together in one place.'}</p></div>
               <div className={styles.programControlCenterActions}>
+                <HistoryBackButton fallback={workspaceHref} />
                 {nextProgramAction ? <Link className={styles.catalogWorkspaceAction} href={nextProgramAction.href}>{nextProgramAction.label}</Link> : null}
               </div>
             </div>
@@ -308,12 +316,16 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
               applicationTemplates={roleApplicationTemplates.map(template=>({
                 ...template,
                 questions:intakeQuestions(template.questions),
-                published:Boolean(roleApplications.get(template.taskId)?.intake?.applicationPublic&&roleApplications.get(template.taskId)?.intake?.activeFormId===template.id),
+                published:Boolean(template.publishedAt),
               }))}
               applicants={unreviewedRoleApplicants.map(applicant=>{
                 let answers:Record<string,string>={}
                 try{answers=JSON.parse(applicant.answers)}catch{}
-                return {...applicant,questions:intakeQuestions(applicant.questions),answers,organizationName:org?.name??'Our organization'}
+                const files=[]
+                for(const [key,label,kind] of [['__resumeFile','Resume','resume'],['__coverLetterFile','Cover Letter','cover-letter']] as const){
+                  try{const raw=answers[key];if(!raw)continue;const file=JSON.parse(raw) as {name?:string};if(file.name)files.push({id:key,name:file.name,href:`/api/application-files/${applicant.id}/${kind}`})}catch{}
+                }
+                return {...applicant,roleTitle:applicant.roleTitle,questions:intakeQuestions(applicant.questions),answers,organizationName:org?.name??'Our organization',files}
               })}
               program={{id:program.id,name:program.name}}
               scope={params.id}
@@ -338,36 +350,15 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
               defaultLocation={organizationAddress}
               defaultCapacity={2}
               buttonLabel="Schedule shift"
-              defaultVisibility={program.defaultVisibility}
               defaultDurationMinutes={program.defaultDurationMinutes}
-              templates={standardTemplates.map(({task,sessions})=>({
-                id:task.id,
-                title:task.title,
-                description:task.description,
-                location:task.location,
-                capacity:task.slots,
-                durationMinutes:task.defaultDurationMinutes,
-                visibility:sessions.find(({shift})=>shift.status==='open')?.shift.visibility??program.defaultVisibility,
+              documents={organizationDocuments.map((document) => ({
+                id: document.id,
+                title: document.title,
+                categoryLabel: ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label,
               }))}
+              waivers={activeWaivers.map((waiver) => ({ id: waiver.id, title: waiver.title }))}
             />}
           />
-
-          <section id="program-schedule" className={`${styles.programDetailSection} ${styles.programDetailSchedule}`}>
-            <div className={styles.programDetailHeading}><div><p className={styles.eyebrow}>Active schedule</p><h2>Upcoming program work</h2></div></div>
-            {publishedEvents.length ? <div className={styles.programScheduleList}>{publishedEvents.map(({ shift, taken, slotsLeft }) => {
-              const access = shift.visibility === 'private' ? 'Private roster' : 'Public signup'
-              const shiftName = shiftDisplayName(shift.label, shift.startsAt)
-              return <article key={shift.id}>
-                <span><CalendarDays size={17} /></span>
-                <div><b>{shiftName}</b><p>{formatDateTime(shift.startsAt)} · {access}</p><small>{taken} of {shift.capacity} filled{shift.visibility === 'public' ? ` · ${slotsLeft} open` : ''}</small></div>
-                <div className={styles.programScheduleActions}>
-                  {shift.visibility === 'private' ? <ShiftRosterAssignmentButton shiftId={shift.id} title={shiftName} capacity={shift.capacity} taken={taken} visibility={shift.visibility} volunteers={roster.volunteers} redirectTo={programHref+'?section=scheduling'} /> : null}
-                  <form action={cancelShiftAndNotifyAction}><input type="hidden" name="shiftId" value={shift.id} /><input type="hidden" name="redirectTo" value={programHref+'?section=scheduling'} /><button type="submit" className={`${styles.catalogWorkspaceAction} ${styles.opportunityWorkspaceButton} ${styles.opportunityShiftCancel}`}><XCircle size={14} /> Cancel &amp; notify</button></form>
-                </div>
-              </article>
-              })}</div> : <p className={styles.programDetailEmpty}>No upcoming work is scheduled. Use the Schedule Shift button when the next date is ready.</p>}
-          </section>
-
 </>,
             recognition: <ProgramRecognitionPanel orgId={orgId} scope={params.id} taskIds={standardTemplates.map(({ task })=>task.id)}/>,
           }}/>

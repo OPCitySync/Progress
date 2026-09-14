@@ -105,8 +105,6 @@ export function ThankYouLetterComposer({scope,events}:{scope:string;events:Array
     <button type="button" className={styles.textButton} onClick={()=>setMessage(`Thank you for giving your time to ${shift?.title || 'our program'}. We appreciate the care and effort you brought to this work.\n\nOne thing that stood out was…`)}>Help me get started</button>
   </DialogForm>
 }
-export function PrintButton(){return <button type="button" className={styles.button} onClick={()=>window.print()}>Print / Save PDF</button>}
-
 export function OnboardingSetupEditor({scope,initial,documents}:{scope:string;initial?:{onboardingMode:string;headline:string;welcome:string;waiverMethod:string;requireSession:number;documentIds:string};documents:Array<{id:string;title:string}>}){
   const [mode,setMode]=useState(initial?.onboardingMode||(scope==='organization'?'program':'organization'))
   let selected:string[]=[];try{selected=JSON.parse(initial?.documentIds||'[]')}catch{}

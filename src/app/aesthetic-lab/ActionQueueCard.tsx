@@ -10,11 +10,12 @@ type ActionQueueCardProps = {
   historyHref: string
   historyLabel: string
   className?: string
+  defaultCollapsed?: boolean
 }
 
 /** A compact queue that preserves its history shortcut when the details are hidden. */
-export function ActionQueueCard({ children, historyHref, historyLabel, className }: ActionQueueCardProps) {
-  const [collapsed, setCollapsed] = useState(false)
+export function ActionQueueCard({ children, historyHref, historyLabel, className, defaultCollapsed = false }: ActionQueueCardProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
 
   return <section className={`${styles.issuerTaskQueue}${className ? ` ${className}` : ''}${collapsed ? ` ${styles.issuerTaskQueueCollapsed}` : ''}`} aria-label="Action queue">
     <div className={styles.issuerPanelHeading}>

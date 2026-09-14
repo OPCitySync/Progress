@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowLeft, FileText, FolderOpen, ShieldCheck, Trash2 } from 'lucide-react'
+import { FileText, FolderOpen, ShieldCheck, Trash2 } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { archiveOrganizationDocumentAction, setOrganizationDocumentProgramAction } from '@/app/actions'
@@ -8,6 +8,7 @@ import { getVolunteerPrograms } from '@/lib/services/volunteer-programs'
 import { organizationFileDownloadUrl, organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../../lab-workspace'
 import { LabHeader } from '../../../LabHeader'
+import { HistoryBackButton } from '../../../HistoryBackButton'
 import { IssuerLabSidebar } from '../../IssuerLabSidebar'
 import styles from '../../../prototype.module.css'
 
@@ -34,11 +35,11 @@ export default async function IssuerDocumentDetailLabPage({ params }: { params: 
       <IssuerLabSidebar organizationId={session.orgId ?? undefined} cityName={city?.name} />
       <section className={styles.issuerMain} aria-label={`${document.title} document`}>
         <section className={styles.issuerPageHero}>
-          <div><p className={styles.eyebrow}>Workspace · Documentation · {category.label}</p><h1>{document.title}</h1><p>Review the current resource and download its source file when needed.</p></div>
-          <Link href="/aesthetic-lab/issuer/catalog?workspace=documentation" className={styles.catalogWorkspaceAction}><ArrowLeft size={15} /> Workspace</Link>
+          <div><p className={styles.eyebrow}>Document Library · {category.label}</p><h1>{document.title}</h1><p>Review the current resource and download its source file when needed.</p></div>
+          <HistoryBackButton fallback="/aesthetic-lab/issuer/documents" />
         </section>
         <section className={`${styles.labPanel} ${styles.documentPreviewCard}`}>
-          <div className={styles.documentPreviewHeading}><span>{document.category === 'safety' ? <ShieldCheck size={20} /> : document.category === 'guide' ? <FolderOpen size={20} /> : <FileText size={20} />}</span><div><p className={styles.eyebrow}>Document preview</p><h2>{document.title}</h2><p>{category.description}</p></div><div className={styles.documentPreviewActions}>{document.documentUrl ? <a className={styles.catalogWorkspaceAction} href={canPreviewPdf ? sourceFileUrl : sourceFileDownloadUrl} target="_blank" rel="noreferrer"><FileText size={15} /> {sourceFileLabel}</a> : null}<form action={archiveOrganizationDocumentAction}><input type="hidden" name="documentId" value={document.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/catalog?workspace=documentation" /><button className={styles.catalogWorkspaceAction} type="submit"><Trash2 size={15} /> Delete Document</button></form></div></div>
+          <div className={styles.documentPreviewHeading}><span>{document.category === 'safety' ? <ShieldCheck size={20} /> : document.category === 'guide' ? <FolderOpen size={20} /> : <FileText size={20} />}</span><div><p className={styles.eyebrow}>Document preview</p><h2>{document.title}</h2><p>{category.description}</p></div><div className={styles.documentPreviewActions}>{document.documentUrl ? <a className={styles.catalogWorkspaceAction} href={canPreviewPdf ? sourceFileUrl : sourceFileDownloadUrl} target="_blank" rel="noreferrer"><FileText size={15} /> {sourceFileLabel}</a> : null}<form action={archiveOrganizationDocumentAction}><input type="hidden" name="documentId" value={document.id} /><input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer/documents" /><button className={styles.catalogWorkspaceAction} type="submit"><Trash2 size={15} /> Delete Document</button></form></div></div>
           <form action={setOrganizationDocumentProgramAction} className={styles.documentProgramAssignment}>
             <input type="hidden" name="documentId" value={document.id} />
             <input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/documents/${document.id}`} />

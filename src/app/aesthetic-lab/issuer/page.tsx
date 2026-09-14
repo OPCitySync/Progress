@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { and, asc, desc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import {
   ArrowUpRight,
@@ -18,6 +19,8 @@ import { getLabWorkspace } from '../lab-workspace'
 import { IssuerLabSidebar } from './IssuerLabSidebar'
 import { IssuerHeroClock } from './IssuerHeroClock'
 import { IssuerSchedulePanel } from './IssuerSchedulePanel'
+import { getProfile } from '@/lib/services/profile'
+import { ORGANIZATION_BANNER_PALETTES } from '@/lib/profile/organization-appearance'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -45,6 +48,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     pendingShiftClaimRows,
     calendarEntries,
     acknowledgedQueueRows,
+    profile,
   ] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     city
@@ -79,7 +83,14 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       : Promise.resolve([]),
     city ? getOrganizationCalendarEntries(orgId, city.id, schedule.from, schedule.to) : Promise.resolve([]),
     db.select({ actionKey: organizationQueueAcknowledgements.actionKey }).from(organizationQueueAcknowledgements).where(eq(organizationQueueAcknowledgements.orgId, orgId)),
+    getProfile(orgId),
   ])
+  const organizationPalette = ORGANIZATION_BANNER_PALETTES.find((option) => option.value === profile?.bannerPalette) ?? ORGANIZATION_BANNER_PALETTES[0]
+  const usesOriginalCitySyncAppearance = !profile || (profile.bannerStyle === 'original' && profile.bannerPalette === 'citysync')
+  const issuerHeroStyle = {
+    '--issuer-hero-deep': usesOriginalCitySyncAppearance ? '#15151e' : organizationPalette.colors[0],
+    '--issuer-hero-mid': usesOriginalCitySyncAppearance ? '#29386f' : organizationPalette.colors[1],
+  } as CSSProperties
   const activeByShift = new Map<string | null, number>()
   for (const { claim } of rosterClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
   const pendingVerificationGroups = Array.from(
@@ -163,8 +174,8 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       <div className={styles.issuerLayout}>
         <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
 
-        <section className={styles.issuerMain} id="overview" aria-label="Organization workspace">
-          <section className={styles.issuerHero}>
+        <section className={`${styles.issuerMain} ${styles.issuerHomeMain}`} id="overview" aria-label="Organization workspace">
+          <section className={styles.issuerHero} style={issuerHeroStyle}>
             <div>
               <p className={styles.eyebrow}>{org?.name ?? 'Your organization'}</p>
               <h2>Keep today’s work moving.</h2>
@@ -178,7 +189,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
 
           <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
 
-          <ActionQueueCard historyHref="/aesthetic-lab/issuer/notification-history" historyLabel="Open notification history">
+          <ActionQueueCard key={queue.length ? 'has-actions' : 'empty'} defaultCollapsed={queue.length === 0} historyHref="/aesthetic-lab/issuer/notification-history" historyLabel="Open notification history">
             <div className={styles.issuerQueueList}>
               {queue.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action Items ({queue.length})</b></div><div className={styles.issuerQueueGroupItems}>{queue.map(renderQueueItem)}</div></section> : <p className={styles.issuerQueueEmpty}><b>Nothing to Review!</b></p>}
             </div>

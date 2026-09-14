@@ -17,7 +17,15 @@ export const onboardingIntakes = sqliteTable('onboarding_intakes', {
 export const onboardingApplicationForms = sqliteTable('onboarding_application_forms', {
   id: text('id').primaryKey(), taskId: text('task_id').notNull(), orgId: text('org_id').notNull(),
   version: integer('version').notNull(), introduction: text('introduction').notNull().default(''),
-  questions: text('questions').notNull(), createdBy: text('created_by').notNull(), createdAt: integer('created_at').notNull(), archivedAt: integer('archived_at'),
+  questions: text('questions').notNull(),
+  // A form is an application entry path. It may welcome applicants to every
+  // role in a program, or target one particular volunteer role.
+  scope: text('scope', { enum: ['all', 'role'] }).notNull().default('role'),
+  targetTaskId: text('target_task_id'),
+  resumePolicy: text('resume_policy', { enum: ['none', 'optional', 'required'] }).notNull().default('none'),
+  coverLetterPolicy: text('cover_letter_policy', { enum: ['none', 'optional', 'required'] }).notNull().default('none'),
+  publishedAt: integer('published_at'),
+  createdBy: text('created_by').notNull(), createdAt: integer('created_at').notNull(), archivedAt: integer('archived_at'),
 }, t => ({ version: uniqueIndex('onboarding_application_form_version').on(t.taskId, t.version) }))
 
 export const onboardingApplications = sqliteTable('onboarding_applications', {
@@ -42,7 +50,7 @@ export const volunteerAdmissionDecisions = sqliteTable('volunteer_admission_deci
 
 export const volunteerIntakeDDL = [
   `CREATE TABLE IF NOT EXISTS onboarding_intakes (task_id TEXT PRIMARY KEY, org_id TEXT NOT NULL, assignment_mode TEXT NOT NULL DEFAULT 'all', program_ids TEXT NOT NULL DEFAULT '[]', flexible_capacity INTEGER NOT NULL DEFAULT 0, application_required INTEGER NOT NULL DEFAULT 0, role_join_mode TEXT NOT NULL DEFAULT 'open', application_public INTEGER NOT NULL DEFAULT 0, active_form_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS onboarding_application_forms (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, org_id TEXT NOT NULL, version INTEGER NOT NULL, introduction TEXT NOT NULL DEFAULT '', questions TEXT NOT NULL, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, archived_at INTEGER, UNIQUE(task_id,version))`,
+  `CREATE TABLE IF NOT EXISTS onboarding_application_forms (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, org_id TEXT NOT NULL, version INTEGER NOT NULL, introduction TEXT NOT NULL DEFAULT '', questions TEXT NOT NULL, scope TEXT NOT NULL DEFAULT 'role', target_task_id TEXT, resume_policy TEXT NOT NULL DEFAULT 'none', cover_letter_policy TEXT NOT NULL DEFAULT 'none', published_at INTEGER, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, archived_at INTEGER, UNIQUE(task_id,version))`,
   `CREATE TABLE IF NOT EXISTS onboarding_applications (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, org_id TEXT NOT NULL, user_id TEXT NOT NULL, form_id TEXT NOT NULL, answers TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'submitted', internal_note TEXT NOT NULL DEFAULT '', reviewed_by TEXT, reviewed_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(task_id,user_id))`,
   `CREATE TABLE IF NOT EXISTS volunteer_admission_decisions (id TEXT PRIMARY KEY, org_id TEXT NOT NULL, user_id TEXT NOT NULL, task_id TEXT NOT NULL, claim_id TEXT NOT NULL, status TEXT NOT NULL, assignment_mode TEXT NOT NULL DEFAULT 'all', program_ids TEXT NOT NULL DEFAULT '[]', paper_waiver_ids TEXT NOT NULL DEFAULT '[]', internal_note TEXT NOT NULL DEFAULT '', reviewed_by TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(org_id,user_id))`,
   `CREATE INDEX IF NOT EXISTS onboarding_intakes_org ON onboarding_intakes(org_id,created_at)`,

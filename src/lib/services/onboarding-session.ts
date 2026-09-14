@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
-import { and, asc, eq, gt, gte, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, onboardingRecurringSchedules, orgProfiles, orgs, shifts, tasks } from '@/lib/db/schema'
+import { claims, onboardingRecurringSchedules, organizationDocumentAssignments, organizationDocuments, orgProfiles, orgs, shifts, tasks, waiverTaskAssignments, waiverVersions } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import type { Result } from '@/lib/services/identity'
@@ -11,6 +11,28 @@ import { programBelongsToOrganization } from './volunteer-programs'
 import type { OnboardingIdentityCheck, OnboardingWaiverMethod } from './waivers'
 
 const MINUTE_MS = 60_000
+
+async function validateSessionResources(input: { orgId: string; documentIds?: string[]; waiverVersionIds?: string[] }) {
+  if (input.documentIds === undefined && input.waiverVersionIds === undefined) {
+    return { ok: true as const, documentIds: null, waiverVersionIds: null }
+  }
+  const documentIds = Array.from(new Set(input.documentIds ?? [])).filter(Boolean)
+  const waiverVersionIds = Array.from(new Set(input.waiverVersionIds ?? [])).filter(Boolean)
+  if (documentIds.length > 100 || waiverVersionIds.length > 50) {
+    return { ok: false as const, error: 'Choose no more than 100 documents and 50 waivers for one onboarding session.' }
+  }
+  const [documents, activeWaivers] = await Promise.all([
+    documentIds.length
+      ? db.select({ id: organizationDocuments.id }).from(organizationDocuments).where(and(eq(organizationDocuments.orgId, input.orgId), eq(organizationDocuments.active, 1), inArray(organizationDocuments.id, documentIds)))
+      : Promise.resolve([]),
+    db.select({ id: waiverVersions.id }).from(waiverVersions).where(and(eq(waiverVersions.orgId, input.orgId), eq(waiverVersions.active, 1))),
+  ])
+  if (documents.length !== documentIds.length) return { ok: false as const, error: 'One of the selected documents is no longer available.' }
+  if (activeWaivers.length && !waiverVersionIds.length) return { ok: false as const, error: 'Choose at least one active waiver for this onboarding session.' }
+  const activeWaiverIds = new Set(activeWaivers.map((waiver) => waiver.id))
+  if (waiverVersionIds.some((id) => !activeWaiverIds.has(id))) return { ok: false as const, error: 'One of the selected waivers is no longer active.' }
+  return { ok: true as const, documentIds, waiverVersionIds }
+}
 
 function shiftCode(): string {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
@@ -48,6 +70,8 @@ export async function createRecurringOnboardingSession(input: {
   programId?: string | null
   onboardingWaiverMethod?: OnboardingWaiverMethod | null
   onboardingIdentityCheck?: OnboardingIdentityCheck | null
+  documentIds?: string[]
+  waiverVersionIds?: string[]
 }): Promise<Result<{ taskId: string }>> {
   const title = input.title.trim()
   const description = input.description.trim()
@@ -60,7 +84,7 @@ export async function createRecurringOnboardingSession(input: {
   if (beforeSession.length > 3_000 || bringItems.length > 1_000) {
     return { ok: false, error: 'Keep preparation guidance under 3,000 characters and the bring-items list under 1,000 characters.' }
   }
-  if (!input.firstStartsAt || input.firstStartsAt < Date.now() - 5 * MINUTE_MS) {
+  if (input.firstStartsAt !== null && (!Number.isFinite(input.firstStartsAt) || input.firstStartsAt < Date.now() - 5 * MINUTE_MS)) {
     return { ok: false, error: 'Choose a first onboarding session that is now or in the future.' }
   }
   if (!Number.isInteger(input.weeklyCapacity) || input.weeklyCapacity < 1 || input.weeklyCapacity > 500) {
@@ -75,6 +99,8 @@ export async function createRecurringOnboardingSession(input: {
   if (!(await programBelongsToOrganization(input.orgId, input.programId))) {
     return { ok: false, error: 'Choose a volunteer program belonging to your organization.' }
   }
+  const resources = await validateSessionResources(input)
+  if (!resources.ok) return resources
 
   const org = (await db.select({ status: orgs.status }).from(orgs).where(eq(orgs.id, input.orgId)).limit(1))[0]
   if (!org || org.status !== 'approved') return { ok: false, error: 'Your organization must be approved before creating an onboarding session.' }
@@ -83,9 +109,10 @@ export async function createRecurringOnboardingSession(input: {
 
   const taskId = randomUUID()
   const now = Date.now()
-  const firstDate = new Date(input.firstStartsAt)
-  const weeklyLabel = `Weekly ${firstDate.toLocaleDateString('en-US', { weekday: 'long' })} onboarding`
-  const firstShift = {
+  const weeklyLabel = input.firstStartsAt === null
+    ? ''
+    : `Weekly ${new Date(input.firstStartsAt).toLocaleDateString('en-US', { weekday: 'long' })} onboarding`
+  const firstShift = input.firstStartsAt === null ? null : {
     id: randomUUID(),
     taskId,
     orgId: input.orgId,
@@ -110,6 +137,7 @@ export async function createRecurringOnboardingSession(input: {
       bringItems,
       credits: input.credits,
       slots: input.weeklyCapacity,
+      defaultDurationMinutes: input.durationMinutes,
       startsAt: weeklyLabel,
       status: 'open',
       programId: input.programId || null,
@@ -121,7 +149,13 @@ export async function createRecurringOnboardingSession(input: {
       createdBy: input.actorId,
       createdAt: now,
     })
-    await tx.insert(shifts).values(firstShift)
+    if (firstShift) await tx.insert(shifts).values(firstShift)
+    if (resources.documentIds?.length) {
+      await tx.insert(organizationDocumentAssignments).values(resources.documentIds.map((documentId) => ({ id: randomUUID(), documentId, taskId, createdAt: now })))
+    }
+    if (resources.waiverVersionIds?.length) {
+      await tx.insert(waiverTaskAssignments).values(resources.waiverVersionIds.map((waiverVersionId) => ({ id: randomUUID(), waiverVersionId, taskId, createdAt: now })))
+    }
     await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
 
     if (profile?.onboardingTaskId) {
@@ -146,7 +180,9 @@ export async function createRecurringOnboardingSession(input: {
         firstStartsAt: input.firstStartsAt,
         weeklyCapacity: input.weeklyCapacity,
         durationMinutes: input.durationMinutes,
-        occurrencesCreated: 1,
+        occurrencesCreated: firstShift ? 1 : 0,
+        documentIds: resources.documentIds,
+        waiverVersionIds: resources.waiverVersionIds,
       },
       input.actorId,
     )
@@ -177,6 +213,8 @@ export async function updateRecurringOnboardingSession(input: {
   programId?: string | null
   onboardingWaiverMethod?: OnboardingWaiverMethod | null
   onboardingIdentityCheck?: OnboardingIdentityCheck | null
+  documentIds?: string[]
+  waiverVersionIds?: string[]
 }): Promise<Result> {
   const title = input.title.trim()
   const description = input.description.trim()
@@ -207,6 +245,8 @@ export async function updateRecurringOnboardingSession(input: {
   if (!(await programBelongsToOrganization(input.orgId, programId))) {
     return { ok: false, error: 'Choose a volunteer program belonging to your organization.' }
   }
+  const resources = await validateSessionResources(input)
+  if (!resources.ok) return resources
 
   const now = Date.now()
   const futureShifts = await db
@@ -277,6 +317,14 @@ export async function updateRecurringOnboardingSession(input: {
       .update(onboardingRecurringSchedules)
       .set({ durationMinutes: input.durationMinutes, capacity: input.weeklyCapacity, updatedAt: now })
       .where(eq(onboardingRecurringSchedules.taskId, input.taskId))
+    if (resources.documentIds) {
+      await tx.delete(organizationDocumentAssignments).where(eq(organizationDocumentAssignments.taskId, input.taskId))
+      if (resources.documentIds.length) await tx.insert(organizationDocumentAssignments).values(resources.documentIds.map((documentId) => ({ id: randomUUID(), documentId, taskId: input.taskId, createdAt: now })))
+    }
+    if (resources.waiverVersionIds) {
+      await tx.delete(waiverTaskAssignments).where(eq(waiverTaskAssignments.taskId, input.taskId))
+      if (resources.waiverVersionIds.length) await tx.insert(waiverTaskAssignments).values(resources.waiverVersionIds.map((waiverVersionId) => ({ id: randomUUID(), waiverVersionId, taskId: input.taskId, createdAt: now })))
+    }
     await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location })
     await appendEvent(
       tx,
@@ -288,6 +336,8 @@ export async function updateRecurringOnboardingSession(input: {
         nextStartsAt: input.nextStartsAt,
         weeklyCapacity: input.weeklyCapacity,
         durationMinutes: input.durationMinutes,
+        documentIds: resources.documentIds,
+        waiverVersionIds: resources.waiverVersionIds,
       },
       input.actorId,
     )
@@ -527,6 +577,139 @@ export async function cancelOnboardingSession(input: {
     startsAt: row.shift.startsAt,
   })
   return { ok: true, notified: participantIds.length }
+}
+
+/**
+ * Retire a reusable onboarding template without erasing its historical record.
+ * Open occurrences are closed, future reservations are released and notified,
+ * and recurrence is disabled. Completed shifts and ledger events remain intact.
+ */
+export async function deleteOnboardingSessionTemplate(input: {
+  taskId: string
+  orgId: string
+  actorId: string
+}): Promise<Result<{ cancelledShiftCount: number; notifiedParticipantCount: number }>> {
+  const now = Date.now()
+  const row = await db
+    .select({ task: tasks, organizationName: orgs.name })
+    .from(tasks)
+    .innerJoin(orgs, eq(tasks.orgId, orgs.id))
+    .where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!row || row.task.isOnboarding !== 1) {
+    return { ok: false, error: 'That onboarding template is not available to your organization.' }
+  }
+  if (row.task.status === 'closed') {
+    return { ok: true, cancelledShiftCount: 0, notifiedParticipantCount: 0 }
+  }
+
+  const openShifts = await db
+    .select()
+    .from(shifts)
+    .where(and(eq(shifts.taskId, input.taskId), eq(shifts.status, 'open')))
+  const inProgressShifts = openShifts.filter((shift) => {
+    if (shift.startsAt === null || shift.startsAt > now) return false
+    const endsAt = shift.endsAt ?? shift.startsAt + row.task.defaultDurationMinutes * MINUTE_MS
+    return endsAt > now
+  })
+  if (inProgressShifts.length) {
+    return { ok: false, error: 'Finish and verify the onboarding session currently in progress before deleting this template.' }
+  }
+
+  const shiftIds = openShifts.map((shift) => shift.id)
+  const activeClaims = shiftIds.length
+    ? await db
+        .select({ shiftId: claims.shiftId, userId: claims.userId })
+        .from(claims)
+        .where(and(inArray(claims.shiftId, shiftIds), inArray(claims.status, ['claimed', 'submitted'])))
+    : []
+  const unresolvedPastShiftIds = new Set(openShifts
+    .filter((shift) => (shift.endsAt ?? shift.startsAt ?? Number.MAX_SAFE_INTEGER) <= now)
+    .map((shift) => shift.id))
+  if (activeClaims.some((claim) => claim.shiftId && unresolvedPastShiftIds.has(claim.shiftId))) {
+    return { ok: false, error: 'Verify and close past onboarding attendance before deleting this template.' }
+  }
+
+  const participantsByShift = new Map<string, string[]>()
+  for (const claim of activeClaims) {
+    if (!claim.shiftId) continue
+    participantsByShift.set(claim.shiftId, [...(participantsByShift.get(claim.shiftId) ?? []), claim.userId])
+  }
+  const profile = await db
+    .select({ onboardingTaskId: orgProfiles.onboardingTaskId })
+    .from(orgProfiles)
+    .where(eq(orgProfiles.orgId, input.orgId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  const replacementTaskId = profile?.onboardingTaskId === input.taskId
+    ? await db
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(and(
+          eq(tasks.orgId, input.orgId),
+          eq(tasks.isOnboarding, 1),
+          eq(tasks.status, 'open'),
+          ne(tasks.id, input.taskId),
+        ))
+        .orderBy(desc(tasks.createdAt))
+        .limit(1)
+        .then((rows) => rows[0]?.id ?? null)
+    : null
+
+  await db.transaction(async (tx) => {
+    await tx.update(tasks).set({ status: 'closed' }).where(eq(tasks.id, input.taskId))
+    await tx
+      .update(onboardingRecurringSchedules)
+      .set({ active: 0, updatedAt: now })
+      .where(and(eq(onboardingRecurringSchedules.taskId, input.taskId), eq(onboardingRecurringSchedules.orgId, input.orgId)))
+    if (shiftIds.length) {
+      await tx.update(shifts).set({ status: 'closed' }).where(inArray(shifts.id, shiftIds))
+      await tx
+        .update(claims)
+        .set({ status: 'unclaimed', updatedAt: now })
+        .where(and(inArray(claims.shiftId, shiftIds), inArray(claims.status, ['claimed', 'submitted'])))
+      for (const shift of openShifts) {
+        await appendEvent(tx, EventTypes.SHIFT_CLOSED, {
+          taskId: row.task.id,
+          shiftId: shift.id,
+          cityId: row.task.cityId,
+          reason: 'onboarding_template_deleted',
+          releasedParticipantCount: participantsByShift.get(shift.id)?.length ?? 0,
+        }, input.actorId)
+      }
+    }
+    if (profile?.onboardingTaskId === input.taskId) {
+      await tx
+        .update(orgProfiles)
+        .set({ onboardingTaskId: replacementTaskId, updatedAt: now })
+        .where(eq(orgProfiles.orgId, input.orgId))
+    }
+    await appendEvent(tx, EventTypes.TASK_CLOSED, {
+      taskId: row.task.id,
+      cityId: row.task.cityId,
+      reason: 'onboarding_template_deleted',
+      cancelledShiftCount: shiftIds.length,
+    }, input.actorId)
+  })
+
+  for (const shift of openShifts) {
+    await cancelRemindersForShift(shift.id)
+    const userIds = participantsByShift.get(shift.id) ?? []
+    if (userIds.length && shift.startsAt && shift.startsAt > now) {
+      await notifyOnboardingSessionCancelled({
+        userIds,
+        taskId: row.task.id,
+        organizationName: row.organizationName,
+        startsAt: shift.startsAt,
+      })
+    }
+  }
+  return {
+    ok: true,
+    cancelledShiftCount: shiftIds.length,
+    notifiedParticipantCount: new Set(activeClaims.map((claim) => claim.userId)).size,
+  }
 }
 
 /** The reminder cron invokes this to release exactly one new occurrence after

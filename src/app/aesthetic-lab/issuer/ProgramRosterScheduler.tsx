@@ -169,7 +169,6 @@ export function ProgramRosterScheduler({
 }) {
   const router = useRouter()
   const [query, setQuery] = useState('')
-  const [view, setView] = useState<'weekly' | 'shift'>('weekly')
   const [rangeStart, setRangeStart] = useState(() => mondayStart())
   const [rangeWeeks, setRangeWeeks] = useState<1 | 2 | 4>(2)
   const [selectedMember, setSelectedMember] = useState<PlanningMember | null>(null)
@@ -478,31 +477,20 @@ export function ProgramRosterScheduler({
   return <>
   <section id="program-staffing" className={`${styles.programDetailSection} ${styles.programRosterSchedulingSection}`}>
     <div className={styles.programDetailHeading}>
-      <div><p className={styles.eyebrow}>Shift planning</p><h2>Plan the people and work ahead</h2></div>
+      <div><p className={styles.eyebrow}>Shift planning <span className={styles.shiftPlanningHeadingContext}><b>{programName}</b><span>{dateRangeLabel(rangeStart, rangeEnd)}</span></span></p><h2>Plan the people and work ahead</h2></div>
       <div className={`${styles.programDetailHeadingActions} ${styles.shiftPlanningCardActions}`}>
-        <div className={styles.shiftPlanningTabs} role="tablist" aria-label="Shift planning view">
-          <button type="button" role="tab" aria-selected={view === 'weekly'} onClick={() => setView('weekly')}><CalendarDays size={14} /> Weekly View</button>
-          <button type="button" role="tab" aria-selected={view === 'shift'} onClick={() => setView('shift')}><CalendarDays size={14} /> Shift View</button>
-        </div>
         {headerActions}
       </div>
     </div>
     <div className={styles.shiftPlanning}>
-      {view === 'weekly' ? <div className={styles.shiftPlanningToolbar}>
+      <div className={styles.shiftPlanningToolbar}>
         <div className={styles.shiftPlanningRange}>
           <button type="button" aria-label="Previous planning period" onClick={() => setRangeStart((value) => value - rangeWeeks * 7 * DAY)}><ChevronLeft size={15} /></button>
           <label>Starts<input type="date" value={inputDate(rangeStart)} onChange={(event) => setRangeStart(mondayStart(parseInputDate(event.target.value)))} /></label>
           <label>Range<select value={rangeWeeks} onChange={(event) => setRangeWeeks(Number(event.target.value) as 1 | 2 | 4)}><option value={1}>1 week</option><option value={2}>2 weeks</option><option value={4}>4 weeks</option></select></label>
           <button type="button" aria-label="Next planning period" onClick={() => setRangeStart((value) => value + rangeWeeks * 7 * DAY)}><ChevronRight size={15} /></button>
         </div>
-        <div className={styles.shiftPlanningSaveActions}><span><Check size={14} /> Saves as you plan</span><button type="button" onClick={openPrintView}><Printer size={14} /> Print / Save PDF</button></div>
-      </div> : null}
-    <div className={styles.shiftPlanningRangeCaption}>
-      <b>{programName}</b>
-      <span>{view === 'weekly'
-        ? dateRangeLabel(rangeStart, rangeEnd)
-        : `${shiftViewInstances.length} upcoming shift${shiftViewInstances.length === 1 ? '' : 's'} · recurring plans through ${new Date(recurringHorizonEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}</span>
-    </div>
+      </div>
     {notice ? <p className={styles.rosterSchedulerNotice} data-tone={notice.tone}>{notice.text}</p> : null}
     <div className={styles.rosterScheduler}>
       <aside className={styles.rosterSchedulerRoster} aria-label="Roster available to schedule">
@@ -525,19 +513,15 @@ export function ProgramRosterScheduler({
         <div className={styles.rosterSchedulerColumnHeading}>
           <span><CalendarDays size={16} /></span>
           <div>
-            <b>{view === 'weekly' ? 'Published opportunities' : 'Scheduled shifts'}</b>
-            <small>{view === 'weekly'
-              ? selectedPerson ? `Choose a shift for ${selectedPerson.name}` : 'Select or drag a person into a published shift'
-              : selectedPerson ? `Choose a shift for ${selectedPerson.name}` : 'Published shifts and upcoming recurring shifts'}</small>
+            <b>Published opportunities</b>
+            <small>{selectedPerson ? `Choose a shift for ${selectedPerson.name}` : 'Select or drag a person into a published shift'}</small>
           </div>
+          <button type="button" className={styles.shiftPlanningScheduleExport} onClick={openPrintView}><Printer size={14} /> Save/Print Schedule</button>
         </div>
         <div className={styles.shiftPlanningBoard}>
-          {view === 'weekly' ? shiftsInRange.length
+          {shiftsInRange.length
             ? Array.from(shiftsByDay.entries()).sort(([a], [b]) => a - b).map(([date, dayShifts]) => <section key={date} className={styles.shiftPlanningDay}><header><b>{dayLabel(date)}</b><span>{dayShifts.length} shift{dayShifts.length === 1 ? '' : 's'}</span></header>{dayShifts.map((shift) => renderShift(shift))}</section>)
-            : <div className={styles.rosterSchedulerEmpty}><CalendarDays size={20} /><div><b>No scheduled shifts in this planning range.</b><p>Schedule a shift, then return here to plan the people supporting it.</p></div></div>
-          : shiftViewInstances.length
-            ? <div className={styles.shiftPlanningDirectoryDetail}><section className={styles.shiftPlanningRecurringGroup}><header><CalendarDays size={15} /><div><b>Upcoming shifts</b><span>Every created shift, including planned recurring instances</span></div></header>{shiftViewInstances.map((instance, index) => instance.kind === 'published' ? renderShift(instance.shift, index === 0) : renderPlannedRecurringShift(instance.plan, instance.startsAt, instance.endsAt, index === 0))}</section></div>
-            : <div className={styles.rosterSchedulerEmpty}><CalendarDays size={20} /><div><b>No upcoming shifts are scheduled.</b><p>Use Schedule Shift to add the first one.</p></div></div>}
+            : <div className={styles.rosterSchedulerEmpty}><CalendarDays size={20} /><div><b>No scheduled shifts in this planning range.</b><p>Schedule a shift, then return here to plan the people supporting it.</p></div></div>}
         </div>
       </section>
     </div>

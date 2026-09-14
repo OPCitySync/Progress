@@ -25,7 +25,7 @@ type Resource = {
 
 type Dialog = 'attach' | 'assign' | 'publish' | 'delete' | null
 
-const defaultRedirectTo = '/aesthetic-lab/issuer/catalog?workspace=documentation'
+const defaultRedirectTo = '/aesthetic-lab/issuer/documents'
 
 /** A deliberately shallow action flow: the overflow menu chooses an action,
  * then one focused modal handles the choices. Nested menus are hard to scan

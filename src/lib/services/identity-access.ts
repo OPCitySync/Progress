@@ -23,6 +23,8 @@ import type { Session } from '@/lib/auth/session'
 import { appendEvent, type DbOrTx } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { participantDisplayName } from '@/lib/participant-name'
+import { updateOrganizationAppearanceStorage } from '@/lib/profile/organization-appearance'
+import { normalizeOrganizationLocation, rememberOrganizationLocation } from '@/lib/services/organization-locations'
 
 export type AuthorityRole = 'owner' | 'manager' | 'member'
 
@@ -651,13 +653,20 @@ export async function updateOrganizationIdentity(input: {
   name: string
   logoUrl: string
   contactEmail: string
-}): Promise<Result<{ name: string; logoUrl: string; contactEmail: string }>> {
+  phone?: string
+  location?: string
+  bannerStyle?: string
+  bannerPalette?: string
+}): Promise<Result<{ name: string; logoUrl: string; contactEmail: string; phone: string; location: string }>> {
   if (!(await isOrganizationOwner(input.userId, input.authorityId, input.orgId))) {
     return { ok: false, error: 'Only an organization owner can update organization settings.' }
   }
   const name = input.name.trim()
   const logoUrl = input.logoUrl.trim()
   const contactEmail = input.contactEmail.trim().toLowerCase()
+  const existing = (await db.select().from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1))[0]
+  const phone = input.phone === undefined ? existing?.phone ?? '' : input.phone.trim()
+  const location = input.location === undefined ? existing?.location ?? '' : normalizeOrganizationLocation(input.location)
   if (!name || name.length > 120) return { ok: false, error: 'Enter an organization name of up to 120 characters.' }
   if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
     return { ok: false, error: 'Enter a valid organizational email address.' }
@@ -665,12 +674,18 @@ export async function updateOrganizationIdentity(input: {
   if (logoUrl && !logoUrl.startsWith('/uploads/') && !/^https:\/\//.test(logoUrl)) {
     return { ok: false, error: 'Organization pictures must be uploaded through City/Sync.' }
   }
-  const existing = (await db.select().from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1))[0]
+  if (phone.length > 50) return { ok: false, error: 'Phone numbers are limited to 50 characters.' }
+  if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
   const now = Date.now()
+  const appearanceStorage = updateOrganizationAppearanceStorage(
+    existing?.socials ?? '{}',
+    input.bannerStyle,
+    input.bannerPalette,
+  )
   await db.transaction(async (tx) => {
     await tx.update(orgs).set({ name }).where(eq(orgs.id, input.orgId))
     if (existing) {
-      await tx.update(orgProfiles).set({ logoUrl, contactEmail, updatedAt: now }).where(eq(orgProfiles.orgId, input.orgId))
+      await tx.update(orgProfiles).set({ logoUrl, contactEmail, phone, location, socials: appearanceStorage, updatedAt: now }).where(eq(orgProfiles.orgId, input.orgId))
     } else {
       await tx.insert(orgProfiles).values({
         orgId: input.orgId,
@@ -680,18 +695,19 @@ export async function updateOrganizationIdentity(input: {
         coverUrl: '',
         website: '',
         contactEmail,
-        phone: '',
-        location: '',
-        socials: '{}',
+        phone,
+        location,
+        socials: appearanceStorage,
         causes: '[]',
         onboardingTaskId: null,
         published: 0,
         updatedAt: now,
       })
     }
+    await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location, makeDefault: true })
     await appendEvent(tx, EventTypes.ORG_PROFILE_UPDATED, { orgId: input.orgId, organizationName: name, contactEmail }, input.authorityId)
   })
-  return { ok: true, name, logoUrl, contactEmail }
+  return { ok: true, name, logoUrl, contactEmail, phone, location }
 }
 
 export async function listOrganizationDelegations(orgId: string) {

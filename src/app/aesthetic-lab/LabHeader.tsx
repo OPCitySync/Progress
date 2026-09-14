@@ -15,6 +15,7 @@ import type { CityNetwork } from '@/lib/services/city-networks'
 import type { ActorContext } from '@/lib/services/identity-access'
 import { getUnreadIssuerNotificationCount, getUnreadNotificationCount } from '@/lib/services/notifications'
 import { getUnreadMessageCount } from '@/lib/services/roster'
+import { getProfile } from '@/lib/services/profile'
 
 export type LabSection =
   | 'feed'
@@ -60,17 +61,20 @@ export async function LabHeader({
 }) {
   const isIssuer = workspace === 'issuer'
   const sections = isIssuer ? issuerSections : participantSections
-  const [notificationCount, inboxCount] = session
-    ? isIssuer
-      ? await Promise.all([
-          session.orgId ? getUnreadIssuerNotificationCount(session.sub, session.orgId) : getUnreadNotificationCount(session.sub),
-          getUnreadMessageCount(session.sub),
-        ])
-      : await Promise.all([
-          Promise.resolve(0),
-          Promise.all([getUnreadNotificationCount(session.sub, ['volunteer_reflection', 'organization_calendar']), getUnreadMessageCount(session.sub)]).then(([updates, messages]) => updates + messages),
-        ])
-    : [0, 0]
+  const [inboxCount, organizationProfile] = await Promise.all([
+    session
+      ? isIssuer
+        ? Promise.all([
+            session.orgId ? getUnreadIssuerNotificationCount(session.sub, session.orgId) : getUnreadNotificationCount(session.sub),
+            getUnreadMessageCount(session.sub),
+          ]).then(([notifications, messages]) => notifications + messages)
+        : Promise.all([
+            getUnreadNotificationCount(session.sub, ['volunteer_reflection', 'organization_calendar']),
+            getUnreadMessageCount(session.sub),
+          ]).then(([updates, messages]) => updates + messages)
+      : Promise.resolve(0),
+    isIssuer && session?.orgId ? getProfile(session.orgId) : Promise.resolve(null),
+  ])
 
   return (
     <header className={styles.topbar}>
@@ -106,15 +110,17 @@ export async function LabHeader({
             label="Inbox"
             variant="messages"
           />
-          {isIssuer ? <NotificationsControl
-            count={notificationCount}
-            href="/aesthetic-lab/issuer/updates"
-            label="Notifications"
-            variant="notifications"
-          /> : null}
         </div>
 
-        <UserMenu workspace={workspace} session={session} city={city} cities={cities} contexts={contexts} />
+        <UserMenu
+          workspace={workspace}
+          session={session}
+          city={city}
+          cities={cities}
+          contexts={contexts}
+          organizationLogoUrl={organizationProfile?.logoUrl}
+          organizationPalette={organizationProfile?.bannerPalette}
+        />
       </div>
     </header>
   )

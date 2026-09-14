@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth/session'
 import { getActiveCity } from '@/lib/services/city-networks'
 import { hasOrganizationPermission } from '@/lib/services/identity-access'
-import { archiveIntakeApplicationForm, createVolunteerIntake, inviteApprovedVolunteersToOnboardingSession, publishIntakeApplicationForm, saveIntakeApplicationForm, reviewIntakeApplication, saveVolunteerAdmission, setRolePublication, submitIntakeApplication, unpublishIntakeApplicationForm } from '@/lib/services/volunteer-intake'
+import { archiveIntakeApplicationForm, createVolunteerIntake, inviteApprovedVolunteersToOnboardingSession, publishIntakeApplicationForm, saveIntakeApplicationForm, reviewIntakeApplication, saveVolunteerAdmission, setProgramIntakePublication, setRolePublication, submitIntakeApplication, unpublishIntakeApplicationForm } from '@/lib/services/volunteer-intake'
 import { publishOnboardingSession } from '@/lib/services/onboarding-session'
 
 const field = (data: FormData, key: string) => String(data.get(key) ?? '')
@@ -30,7 +30,7 @@ export async function volunteerIntakeAction(data: FormData) {
       if (!city) return fail('Choose a city first.')
       result = await createVolunteerIntake({ orgId, actorId: session.sub, cityId: city.id, title: field(data,'title'), location: field(data,'location'), description: field(data,'description'), notes: field(data,'notes'), capacity: field(data,'capacity'), duration: Number(field(data,'duration')), assignmentMode: field(data,'assignmentMode'), programIds: ids(data,'programId') })
     } else if (operation === 'application-form') {
-      result = await saveIntakeApplicationForm({ orgId, actorId:session.sub, taskId:field(data,'taskId'), introduction:field(data,'introduction'), questions:JSON.parse(field(data,'questions') || '[]'), required:data.has('required'), public:data.has('public'), sourceFormId:field(data,'sourceFormId')||undefined })
+      result = await saveIntakeApplicationForm({ orgId, actorId:session.sub, taskId:field(data,'taskId'), introduction:field(data,'introduction'), questions:JSON.parse(field(data,'questions') || '[]'), required:data.has('required'), public:data.has('public'), sourceFormId:field(data,'sourceFormId')||undefined, scope:field(data,'scope'), resumePolicy:field(data,'resumePolicy'), coverLetterPolicy:field(data,'coverLetterPolicy'), publish:data.has('publish') })
     } else if (operation === 'application-form-archive') {
       result = await archiveIntakeApplicationForm({orgId,actorId:session.sub,formId:field(data,'formId')})
     } else if (operation === 'application-form-publish') {
@@ -41,6 +41,8 @@ export async function volunteerIntakeAction(data: FormData) {
       result = await inviteApprovedVolunteersToOnboardingSession({orgId,actorId:session.sub,shiftId:field(data,'shiftId'),userIds:ids(data,'userId')})
     } else if (operation === 'role-publication') {
       result = await setRolePublication({ orgId, actorId:session.sub, taskId:field(data,'taskId'), published:field(data,'published') === 'true' })
+    } else if (operation === 'program-intake-publication') {
+      result = await setProgramIntakePublication({ orgId, actorId:session.sub, taskIds:ids(data,'taskId'), hostTaskId:field(data,'hostTaskId'), formId:field(data,'formId')||undefined, published:field(data,'published') === 'true' })
     } else if (operation === 'publish') {
       result = await publishOnboardingSession({ orgId, actorId:session.sub, taskId:field(data,'taskId'), startsAt:Number(field(data,'startsAt')), recurring:data.has('recurring') })
     } else if (operation === 'application-review') {

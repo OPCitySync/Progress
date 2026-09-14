@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { and, asc, desc, eq, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   claims, messageRecipients, notifications, onboardingApplicationForms, onboardingApplications, onboardingIntakes,
@@ -14,6 +14,8 @@ import { normalizeOrganizationLocation, rememberOrganizationLocation } from './o
 
 export type IntakeQuestion = { id: string; label: string; type: 'short' | 'long' | 'choice' | 'yes_no'; required: boolean; options: string[] }
 export type RoleJoinMode = 'open' | 'profile' | 'form'
+export type ApplicationFilePolicy = 'none' | 'optional' | 'required'
+export type ApplicationScope = 'all' | 'role'
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string }
 const fail = (error: string) => ({ ok: false as const, error })
 export function intakeIds(value: string | null | undefined): string[] {
@@ -23,7 +25,7 @@ export function intakeQuestions(value: string): IntakeQuestion[] {
   try { const v: unknown = JSON.parse(value); return Array.isArray(v) ? v as IntakeQuestion[] : [] } catch { return [] }
 }
 function checkedQuestions(value: unknown): IntakeQuestion[] | null {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 12) return null
+  if (!Array.isArray(value) || value.length > 12) return null
   const ids = new Set<string>(), result: IntakeQuestion[] = []
   for (const raw of value) {
     if (!raw || typeof raw !== 'object') return null
@@ -52,6 +54,27 @@ export async function getIntakeForm(taskId: string) {
   const intake = await getIntake(taskId)
   const form = intake?.activeFormId ? (await db.select().from(onboardingApplicationForms).where(and(eq(onboardingApplicationForms.id, intake.activeFormId),isNull(onboardingApplicationForms.archivedAt))).limit(1))[0] ?? null : null
   return { intake, form, questions: form ? intakeQuestions(form.questions) : [] }
+}
+export async function getPublishedApplicationForTask(taskId: string) {
+  const task = (await db.select({id:tasks.id,orgId:tasks.orgId,programId:tasks.programId,isOnboarding:tasks.isOnboarding}).from(tasks).where(eq(tasks.id,taskId)).limit(1))[0]
+  if(!task)return null
+  if(task.isOnboarding===1){
+    const setup=await getIntakeForm(taskId)
+    return setup.form?{form:setup.form,questions:setup.questions}:null
+  }
+  const exact=(await db.select().from(onboardingApplicationForms).where(and(
+    eq(onboardingApplicationForms.orgId,task.orgId),eq(onboardingApplicationForms.scope,'role'),
+    or(eq(onboardingApplicationForms.targetTaskId,task.id),and(isNull(onboardingApplicationForms.targetTaskId),eq(onboardingApplicationForms.taskId,task.id))),
+    isNotNull(onboardingApplicationForms.publishedAt),isNull(onboardingApplicationForms.archivedAt),
+  )).orderBy(desc(onboardingApplicationForms.publishedAt),desc(onboardingApplicationForms.version)).limit(1))[0]
+  if(exact)return{form:exact,questions:intakeQuestions(exact.questions)}
+  const general=(await db.select({form:onboardingApplicationForms,hostProgramId:tasks.programId}).from(onboardingApplicationForms)
+    .innerJoin(tasks,eq(onboardingApplicationForms.taskId,tasks.id))
+    .where(and(eq(onboardingApplicationForms.orgId,task.orgId),eq(onboardingApplicationForms.scope,'all'),
+      task.programId?eq(tasks.programId,task.programId):isNull(tasks.programId),
+      isNotNull(onboardingApplicationForms.publishedAt),isNull(onboardingApplicationForms.archivedAt)))
+    .orderBy(desc(onboardingApplicationForms.publishedAt),desc(onboardingApplicationForms.version)).limit(1))[0]?.form
+  return general?{form:general,questions:intakeQuestions(general.questions)}:null
 }
 export function getRoleJoinMode(intake: typeof onboardingIntakes.$inferSelect | null, hasForm = false): RoleJoinMode {
   if (intake?.roleJoinMode === 'profile' || intake?.roleJoinMode === 'form') return intake.roleJoinMode
@@ -97,26 +120,43 @@ export async function createVolunteerIntake(input: {
   })
   return { ok: true, taskId }
 }
-export async function saveIntakeApplicationForm(input: { orgId: string; actorId: string; taskId: string; introduction: string; questions: unknown; required: boolean; public?: boolean; sourceFormId?: string }): Promise<Result> {
+export async function saveIntakeApplicationForm(input: { orgId: string; actorId: string; taskId: string; introduction: string; questions: unknown; required: boolean; public?: boolean; sourceFormId?: string; scope?:string; resumePolicy?:string; coverLetterPolicy?:string; publish?:boolean }): Promise<Result> {
   const task = (await db.select().from(tasks).where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId), eq(tasks.status, 'open'))).limit(1))[0]
   const questions = checkedQuestions(input.questions)
   if (!task) return fail('This volunteer role is no longer available.')
-  if (!questions || input.introduction.length > 1500) return fail('Add 1–12 valid questions. Choice questions need 2–10 distinct options.')
+  if (!questions || input.introduction.length > 1500) return fail('Add up to 12 valid questions. Choice questions need 2–10 distinct options.')
   const currentIntake = await getIntake(task.id)
-  const sourceForm=input.sourceFormId?(await db.select().from(onboardingApplicationForms).where(and(eq(onboardingApplicationForms.id,input.sourceFormId),eq(onboardingApplicationForms.taskId,task.id),eq(onboardingApplicationForms.orgId,input.orgId),isNull(onboardingApplicationForms.archivedAt))).limit(1))[0]:null
+  const sourceForm=input.sourceFormId?(await db.select().from(onboardingApplicationForms).where(and(eq(onboardingApplicationForms.id,input.sourceFormId),eq(onboardingApplicationForms.orgId,input.orgId),isNull(onboardingApplicationForms.archivedAt))).limit(1))[0]:null
   if(input.sourceFormId&&!sourceForm)return fail('This application template changed. Reopen it before saving.')
   const isRole = task.isOnboarding !== 1
+  const scope:ApplicationScope=input.scope==='all'?'all':'role'
+  const policies=['none','optional','required']
+  const resumePolicy:ApplicationFilePolicy=policies.includes(input.resumePolicy??'')?input.resumePolicy as ApplicationFilePolicy:'none'
+  const coverLetterPolicy:ApplicationFilePolicy=policies.includes(input.coverLetterPolicy??'')?input.coverLetterPolicy as ApplicationFilePolicy:'none'
   const applicationRequired = isRole ? true : input.required
   const applicationPublic = isRole ? Boolean(currentIntake?.applicationPublic) : Boolean(input.public)
   if (applicationPublic && !applicationRequired) return fail('A public application must require organization approval.')
   await db.transaction(async tx => {
     const previous = (await tx.select().from(onboardingApplicationForms).where(eq(onboardingApplicationForms.taskId, task.id)).orderBy(desc(onboardingApplicationForms.version)).limit(1))[0]
     const now = Date.now(), formId = randomUUID(), version = (previous?.version ?? 0) + 1
-    await tx.insert(onboardingApplicationForms).values({ id: formId, orgId: input.orgId, taskId: task.id, version, introduction: input.introduction.trim(), questions: JSON.stringify(questions), createdBy: input.actorId, createdAt: now })
+    await tx.insert(onboardingApplicationForms).values({ id: formId, orgId: input.orgId, taskId: task.id, version, introduction: input.introduction.trim(), questions: JSON.stringify(questions), scope:isRole?scope:'role', targetTaskId:isRole&&scope==='role'?task.id:null, resumePolicy:isRole?resumePolicy:'none', coverLetterPolicy:isRole?coverLetterPolicy:'none', publishedAt:input.publish?now:null, createdBy: input.actorId, createdAt: now })
     if(sourceForm)await tx.update(onboardingApplicationForms).set({archivedAt:now}).where(eq(onboardingApplicationForms.id,sourceForm.id))
+    if(sourceForm?.publishedAt&&!input.publish)await tx.update(onboardingIntakes).set({applicationPublic:0,updatedAt:now}).where(and(eq(onboardingIntakes.taskId,sourceForm.taskId),eq(onboardingIntakes.activeFormId,sourceForm.id)))
     await tx.insert(onboardingIntakes).values({ taskId: task.id, orgId: input.orgId, assignmentMode: task.programId ? 'specific' : 'all', programIds: JSON.stringify(task.programId ? [task.programId] : []), applicationRequired: applicationRequired ? 1 : 0, roleJoinMode: isRole ? 'form' : getRoleJoinMode(currentIntake), applicationPublic: applicationPublic ? 1 : 0, activeFormId: formId, createdAt: now, updatedAt: now })
       .onConflictDoUpdate({ target: onboardingIntakes.taskId, set: { applicationRequired: applicationRequired ? 1 : 0, roleJoinMode: isRole ? 'form' : getRoleJoinMode(currentIntake), applicationPublic: applicationPublic ? 1 : 0, activeFormId: formId, updatedAt: now } })
-    await appendEvent(tx, EventTypes.ONBOARDING_APPLICATION_FORM_SAVED, { orgId: input.orgId, taskId: task.id, formId, version, replacesFormId:sourceForm?.id, required: applicationRequired, public: applicationPublic, roleJoinMode: isRole ? 'form' : undefined, questionCount: questions.length }, input.actorId)
+    if(input.publish&&isRole){
+      const siblingTasks=await tx.select({id:tasks.id}).from(tasks).where(and(eq(tasks.orgId,input.orgId),eq(tasks.isOnboarding,0),task.programId?eq(tasks.programId,task.programId):isNull(tasks.programId)))
+      const siblingIds=siblingTasks.map(row=>row.id)
+      await tx.update(onboardingApplicationForms).set({publishedAt:null}).where(and(
+        eq(onboardingApplicationForms.orgId,input.orgId),
+        scope==='all'?and(eq(onboardingApplicationForms.scope,'all'),inArray(onboardingApplicationForms.taskId,siblingIds)):and(eq(onboardingApplicationForms.scope,'role'),eq(onboardingApplicationForms.targetTaskId,task.id)),
+        isNotNull(onboardingApplicationForms.publishedAt),
+      ))
+      await tx.update(onboardingApplicationForms).set({publishedAt:now}).where(eq(onboardingApplicationForms.id,formId))
+      await tx.insert(onboardingIntakes).values({taskId:task.id,orgId:input.orgId,assignmentMode:task.programId?'specific':'all',programIds:JSON.stringify(task.programId?[task.programId]:[]),applicationRequired:1,roleJoinMode:'form',applicationPublic:1,activeFormId:formId,createdAt:now,updatedAt:now})
+        .onConflictDoUpdate({target:onboardingIntakes.taskId,set:{applicationRequired:1,roleJoinMode:'form',applicationPublic:1,activeFormId:formId,updatedAt:now}})
+    }
+    await appendEvent(tx, EventTypes.ONBOARDING_APPLICATION_FORM_SAVED, { orgId: input.orgId, taskId: task.id, formId, version, replacesFormId:sourceForm?.id, required: applicationRequired, public: applicationPublic, scope:isRole?scope:undefined, resumePolicy:isRole?resumePolicy:undefined, coverLetterPolicy:isRole?coverLetterPolicy:undefined, published:Boolean(input.publish), roleJoinMode: isRole ? 'form' : undefined, questionCount: questions.length }, input.actorId)
   })
   return { ok: true }
 }
@@ -133,7 +173,7 @@ export async function archiveIntakeApplicationForm(input:{orgId:string;actorId:s
     if(intake?.activeFormId===form.id){
       const replacement=(await tx.select({id:onboardingApplicationForms.id}).from(onboardingApplicationForms).where(and(eq(onboardingApplicationForms.taskId,form.taskId),isNull(onboardingApplicationForms.archivedAt))).orderBy(desc(onboardingApplicationForms.version)).limit(1))[0]
       replacementFormId=replacement?.id??null
-      await tx.update(onboardingIntakes).set({activeFormId:replacementFormId,roleJoinMode:replacementFormId?'form':'profile',updatedAt:now}).where(eq(onboardingIntakes.taskId,form.taskId))
+      await tx.update(onboardingIntakes).set({activeFormId:replacementFormId,applicationPublic:0,roleJoinMode:replacementFormId?'form':'profile',updatedAt:now}).where(eq(onboardingIntakes.taskId,form.taskId))
     }
     await appendEvent(tx,EventTypes.ONBOARDING_APPLICATION_FORM_ARCHIVED,{orgId:input.orgId,taskId:form.taskId,formId:form.id,version:form.version,replacementFormId},input.actorId)
   })
@@ -146,6 +186,13 @@ export async function publishIntakeApplicationForm(input:{orgId:string;actorId:s
   if(!task)return fail('This volunteer role is no longer available.')
   const now=Date.now()
   await db.transaction(async tx=>{
+    const siblingTasks=await tx.select({id:tasks.id}).from(tasks).where(and(eq(tasks.orgId,input.orgId),eq(tasks.isOnboarding,0),task.programId?eq(tasks.programId,task.programId):isNull(tasks.programId)))
+    await tx.update(onboardingApplicationForms).set({publishedAt:null}).where(and(
+      eq(onboardingApplicationForms.orgId,input.orgId),
+      form.scope==='all'?and(eq(onboardingApplicationForms.scope,'all'),inArray(onboardingApplicationForms.taskId,siblingTasks.map(row=>row.id))):and(eq(onboardingApplicationForms.scope,'role'),eq(onboardingApplicationForms.targetTaskId,form.targetTaskId??form.taskId)),
+      isNotNull(onboardingApplicationForms.publishedAt),
+    ))
+    await tx.update(onboardingApplicationForms).set({publishedAt:now}).where(eq(onboardingApplicationForms.id,form.id))
     await tx.insert(onboardingIntakes).values({taskId:task.id,orgId:input.orgId,assignmentMode:task.programId?'specific':'all',programIds:JSON.stringify(task.programId?[task.programId]:[]),applicationRequired:1,roleJoinMode:'form',applicationPublic:1,activeFormId:form.id,createdAt:now,updatedAt:now})
       .onConflictDoUpdate({target:onboardingIntakes.taskId,set:{applicationRequired:1,roleJoinMode:'form',applicationPublic:1,activeFormId:form.id,updatedAt:now}})
     await appendEvent(tx,EventTypes.ONBOARDING_APPLICATION_FORM_PUBLISHED,{orgId:input.orgId,taskId:task.id,formId:form.id,version:form.version},input.actorId)
@@ -156,10 +203,11 @@ export async function unpublishIntakeApplicationForm(input:{orgId:string;actorId
   const form=(await db.select().from(onboardingApplicationForms).where(and(eq(onboardingApplicationForms.id,input.formId),eq(onboardingApplicationForms.orgId,input.orgId),isNull(onboardingApplicationForms.archivedAt))).limit(1))[0]
   if(!form)return fail('This application template is no longer available.')
   const intake=await getIntake(form.taskId)
-  if(!intake||intake.activeFormId!==form.id||!intake.applicationPublic)return fail('This application is not currently published.')
+  if(!form.publishedAt)return fail('This application is not currently published.')
   const now=Date.now()
   await db.transaction(async tx=>{
-    await tx.update(onboardingIntakes).set({applicationPublic:0,updatedAt:now}).where(and(eq(onboardingIntakes.taskId,form.taskId),eq(onboardingIntakes.orgId,input.orgId)))
+    await tx.update(onboardingApplicationForms).set({publishedAt:null}).where(eq(onboardingApplicationForms.id,form.id))
+    if(intake?.activeFormId===form.id)await tx.update(onboardingIntakes).set({applicationPublic:0,updatedAt:now}).where(and(eq(onboardingIntakes.taskId,form.taskId),eq(onboardingIntakes.orgId,input.orgId)))
     await appendEvent(tx,EventTypes.ONBOARDING_APPLICATION_FORM_UNPUBLISHED,{orgId:input.orgId,taskId:form.taskId,formId:form.id,version:form.version},input.actorId)
   })
   return{ok:true}
@@ -207,8 +255,83 @@ export async function setRolePublication(input: { orgId: string; actorId: string
   })
   return { ok: true }
 }
+export async function setProgramIntakePublication(input: { orgId: string; actorId: string; taskIds: string[]; hostTaskId: string; formId?: string; published: boolean }): Promise<Result> {
+  const taskIds = Array.from(new Set(input.taskIds.filter(Boolean)))
+  if (!taskIds.length || !taskIds.includes(input.hostTaskId)) return fail('Create a volunteer role before opening applications.')
+  const roleRows = await db.select().from(tasks).where(and(
+    eq(tasks.orgId, input.orgId),
+    eq(tasks.status, 'open'),
+    eq(tasks.isOnboarding, 0),
+    inArray(tasks.id, taskIds),
+  ))
+  const hostTask = roleRows.find((task) => task.id === input.hostTaskId)
+  if (!hostTask || roleRows.length !== taskIds.length || roleRows.some((task) => task.programId !== hostTask.programId)) {
+    return fail('The selected roles no longer belong to the same volunteer program.')
+  }
+  const form = input.formId
+    ? (await db.select().from(onboardingApplicationForms).where(and(
+        eq(onboardingApplicationForms.id, input.formId),
+        eq(onboardingApplicationForms.taskId, hostTask.id),
+        eq(onboardingApplicationForms.orgId, input.orgId),
+        isNull(onboardingApplicationForms.archivedAt),
+      )).limit(1))[0]
+    : null
+  if (input.formId && !form) return fail('This volunteer intake changed. Reopen it before publishing.')
+  const current = await getIntake(hostTask.id)
+  const activeFormId = form?.id ?? current?.activeFormId ?? null
+  const mode: RoleJoinMode = activeFormId ? 'form' : 'profile'
+  const now = Date.now()
+  await db.transaction(async (tx) => {
+    await tx.update(onboardingIntakes).set({ applicationPublic: 0, updatedAt: now }).where(and(
+      eq(onboardingIntakes.orgId, input.orgId),
+      inArray(onboardingIntakes.taskId, taskIds),
+    ))
+    if (input.published) {
+      await tx.insert(onboardingIntakes).values({
+        taskId: hostTask.id,
+        orgId: input.orgId,
+        assignmentMode: hostTask.programId ? 'specific' : 'all',
+        programIds: JSON.stringify(hostTask.programId ? [hostTask.programId] : []),
+        applicationRequired: 1,
+        roleJoinMode: mode,
+        applicationPublic: 1,
+        activeFormId,
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoUpdate({ target: onboardingIntakes.taskId, set: {
+        applicationRequired: 1,
+        roleJoinMode: mode,
+        applicationPublic: 1,
+        activeFormId,
+        updatedAt: now,
+      } })
+    }
+    await appendEvent(tx, EventTypes.TASK_UPDATED, {
+      orgId: input.orgId,
+      taskId: hostTask.id,
+      programId: hostTask.programId,
+      change: 'program_volunteer_intake_publication',
+      published: input.published,
+      roleJoinMode: mode,
+      includedRoleIds: taskIds,
+      formId: activeFormId,
+    }, input.actorId)
+  })
+  return { ok: true }
+}
 export async function getAdmissionDecision(orgId: string, userId: string) {
   return (await db.select().from(volunteerAdmissionDecisions).where(and(eq(volunteerAdmissionDecisions.orgId, orgId), eq(volunteerAdmissionDecisions.userId, userId))).limit(1))[0] ?? null
+}
+export async function intakeApplicationForTaskScope(task: Pick<typeof tasks.$inferSelect,'id'|'orgId'|'programId'|'isOnboarding'>, userId: string) {
+  if (task.isOnboarding === 1) return (await db.select().from(onboardingApplications).where(and(eq(onboardingApplications.taskId, task.id), eq(onboardingApplications.userId, userId))).limit(1))[0] ?? null
+  const rows=await db.select({application:onboardingApplications,form:onboardingApplicationForms,applicationProgramId:tasks.programId}).from(onboardingApplications)
+    .innerJoin(onboardingApplicationForms,eq(onboardingApplications.formId,onboardingApplicationForms.id))
+    .innerJoin(tasks,eq(onboardingApplications.taskId,tasks.id))
+    .where(and(eq(onboardingApplications.orgId,task.orgId),eq(onboardingApplications.userId,userId),eq(tasks.isOnboarding,0)))
+    .orderBy(desc(onboardingApplications.createdAt))
+  return rows.find(row=>row.form.scope==='role'
+    ? (row.form.targetTaskId??row.application.taskId)===task.id
+    : row.applicationProgramId===task.programId)?.application??null
 }
 export async function intakeReservationGate(taskId: string, userId: string): Promise<Result> {
   const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1))[0]
@@ -216,9 +339,10 @@ export async function intakeReservationGate(taskId: string, userId: string): Pro
   const decision = await getAdmissionDecision(task.orgId, userId)
   if (decision?.status === 'not_approved') return fail('This organization has not approved you for its volunteer activities. Contact the organization if you would like it to review that decision.')
   const { intake } = await getIntakeForm(taskId)
-  const requiresApplication = task.isOnboarding === 1 ? Boolean(intake?.applicationRequired) : Boolean(intake?.applicationPublic)
+  const publicApplication=task.isOnboarding===1?null:await getPublishedApplicationForTask(taskId)
+  const requiresApplication = task.isOnboarding === 1 ? Boolean(intake?.applicationRequired) : Boolean(publicApplication||intake?.applicationPublic)
   if (!requiresApplication) return { ok: true }
-  const application = (await db.select().from(onboardingApplications).where(and(eq(onboardingApplications.taskId, taskId), eq(onboardingApplications.userId, userId))).limit(1))[0]
+  const application = await intakeApplicationForTaskScope(task,userId)
   if (application?.status === 'approved') return { ok: true }
   const item = task.isOnboarding === 1 ? 'onboarding session' : 'volunteer shift'
   return fail(application?.status === 'submitted' ? `Your application is awaiting organization approval. You can reserve a ${item} after it is approved.` : application?.status === 'not_approved' ? 'Your application was not approved. Contact the organization if you have questions.' : `Apply and receive organization approval before reserving a ${item}.`)
@@ -252,20 +376,23 @@ async function reviewerIds(orgId: string) {
   return Array.from(new Set(staff.filter(({ delegation, role }) => delegation.role === 'owner' || intakeIds(role?.permissions ?? delegation.capabilities).some(p => p === '*' || p === 'participants.manage')).map(({ delegation }) => delegation.userId)))
 }
 export async function submitIntakeApplication(input: { taskId: string; userId: string; formId: string; answers: Record<string, unknown> }): Promise<Result> {
-  const { intake, form, questions } = await getIntakeForm(input.taskId)
-  const task = (await db.select({ id: tasks.id, isOnboarding: tasks.isOnboarding }).from(tasks).where(eq(tasks.id, input.taskId)).limit(1))[0]
+  const task = (await db.select({ id: tasks.id, orgId:tasks.orgId, programId:tasks.programId, isOnboarding: tasks.isOnboarding }).from(tasks).where(eq(tasks.id, input.taskId)).limit(1))[0]
   if (!task) return fail('This volunteer role is no longer available.')
-  if (!intake || (task.isOnboarding === 1 ? !intake.applicationRequired : !intake.applicationPublic)) return fail('This application is not currently required.')
-  if (task.isOnboarding !== 1 && !intake.applicationPublic) return fail('This role is not currently accepting public applications.')
-  const joinMode = task.isOnboarding === 1 ? 'form' : form ? 'form' : 'profile'
-  const profileOnly = task.isOnboarding !== 1 && joinMode === 'profile'
+  const legacySetup=await getIntakeForm(input.taskId)
+  const publishedSetup=task.isOnboarding===1?null:await getPublishedApplicationForTask(input.taskId)
+  const intake=legacySetup.intake
+  const form=task.isOnboarding===1?legacySetup.form:publishedSetup?.form??null
+  const questions=task.isOnboarding===1?legacySetup.questions:publishedSetup?.questions??[]
+  if (task.isOnboarding === 1 && (!intake || !intake.applicationRequired)) return fail('This application is not currently required.')
+  const profileOnly = task.isOnboarding !== 1 && !form && Boolean(intake?.applicationPublic)
+  if (task.isOnboarding !== 1 && !form && !profileOnly) return fail('This application is not currently open.')
   if (!profileOnly && !form) return fail('This application form is not currently available.')
   if (!profileOnly && form!.id !== input.formId) return fail('The organization updated this application. Reopen it to see the current questions.')
-  if (await isActiveOrganizationStaff(intake.orgId, input.userId)) return fail('Staff cannot apply as volunteers within the same organization.')
-  if ((await getAdmissionDecision(intake.orgId, input.userId))?.status === 'not_approved') return fail('Please contact the organization to review your participation status.')
-  const org = (await db.select().from(orgs).where(eq(orgs.id, intake.orgId)).limit(1))[0]
+  if (await isActiveOrganizationStaff(task.orgId, input.userId)) return fail('Staff cannot apply as volunteers within the same organization.')
+  if ((await getAdmissionDecision(task.orgId, input.userId))?.status === 'not_approved') return fail('Please contact the organization to review your participation status.')
+  const org = (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0]
   if (org?.status !== 'approved') return fail('This organization is not accepting applications.')
-  const existing = (await db.select().from(onboardingApplications).where(and(eq(onboardingApplications.taskId, input.taskId), eq(onboardingApplications.userId, input.userId))).limit(1))[0]
+  const existing = await intakeApplicationForTaskScope(task,input.userId)
   if (existing) return existing.status === 'not_approved' ? fail('Your application was not approved. Contact the organization to request a review.') : { ok: true }
   const answers: Record<string, string> = {}
   for (const q of profileOnly ? [] : questions) {
@@ -275,15 +402,27 @@ export async function submitIntakeApplication(input: { taskId: string; userId: s
     if (answer && q.type === 'yes_no' && !['Yes', 'No'].includes(answer)) return fail('Choose Yes or No.')
     answers[q.id] = answer
   }
-  const recipients = await reviewerIds(intake.orgId)
+  const roleInterests = typeof input.answers.__roleInterests === 'string' ? input.answers.__roleInterests.trim() : ''
+  if (task.isOnboarding !== 1) {
+    if (roleInterests.length > 1500) return fail('Keep your role interests under 1,500 characters.')
+    if(roleInterests)answers.__roleInterests = roleInterests
+    for(const [key,policy] of [['__resumeFile',form?.resumePolicy],['__coverLetterFile',form?.coverLetterPolicy]] as const){
+      const value=typeof input.answers[key]==='string'?String(input.answers[key]):''
+      if(policy==='required'&&!value)return fail(key==='__resumeFile'?'Upload your resume before applying.':'Upload your cover letter before applying.')
+      if(value){
+        try{const file=JSON.parse(value) as Record<string,unknown>;if(typeof file.name!=='string'||typeof file.url!=='string'||file.name.length>240||file.url.length>1200)throw new Error();answers[key]=JSON.stringify({name:file.name,url:file.url,type:typeof file.type==='string'?file.type:'',size:typeof file.size==='number'?file.size:0})}catch{return fail('One of the attached files is invalid. Upload it again.')}
+      }
+    }
+  }
+  const recipients = await reviewerIds(task.orgId)
   await db.transaction(async tx => {
     const id = randomUUID(), now = Date.now()
     const formId = profileOnly ? `profile-review:${input.taskId}` : form!.id
-    if (profileOnly) await tx.insert(onboardingApplicationForms).values({ id: formId, orgId: intake.orgId, taskId: input.taskId, version: 0, introduction: '', questions: '[]', createdBy: input.userId, createdAt: now }).onConflictDoNothing()
-    await tx.insert(onboardingApplications).values({ id, orgId: intake.orgId, taskId: input.taskId, userId: input.userId, formId, answers: JSON.stringify(answers), createdAt: now, updatedAt: now })
-    const subject = task.isOnboarding === 1 ? 'onboarding date' : 'volunteer shift'
-    for (const userId of recipients) await tx.insert(notifications).values({ id: randomUUID(), userId, kind: 'onboarding_application', title: 'Volunteer application ready for review', body: `Review the application before the volunteer reserves a ${subject}.`, link: '/aesthetic-lab/issuer/volunteers#onboarding-approval', createdAt: now })
-    await appendEvent(tx, EventTypes.ONBOARDING_APPLICATION_SUBMITTED, { orgId: intake.orgId, taskId: input.taskId, applicationId: id, formId, participantId: input.userId, profileOnly }, input.userId)
+    if (profileOnly) await tx.insert(onboardingApplicationForms).values({ id: formId, orgId: task.orgId, taskId: input.taskId, version: 0, introduction: '', questions: '[]', createdBy: input.userId, createdAt: now }).onConflictDoNothing()
+    await tx.insert(onboardingApplications).values({ id, orgId: task.orgId, taskId: input.taskId, userId: input.userId, formId, answers: JSON.stringify(answers), createdAt: now, updatedAt: now })
+    const reviewContext = task.isOnboarding === 1 ? 'before the volunteer reserves an onboarding date' : 'for your volunteer program'
+    for (const userId of recipients) await tx.insert(notifications).values({ id: randomUUID(), userId, kind: 'onboarding_application', title: 'Volunteer application ready for review', body: `Review this application ${reviewContext}.`, link: '/aesthetic-lab/issuer/volunteers#onboarding-approval', createdAt: now })
+    await appendEvent(tx, EventTypes.ONBOARDING_APPLICATION_SUBMITTED, { orgId: task.orgId, taskId: input.taskId, applicationId: id, formId, participantId: input.userId, profileOnly, roleInterests }, input.userId)
   })
   return { ok: true }
 }
@@ -309,7 +448,7 @@ export async function reviewIntakeApplication(input: { orgId: string; actorId: s
     await tx.insert(orgMessages).values({id:decisionMessageId,orgId:input.orgId,senderUserId:input.actorId,scope:'members',taskId:application.taskId,groupId:null,subject:letterSubject,body:letterMessage,recipientCount:1,createdAt:now})
     await tx.insert(messageRecipients).values({id:randomUUID(),messageId:decisionMessageId,userId:application.userId,readAt:null,createdAt:now})
     await appendEvent(tx,EventTypes.MESSAGE_SENT,{messageId:decisionMessageId,orgId:input.orgId,scope:'members',selectedMemberIds:[application.userId],subject:letterSubject,recipientCount:1},input.actorId)
-    if(decision==='approved')await tx.insert(notifications).values({ id: randomUUID(), userId: application.userId, kind: 'onboarding_application_review', title: isOnboarding ? 'Application approved — choose your onboarding date' : 'Role application approved', body: isOnboarding ? 'You can now reserve an onboarding session. Joining the volunteer roster is a separate decision after onboarding.' : 'You can now review this role’s public shifts. Complete any organization onboarding requirements before signing up.', link: '/aesthetic-lab/opportunities/' + application.taskId, createdAt: now })
+    if(decision==='approved')await tx.insert(notifications).values({ id: randomUUID(), userId: application.userId, kind: 'onboarding_application_review', title: isOnboarding ? 'Application approved — choose your onboarding date' : 'Volunteer application approved', body: isOnboarding ? 'You can now reserve an onboarding session. Joining the volunteer roster is a separate decision after onboarding.' : 'The organization approved your volunteer application. Review its opportunities and complete any required onboarding before signing up.', link: '/aesthetic-lab/opportunities/' + application.taskId, createdAt: now })
     await appendEvent(tx, EventTypes.ONBOARDING_APPLICATION_REVIEWED, { orgId: input.orgId, taskId: application.taskId, applicationId: application.id, participantId: application.userId, decision, previousStatus: application.status, decisionMessageId, acceptanceMessageId: decision==='approved'?decisionMessageId:undefined, rejectionMessageId: decision==='not_approved'?decisionMessageId:undefined }, input.actorId)
   })
   return { ok: true }

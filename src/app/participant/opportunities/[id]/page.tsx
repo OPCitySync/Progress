@@ -13,6 +13,7 @@ import { Card, PageHeader, Badge, Button, Input, Flash, Mono, statusBadge } from
 import { fmtDateTime } from '@/lib/format'
 import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getActiveCity } from '@/lib/services/city-networks'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,9 +79,7 @@ export default async function OpportunityDetail({
 
   return (
     <>
-      <Link href="/participant/opportunities" className="mb-4 inline-block text-sm text-ink-400 hover:text-ink-600">
-        ← All opportunities
-      </Link>
+      <HistoryBackButton fallback="/participant/opportunities" variant="plain" className="mb-4" />
       <PageHeader title={task.title} subtitle={`${org.name}${task.location ? ` · ${task.location}` : ''}`} />
       <Flash searchParams={searchParams} />
 

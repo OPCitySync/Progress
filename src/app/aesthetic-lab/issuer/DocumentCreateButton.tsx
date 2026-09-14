@@ -57,7 +57,7 @@ export function DocumentCreateButton({
   defaultProgramId = null,
   lockProgramContext = false,
   activeProgramName,
-  redirectTo = '/aesthetic-lab/issuer/catalog?workspace=documentation',
+  redirectTo = '/aesthetic-lab/issuer/documents',
   buttonLabel = 'Add Document',
 }: {
   category?: OrganizationDocumentCategory

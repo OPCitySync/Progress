@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { features } from '@/lib/config'
@@ -14,6 +13,7 @@ import { CredentialPicker } from '@/components/CredentialPicker'
 import { CatalogStatusBadge } from '@/components/CatalogStatusBadge'
 import { parseCredentialList } from '@/lib/credentials'
 import { IssuerLocationField } from '@/components/organization/IssuerLocationField'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,9 +47,7 @@ export default async function CatalogEntryPage({
 
   return (
     <>
-      <Link href="/issuer/catalog" className="mb-4 inline-block text-sm text-ink-400 hover:text-ink-600">
-        ← Catalog
-      </Link>
+      <HistoryBackButton fallback="/issuer/catalog" variant="plain" className="mb-4" />
       <PageHeader
         title={entry.title}
         subtitle={selectedType ? selectedType.name : 'No type'}

@@ -3,6 +3,7 @@ import { getSession, homeFor } from '@/lib/auth/session'
 import { Logo } from '@/components/brand/Logo'
 import { LedgerOverview } from '@/components/ledger/LedgerOverview'
 import { getAvailableCities } from '@/lib/services/city-networks'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,12 +18,11 @@ export default async function TransparencyPage({ searchParams }: { searchParams:
       <header className="skeuo-public-header">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
           <Logo variant="light" size={26} href="/" />
-          <Link
-            href={session ? homeFor(session.role) : '/login'}
-            className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
-          >
-            {session ? 'Back to app' : 'Sign in'}
-          </Link>
+          {session ? (
+            <HistoryBackButton fallback={homeFor(session.role)} variant="dark" />
+          ) : (
+            <Link href="/login" className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10">Sign in</Link>
+          )}
         </div>
         <div className="mx-auto max-w-5xl px-6 pb-10">
           <h1 className="font-display text-3xl font-semibold text-white">Public ledger</h1>

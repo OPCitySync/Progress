@@ -1,30 +1,33 @@
 'use client'
 
 import Link from 'next/link'
-import { Building2, CalendarDays, ClipboardList, FileBarChart2, FileText, Inbox, MapPinned, Pencil, Plus, Trash2, UsersRound } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Building2, ClipboardList, FileBarChart2, FileText, FolderOpen, GripVertical, Inbox, Pencil, Plus, Trash2, UsersRound } from 'lucide-react'
+import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import styles from '../prototype.module.css'
 
 const actions = [
   { id: 'workspace', label: 'Workspace', href: '/aesthetic-lab/issuer/catalog', icon: ClipboardList },
-  { id: 'new-opportunity', label: 'New opportunity', href: '/aesthetic-lab/issuer/new', icon: Plus },
-  { id: 'schedule', label: 'Organization schedule', href: '/aesthetic-lab/issuer', icon: CalendarDays },
-  { id: 'volunteers', label: 'Volunteer roster', href: '/aesthetic-lab/issuer/volunteers', icon: UsersRound },
-  { id: 'reports', label: 'Impact & reports', href: '/aesthetic-lab/issuer/reports', icon: FileBarChart2 },
-  { id: 'profile', label: 'Public profile', href: '/aesthetic-lab/issuer/profile', icon: Building2 },
-  { id: 'waiver', label: 'Liability waivers', href: '/aesthetic-lab/issuer/waiver', icon: FileText },
-  { id: 'events', label: 'Today’s city events', href: '/aesthetic-lab/issuer/events', icon: MapPinned },
+  { id: 'documents', label: 'Document Library', href: '/aesthetic-lab/issuer/documents', icon: FolderOpen },
+  { id: 'new-opportunity', label: 'Schedule Shift', href: '/aesthetic-lab/issuer/new', icon: Plus },
+  { id: 'volunteers', label: 'Volunteer Roster', href: '/aesthetic-lab/issuer/volunteers', icon: UsersRound },
+  { id: 'reports', label: 'Impact & Reports', href: '/aesthetic-lab/issuer/reports', icon: FileBarChart2 },
+  { id: 'profile', label: 'Public Profile', href: '/aesthetic-lab/issuer/profile', icon: Building2 },
+  { id: 'waiver', label: 'Liability Waivers', href: '/aesthetic-lab/issuer/waiver', icon: FileText },
   { id: 'notifications', label: 'Inbox', href: '/aesthetic-lab/issuer/notifications', icon: Inbox },
 ] as const
 
 type ActionId = (typeof actions)[number]['id']
+type DropEdge = 'before' | 'after'
 
 /** Organization-local shortcuts, intentionally empty until the team pins a function. */
 export function IssuerQuickActions({ organizationId }: { organizationId: string }) {
   const storageKey = `citysync.aesthetic-lab.issuer-quick-actions.${organizationId}`
+  const cardRef = useRef<HTMLElement>(null)
   const [pinned, setPinned] = useState<ActionId[]>([])
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [draggedId, setDraggedId] = useState<ActionId | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: ActionId; edge: DropEdge } | null>(null)
 
   useEffect(() => {
     try {
@@ -35,7 +38,23 @@ export function IssuerQuickActions({ organizationId }: { organizationId: string 
     }
   }, [storageKey])
 
-  const pinnedActions = useMemo(() => actions.filter((action) => pinned.includes(action.id)), [pinned])
+  useEffect(() => {
+    if (!isEditing && !isPickerOpen) return
+
+    function closeControls(event: PointerEvent) {
+      if (cardRef.current?.contains(event.target as Node)) return
+      setIsEditing(false)
+      setIsPickerOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeControls)
+    return () => document.removeEventListener('pointerdown', closeControls)
+  }, [isEditing, isPickerOpen])
+
+  const pinnedActions = useMemo(() => pinned.flatMap((id) => {
+    const action = actions.find((candidate) => candidate.id === id)
+    return action ? [action] : []
+  }), [pinned])
   const availableActions = useMemo(() => actions.filter((action) => !pinned.includes(action.id)), [pinned])
 
   function save(next: ActionId[]) {
@@ -51,11 +70,49 @@ export function IssuerQuickActions({ organizationId }: { organizationId: string 
 
   function remove(id: ActionId) {
     save(pinned.filter((item) => item !== id))
-    setIsEditing(false)
+  }
+
+  function startDrag(event: DragEvent<HTMLDivElement>, id: ActionId) {
+    setDraggedId(id)
+    setDropTarget(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/citysync-quick-action', id)
+  }
+
+  function dragOver(event: DragEvent<HTMLDivElement>, id: ActionId) {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (id === draggedId) {
+      setDropTarget(null)
+      return
+    }
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const edge: DropEdge = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
+    setDropTarget({ id, edge })
+  }
+
+  function drop(event: DragEvent<HTMLDivElement>, targetId: ActionId) {
+    event.preventDefault()
+    const transferredId = event.dataTransfer.getData('text/citysync-quick-action')
+    const sourceId = draggedId ?? (actions.some((action) => action.id === transferredId) ? transferredId as ActionId : null)
+    if (!sourceId || sourceId === targetId || !pinned.includes(sourceId)) {
+      setDraggedId(null)
+      setDropTarget(null)
+      return
+    }
+
+    const edge = dropTarget?.id === targetId ? dropTarget.edge : 'before'
+    const reordered = pinned.filter((id) => id !== sourceId)
+    const targetIndex = reordered.indexOf(targetId)
+    const insertionIndex = targetIndex + (edge === 'after' ? 1 : 0)
+    reordered.splice(insertionIndex, 0, sourceId)
+    save(reordered)
+    setDraggedId(null)
+    setDropTarget(null)
   }
 
   return (
-    <section className={styles.issuerQuickActions} aria-label="Quick actions">
+    <section ref={cardRef} className={styles.issuerQuickActions} aria-label="Quick actions">
       <div className={styles.issuerQuickActionsHeading}>
         <div><p className={styles.eyebrow}>Quick actions</p><span>Customize your shortcuts</span></div>
         <div className={styles.issuerQuickActionControls}>
@@ -72,15 +129,26 @@ export function IssuerQuickActions({ organizationId }: { organizationId: string 
           <button type="button" className={`${styles.issuerQuickActionEditButton}${isEditing ? ` ${styles.issuerQuickActionEditButtonActive}` : ''}`} onClick={() => { setIsEditing((editing) => !editing); setIsPickerOpen(false) }} aria-pressed={isEditing} aria-label={isEditing ? 'Finish editing quick actions' : 'Edit quick actions'}><Pencil size={14} /></button>
         </div>
       </div>
-      {pinnedActions.length ? <div className={styles.issuerQuickActionList}>
+      <div className={styles.issuerQuickActionList}>
         {pinnedActions.map((action) => {
           const Icon = action.icon
-          return <div className={styles.issuerQuickAction} key={action.id}>
+          return <div
+            className={styles.issuerQuickAction}
+            key={action.id}
+            draggable
+            data-dragging={draggedId === action.id ? 'true' : undefined}
+            data-drop-edge={dropTarget?.id === action.id ? dropTarget.edge : undefined}
+            onDragStart={(event) => startDrag(event, action.id)}
+            onDragOver={(event) => dragOver(event, action.id)}
+            onDrop={(event) => drop(event, action.id)}
+            onDragEnd={() => { setDraggedId(null); setDropTarget(null) }}
+          >
+            <span className={styles.issuerQuickActionGrip} aria-hidden="true" title="Drag to reorder"><GripVertical size={13} /></span>
             <Link href={action.href}><Icon size={15} /> <span>{action.label}</span></Link>
             {isEditing ? <button type="button" onClick={() => remove(action.id)} aria-label={`Remove ${action.label} from quick actions`}><Trash2 size={13} /></button> : null}
           </div>
         })}
-      </div> : <p className={styles.issuerQuickActionsEmpty}>Pin the functions your organization uses most.</p>}
+      </div>
     </section>
   )
 }

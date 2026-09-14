@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   ArrowLeftRight,
   ChevronDown,
@@ -16,6 +16,11 @@ import { signOutAction, switchCityAction, switchIdentityAction } from '@/app/act
 import type { Session } from '@/lib/auth/session'
 import type { CityNetwork } from '@/lib/services/city-networks'
 import type { ActorContext } from '@/lib/services/identity-access'
+import {
+  organizationBannerPalette,
+  organizationInitials,
+  type OrganizationBannerPalette,
+} from '@/lib/profile/organization-appearance'
 import styles from './prototype.module.css'
 
 function labDestination(role: ActorContext['role']) {
@@ -28,14 +33,19 @@ export function UserMenu({
   city,
   cities = [],
   contexts = [],
+  organizationLogoUrl = '',
+  organizationPalette = 'citysync',
 }: {
   workspace?: 'participant' | 'issuer'
   session?: Session
   city?: CityNetwork | null
   cities?: CityNetwork[]
   contexts?: ActorContext[]
+  organizationLogoUrl?: string
+  organizationPalette?: OrganizationBannerPalette
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const isIssuer = workspace === 'issuer'
   const activeContext = contexts.find((context) => context.identityId === session?.activeIdentityId)
   const identityName = isIssuer ? activeContext?.label ?? 'Issuer organization' : session?.name ?? 'Civic participant'
@@ -44,9 +54,29 @@ export function UserMenu({
     : `Civic Participant${city ? ` · ${city.name}` : ''}`
   const switchTargets = session ? contexts.filter((context) => context.identityId !== session.activeIdentityId) : []
   const currentPath = isIssuer ? '/aesthetic-lab/issuer' : '/aesthetic-lab'
+  const initials = isIssuer ? organizationInitials(identityName) : identityName.slice(0, 1).toUpperCase() || 'U'
+  const palette = organizationBannerPalette(organizationPalette)
+  const organizationAvatarStyle = isIssuer ? {
+    '--organization-avatar-deep': palette.colors[0],
+    '--organization-avatar-mid': palette.colors[1],
+  } as CSSProperties : undefined
+  const accountAvatar = (inMenu = false) => (
+    <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : ''}`} style={organizationAvatarStyle}>
+      {isIssuer && organizationLogoUrl ? <img src={organizationLogoUrl} alt={inMenu ? `${identityName} logo` : ''} /> : initials}
+    </span>
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+    const closeOutside = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setIsOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    return () => document.removeEventListener('pointerdown', closeOutside)
+  }, [isOpen])
 
   return (
-    <div className={styles.userMenu}>
+    <div className={styles.userMenu} ref={menuRef}>
       <button
         className={styles.profileButton}
         type="button"
@@ -55,18 +85,14 @@ export function UserMenu({
         aria-controls="account-menu"
         onClick={() => setIsOpen((open) => !open)}
       >
-        <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : ''}`}>
-          {isIssuer ? identityName.slice(0, 2).toUpperCase() : identityName.slice(0, 1).toUpperCase() || 'U'}
-        </span>
+        {accountAvatar()}
         <ChevronDown className={isOpen ? styles.profileChevronOpen : undefined} size={15} />
       </button>
 
       {isOpen && (
         <section className={styles.userPopover} id="account-menu" aria-label="Account menu">
           <div className={styles.userIdentity}>
-            <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : ''}`}>
-              {isIssuer ? identityName.slice(0, 2).toUpperCase() : identityName.slice(0, 1).toUpperCase() || 'U'}
-            </span>
+            {accountAvatar(true)}
             <div><strong>{identityName}</strong><span>{identityDescription}</span></div>
           </div>
 

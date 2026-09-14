@@ -15,10 +15,10 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { claims, orgs, tasks, onboardingIntakes } from '@/lib/db/schema'
+import { claims, orgs, tasks, onboardingIntakes, volunteerPrograms } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
-import { aggregateOpportunities, listPublicIssuers, type PublicOpportunity } from '@/lib/services/profile'
+import { aggregateOpportunities, getPublicApplications, listPublicIssuers, type PublicOpportunity } from '@/lib/services/profile'
 import { getMyResume } from '@/lib/services/resume'
 import { savedItemIds } from '@/lib/services/saved-items'
 import { getLabWorkspace } from '../lab-workspace'
@@ -29,12 +29,13 @@ import styles from '../prototype.module.css'
 export const dynamic = 'force-dynamic'
 
 type OpportunityRow = { card: PublicOpportunity; orgName: string; isOnboarding: boolean; savedByMe: boolean }
-type PublishedVolunteerRole = {
+type PublishedVolunteerIntake = {
   id: string
   orgId: string
-  title: string
-  description: string
+  programName: string
+  roles: {id:string;title:string;description:string}[]
   hasApplicationQuestions: boolean
+  requirements:string[]
 }
 
 function opportunityDate(card: PublicOpportunity) {
@@ -102,23 +103,23 @@ function OrganizationPublishedOpportunities({ opportunities }: { opportunities: 
   </section>
 }
 
-function OrganizationVolunteerRoles({ roles }: { roles: PublishedVolunteerRole[] }) {
-  if (roles.length === 0) return null
+function OrganizationVolunteerIntakes({ intakes }: { intakes: PublishedVolunteerIntake[] }) {
+  if (intakes.length === 0) return null
 
   return <section className={styles.organizationPublishedOpportunities}>
     <div className={styles.organizationSessionHeading}>
-      <span><UsersRound size={16} /> Volunteer roles</span>
-      <em>{roles.length} accepting applications</em>
+      <span><UsersRound size={16} /> Volunteer applications</span>
+      <em>{intakes.length} open</em>
     </div>
     <div className={styles.organizationOpportunityList}>
-      {roles.map((role) => (
-        <article key={role.id}>
+      {intakes.map((intake) => (
+        <article key={intake.id}>
           <div>
-            <b>{role.title}</b>
-            <small>{role.description || 'A volunteer role open to Civic-Participants.'}</small>
-            <span>{role.hasApplicationQuestions ? 'Application questions included' : 'Apply with your City/Sync profile'}</span>
+            <b>{intake.programName}</b>
+            <small>{intake.roles.length?`Roles include ${intake.roles.map(role=>role.title).join(', ')}.`:'Tell the organization how you would like to help.'}</small>
+            <span>{intake.requirements.length?intake.requirements.join(' · '):intake.hasApplicationQuestions?'Answer a few questions and apply':'One-click application with organization review'}</span>
           </div>
-          <Link href={`/aesthetic-lab/opportunities/${role.id}#application`}>Apply <ArrowUpRight size={14} /></Link>
+          <Link href={`/aesthetic-lab/opportunities/${intake.id}#application`}>Apply <ArrowUpRight size={14} /></Link>
         </article>
       ))}
     </div>
@@ -188,24 +189,9 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
   const missionAreas = Array.from(new Set(directory.flatMap((organization) => organization.causes))).slice(0, 8)
   const directoryById = new Map(directory.map((organization) => [organization.org.id, organization]))
   const organizationIds = Array.from(new Set([...directory.map((organization) => organization.org.id), ...joinedOrganizations.map((organization) => organization.id)]))
-  const [organizationTaskRows, publicRoleRows] = city && organizationIds.length
-    ? await Promise.all([
-        db.select().from(tasks).where(and(inArray(tasks.orgId, organizationIds), eq(tasks.cityId, city.id), eq(tasks.status, 'open'))),
-        db.select({
-          id: tasks.id,
-          orgId: tasks.orgId,
-          title: tasks.title,
-          description: tasks.description,
-          activeFormId: onboardingIntakes.activeFormId,
-        }).from(tasks).innerJoin(onboardingIntakes, eq(onboardingIntakes.taskId, tasks.id)).where(and(
-          inArray(tasks.orgId, organizationIds),
-          eq(tasks.cityId, city.id),
-          eq(tasks.status, 'open'),
-          eq(tasks.isOnboarding, 0),
-          eq(onboardingIntakes.applicationPublic, 1),
-        )).orderBy(desc(tasks.createdAt)),
-      ])
-    : [[], []]
+  const organizationTaskRows = city && organizationIds.length
+    ? await db.select().from(tasks).where(and(inArray(tasks.orgId, organizationIds), eq(tasks.cityId, city.id), eq(tasks.status, 'open')))
+    : []
   const organizationAggregate = await aggregateOpportunities(organizationTaskRows)
   const opportunitiesByOrganization = new Map<string, PublicOpportunity[]>()
   for (const task of organizationTaskRows) {
@@ -216,18 +202,11 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
     opportunitiesByOrganization.set(task.orgId, list)
   }
   for (const opportunities of Array.from(opportunitiesByOrganization.values())) opportunities.sort((a, b) => (a.nextShiftAt ?? Number.MAX_SAFE_INTEGER) - (b.nextShiftAt ?? Number.MAX_SAFE_INTEGER))
-  const rolesByOrganization = new Map<string, PublishedVolunteerRole[]>()
-  for (const role of publicRoleRows) {
-    const list = rolesByOrganization.get(role.orgId) ?? []
-    list.push({
-      id: role.id,
-      orgId: role.orgId,
-      title: role.title,
-      description: role.description,
-      hasApplicationQuestions: Boolean(role.activeFormId),
-    })
-    rolesByOrganization.set(role.orgId, list)
-  }
+  const intakesByOrganization = new Map<string, PublishedVolunteerIntake[]>()
+  await Promise.all(organizationIds.map(async orgId=>{
+    const applications=await getPublicApplications(orgId)
+    intakesByOrganization.set(orgId,applications.map(application=>({id:application.taskId,orgId,programName:application.title,roles:application.roleTitles.map(title=>({id:title,title,description:''})),hasApplicationQuestions:application.hasQuestions,requirements:[application.resumePolicy!=='none'?`Resume ${application.resumePolicy}`:null,application.coverLetterPolicy!=='none'?`Cover letter ${application.coverLetterPolicy}`:null].filter((item):item is string=>Boolean(item))})))
+  }))
   const aggregate = await aggregateOpportunities(rows.map((row) => row.task))
   const savedTaskIds = await savedItemIds(session.sub, 'task', rows.map((row) => row.task.id))
   const cards: OpportunityRow[] = rows
@@ -322,7 +301,7 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
                       <div><span><Sparkles size={14} /> {organizationJoinLabel(joined.claimStatus)}</span><Link href={href}>View organization <ArrowUpRight size={14} /></Link></div>
                     </div>
                   </div>
-                  <OrganizationVolunteerRoles roles={rolesByOrganization.get(joined.id) ?? []} />
+                  <OrganizationVolunteerIntakes intakes={intakesByOrganization.get(joined.id) ?? []} />
                   <OrganizationPublishedOpportunities opportunities={opportunitiesByOrganization.get(joined.id) ?? []} />
                 </article>
               })}
@@ -368,7 +347,7 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
                       <div><span>{organization.onboardingTaskId ? <><Sparkles size={14} /> New volunteer path</> : <><UsersRound size={14} /> {organization.openCount} open opportunit{organization.openCount === 1 ? 'y' : 'ies'}</>}</span><Link href={href}>{organization.onboardingTaskId && isNewParticipant ? 'Start here' : 'Explore organization'} <ArrowUpRight size={14} /></Link></div>
                     </div>
                   </div>
-                  <OrganizationVolunteerRoles roles={rolesByOrganization.get(organization.org.id) ?? []} />
+                  <OrganizationVolunteerIntakes intakes={intakesByOrganization.get(organization.org.id) ?? []} />
                   <OrganizationOnboardingSessions opportunities={opportunitiesByOrganization.get(organization.org.id) ?? []} />
                 </article>
               })}

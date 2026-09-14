@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Check, ClipboardCheck, FileSignature, HeartHandshake, UserRoundCheck, UsersRound } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { verifyShiftAttendanceAction } from '@/app/actions'
 import styles from '../prototype.module.css'
 
@@ -34,14 +34,19 @@ function dateAndTime(value: number | null) {
 }
 
 /** Shift-level confirmation UI; the server still records every person individually. */
-export function ShiftVerificationReview({ shift, participants }: { shift: Shift; participants: Participant[] }) {
+export function ShiftVerificationReview({
+  shift,
+  participants,
+  headerAction,
+}: {
+  shift: Shift
+  participants: Participant[]
+  headerAction?: ReactNode
+}) {
   const [selectedClaimIds, setSelectedClaimIds] = useState(() => participants.map((participant) => participant.claimId))
   const selected = useMemo(() => new Set(selectedClaimIds), [selectedClaimIds])
   const selectedParticipants = participants.filter((participant) => selected.has(participant.claimId))
-  const paperWaiverRequired = selectedParticipants.some((participant) => participant.waiverCollectionMethod === 'in_person' && !participant.paperWaiverConfirmedAt)
-  const identityMatchRequired = selectedParticipants.some((participant) => participant.identityMatchRequired && !participant.identityMatchConfirmed)
   const selectedCount = selectedParticipants.length
-  const noShowCount = participants.length - selectedCount
   const everyoneSelected = participants.length > 0 && selectedCount === participants.length
 
   function toggle(claimId: string) {
@@ -60,6 +65,7 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
         <h2>{shift.title}</h2>
         <p>{dateAndTime(shift.startsAt)}{shift.label ? ` · ${shift.label}` : ''}{shift.location ? ` · ${shift.location}` : ''}</p>
       </div>
+      {headerAction ? <div className={styles.shiftVerificationHeaderAction}>{headerAction}</div> : null}
     </header>
 
     {!participants.length && !shift.canFinalize ? <div className={styles.shiftVerificationEmpty}>
@@ -70,7 +76,7 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
       <input type="hidden" name="redirectTo" value={`/aesthetic-lab/issuer/shifts/${shift.id}/verify`} />
       <div className={styles.shiftVerificationIntro}>
         <p className={styles.eyebrow}>Attendance roster</p>
-        {participants.length ? <div className={styles.shiftVerificationRosterControls}>
+        {participants.length && !shift.isOnboarding ? <div className={styles.shiftVerificationRosterControls}>
           <button type="button" onClick={toggleAll}><UsersRound size={14} /> {everyoneSelected ? 'Clear Selected' : 'Select All'}</button>
         </div> : null}
       </div>
@@ -78,6 +84,9 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
       {participants.length ? <div className={styles.shiftVerificationRoster}>
         {participants.map((participant) => {
           const included = selected.has(participant.claimId)
+          const paperWaiverRequired = participant.waiverCollectionMethod === 'in_person' && !participant.paperWaiverConfirmedAt
+          const identityMatchRequired = participant.identityMatchRequired && !participant.identityMatchConfirmed
+          const showOnboardingConfirmations = shift.isOnboarding && included && (paperWaiverRequired || identityMatchRequired)
           return <article key={participant.claimId} data-selected={included ? 'true' : undefined}>
             <label>
               <input type="checkbox" name="claimId" value={participant.claimId} checked={included} onChange={() => toggle(participant.claimId)} />
@@ -86,6 +95,18 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
               <span className={styles.shiftVerificationPerson}><b>{participant.name}</b><small>{participant.email}</small></span>
             </label>
             <Link href={`/aesthetic-lab/issuer/volunteers/${participant.userId}`}><UserRoundCheck size={12} /> View Profile</Link>
+            {showOnboardingConfirmations ? <div className={styles.shiftVerificationParticipantConfirmations}>
+              {paperWaiverRequired ? <label>
+                <input type="checkbox" name="paperWaiverReceived" required />
+                <span><FileSignature size={15} /></span>
+                <span><b>Paper Waiver Received</b><small>Confirm this volunteer provided their signed paper waiver.</small></span>
+              </label> : null}
+              {identityMatchRequired ? <label>
+                <input type="checkbox" name="identityMatchesConfirmed" required />
+                <span><UserRoundCheck size={15} /></span>
+                <span><b>Identity Confirmed</b><small>Confirm this volunteer matches the City/Sync account used for the session.</small></span>
+              </label> : null}
+            </div> : null}
           </article>
         })}
       </div> : <div className={styles.shiftVerificationEmpty}>
@@ -94,9 +115,6 @@ export function ShiftVerificationReview({ shift, participants }: { shift: Shift;
       </div>}
 
       <div className={styles.shiftVerificationFooter}>
-        <div className={styles.shiftVerificationSummary}><ClipboardCheck size={17} /><p><b>{selectedCount} attendee{selectedCount === 1 ? '' : 's'} marked present.</b> {noShowCount ? `${noShowCount} remaining reservation${noShowCount === 1 ? '' : 's'} will be marked no-show when you finalize attendance.` : 'No remaining reservations will be marked no-show.'}</p></div>
-        {paperWaiverRequired ? <label className={styles.shiftVerificationWaiver}><input type="checkbox" name="paperWaiverReceived" required /><span><FileSignature size={16} /></span><p><b>Paper waivers received</b> Confirm each selected attendee who requires an in-person waiver provided their signed copy.</p></label> : null}
-        {identityMatchRequired ? <label className={styles.shiftVerificationWaiver}><input type="checkbox" name="identityMatchesConfirmed" required /><span><UserRoundCheck size={16} /></span><p><b>Identity matches confirmed</b> Confirm each selected attendee who requires it matches the City/Sync account they used to reserve this session.</p></label> : null}
         <label className={styles.shiftVerificationNote}>Verification note <textarea name="note" rows={3} maxLength={2000} placeholder="Optional note for this verification batch — e.g., hours, weather, or a delivery outcome." /></label>
         <label className={styles.shiftVerificationLetter}><span><HeartHandshake size={17} /></span><span><b>Thank You Letter</b><small>Optional · sent to everyone marked present</small></span><textarea name="thankYouLetter" rows={5} maxLength={3000} disabled={!selectedCount} placeholder="Tell the team what their contribution made possible." /></label>
         {!shift.canFinalize ? <p className={styles.shiftVerificationUnavailable}>A shift can be finalized once its scheduled start time has arrived.</p> : null}

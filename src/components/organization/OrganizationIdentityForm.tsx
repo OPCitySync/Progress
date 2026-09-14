@@ -4,6 +4,8 @@ import { useState, type KeyboardEvent } from 'react'
 import { Camera, Pencil } from 'lucide-react'
 import { saveOrganizationSettingsAction } from '@/app/actions'
 import { Button, Card, Input } from '@/components/ui'
+import { OrganizationAppearancePicker } from '@/components/profile/OrganizationAppearancePicker'
+import type { OrganizationBannerPalette, OrganizationBannerStyle } from '@/lib/profile/organization-appearance'
 
 async function uploadOrganizationPicture(file: File): Promise<string> {
   const data = new FormData()
@@ -20,15 +22,17 @@ function submitOnEnter(event: KeyboardEvent<HTMLInputElement>) {
   event.currentTarget.form?.requestSubmit()
 }
 
-export function OrganizationIdentityForm({ initial }: { initial: { name: string; logoUrl: string; contactEmail: string } }) {
+export function OrganizationIdentityForm({ initial }: { initial: { name: string; logoUrl: string; contactEmail: string; bannerStyle: OrganizationBannerStyle; bannerPalette: OrganizationBannerPalette } }) {
   const [logoUrl, setLogoUrl] = useState(initial.logoUrl)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [name, setName] = useState(initial.name)
   const [contactEmail, setContactEmail] = useState(initial.contactEmail)
   const [editing, setEditing] = useState<'name' | 'email' | null>(null)
+  const [bannerStyle, setBannerStyle] = useState(initial.bannerStyle)
+  const [bannerPalette, setBannerPalette] = useState(initial.bannerPalette)
   const initialLetter = name.trim().slice(0, 1).toUpperCase() || 'O'
-  const pictureChanged = logoUrl !== initial.logoUrl
+  const appearanceChanged = logoUrl !== initial.logoUrl || bannerStyle !== initial.bannerStyle || bannerPalette !== initial.bannerPalette
 
   return (
     <form action={saveOrganizationSettingsAction} className="space-y-5">
@@ -75,6 +79,9 @@ export function OrganizationIdentityForm({ initial }: { initial: { name: string;
             {uploadError ? <p className="mt-1 text-xs font-medium text-red-600">{uploadError}</p> : null}
           </div>
         </div>
+        <div className="mt-5 border-t border-ink-100 pt-5">
+          <OrganizationAppearancePicker bannerStyle={bannerStyle} bannerPalette={bannerPalette} onStyleChange={setBannerStyle} onPaletteChange={setBannerPalette} />
+        </div>
         <div className="mt-5 border-t border-ink-100 pt-3">
           <div className="flex min-h-14 items-center justify-between gap-4">
             <div className="min-w-0 flex-1">
@@ -95,7 +102,7 @@ export function OrganizationIdentityForm({ initial }: { initial: { name: string;
             <button type="button" aria-label="Edit organizational email" onClick={() => setEditing('email')} className="rounded-lg p-2 text-ink-400 transition-colors hover:bg-ink-50 hover:text-brand-700"><Pencil size={16} /></button>
           </div>
         </div>
-        {pictureChanged && !editing ? <div className="mt-5 flex justify-end"><Button type="submit">Save picture</Button></div> : null}
+        {appearanceChanged && !editing ? <div className="mt-5 flex justify-end"><Button type="submit">Save appearance</Button></div> : null}
       </Card>
     </form>
   )
