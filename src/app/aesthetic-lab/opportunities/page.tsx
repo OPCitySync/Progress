@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import {
   ArrowUpRight,
@@ -8,21 +9,25 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Compass,
   Heart,
   MapPin,
   Search,
   Sparkles,
+  UserRound,
   UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { claims, orgs, tasks, onboardingIntakes, volunteerPrograms } from '@/lib/db/schema'
+import { claims, orgs, tasks, onboardingIntakes, users, volunteerPrograms } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
+import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
 import { aggregateOpportunities, getPublicApplications, listPublicIssuers, type PublicOpportunity } from '@/lib/services/profile'
 import { getMyResume } from '@/lib/services/resume'
 import { savedItemIds } from '@/lib/services/saved-items'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
+import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import { SaveTaskButton } from '../SaveTaskButton'
 import styles from '../prototype.module.css'
 
@@ -36,6 +41,12 @@ type PublishedVolunteerIntake = {
   roles: {id:string;title:string;description:string}[]
   hasApplicationQuestions: boolean
   requirements:string[]
+}
+type OpportunityControlStyle = CSSProperties & {
+  '--program-palette-deep': string
+  '--program-palette-mid': string
+  '--program-palette-accent': string
+  '--program-palette-accent-deep': string
 }
 
 function opportunityDate(card: PublicOpportunity) {
@@ -57,13 +68,6 @@ function organizationJoinLabel(status: string) {
   if (status === 'verified') return 'Onboarding verified'
   if (status === 'submitted') return 'Attendance awaiting verification'
   return 'Onboarding reserved'
-}
-
-function OpportunityTabs({ activeTab, organizationCount }: { activeTab: 'onboarding' | 'organizations'; organizationCount: number }) {
-  return <nav className={styles.opportunityTabs} aria-label="Opportunity views">
-    <Link data-active={activeTab === 'onboarding'} href="/aesthetic-lab/opportunities">Onboarding</Link>
-    <Link data-active={activeTab === 'organizations'} href="/aesthetic-lab/opportunities?tab=organizations">My Organizations <span>{organizationCount}</span></Link>
-  </nav>
 }
 
 function OpportunityCard({ row, tone, redirectTo }: { row: OpportunityRow; tone: 'mint' | 'blue' | 'coral'; redirectTo: string }) {
@@ -162,7 +166,7 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
   const activeTab = searchParams.tab === 'organizations' ? 'organizations' : 'onboarding'
   const search = searchParams.q?.trim() ?? ''
   const cause = searchParams.cause?.trim() ?? ''
-  const [directory, rows, resume, joinedOrganizations, activeClaimRows] = await Promise.all([
+  const [directory, rows, resume, joinedOrganizations, activeClaimRows, participantAppearance] = await Promise.all([
     listPublicIssuers({ cityId: city?.id }),
     savedOnly && city
       ? db
@@ -181,6 +185,12 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
           .innerJoin(tasks, eq(claims.taskId, tasks.id))
           .where(and(eq(claims.userId, session.sub), eq(tasks.cityId, city.id), inArray(claims.status, ['claimed', 'submitted'])))
       : Promise.resolve([]),
+    db
+      .select({ bannerPalette: users.bannerPalette })
+      .from(users)
+      .where(eq(users.id, session.sub))
+      .limit(1)
+      .then((records) => records[0] ?? null),
   ])
   const filteredOrganizations = directory.filter((organization) => {
     const searchable = `${organization.org.name} ${organization.tagline} ${organization.mission} ${organization.causes.join(' ')}`.toLowerCase()
@@ -219,8 +229,13 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
   const visibleOnboarding = savedOnly ? onboarding.filter((row) => row.savedByMe) : onboarding
   const visibleOpen = savedOnly ? open.filter((row) => row.savedByMe) : open
   const isNewParticipant = city?.participation?.status === 'new'
-  const participation = city?.participation?.status
-  const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
+  const participantPalette = organizationBannerPalette(participantAppearance?.bannerPalette)
+  const opportunityControlStyle: OpportunityControlStyle = {
+    '--program-palette-deep': participantPalette.colors[0],
+    '--program-palette-mid': participantPalette.colors[1],
+    '--program-palette-accent': participantPalette.colors[2],
+    '--program-palette-accent-deep': participantPalette.colors[3],
+  }
 
   return (
     <main className={styles.app}>
@@ -228,19 +243,7 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
 
       <div className={`${styles.detailLayout} ${styles.opportunitiesLayout}`}>
         <aside className={styles.leftRail}>
-          <section className={styles.profileCard}>
-            <div className={styles.profileCover}><i /><i /><i /></div>
-            <div className={styles.profileBody}>
-              <div className={styles.avatarLarge}>{session.name.slice(0, 1).toUpperCase() || 'U'}</div>
-              <div className={styles.profileTitle}><p className={styles.eyebrow}>Civic participant</p><h2>{session.name}</h2><p>{cityLabel}</p></div>
-              <div className={styles.membershipStatus}>
-                <span><Sparkles size={15} /> {participation === 'active' ? 'City Member' : participation === 'barred' ? 'Participation restricted' : 'New participant'}</span>
-                <p>{participation === 'active' ? 'Your local participation is verified.' : participation === 'barred' ? 'Your participation is temporarily paused.' : 'Complete one local onboarding session to become a City Member.'}</p>
-                <div><i /><i /><i /></div>
-                <Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link>
-              </div>
-            </div>
-          </section>
+          <ParticipantIdentityCard session={session} city={city} redirectTo={redirectTo} />
 
           <section className={styles.quickLinks}>
             <p className={styles.eyebrow}>Quick Actions</p>
@@ -261,13 +264,25 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
         </aside>
 
         <section className={styles.primaryColumn} aria-label="Available volunteer opportunities">
+          <div className={`${styles.programControlCenterShell} ${styles.participantOpportunityControl}`} style={opportunityControlStyle}>
+            <section className={styles.programControlCenterCard}>
+              <div className={styles.programControlCenterHeading}>
+                <div><h1>Explore Opportunities in {city?.name ?? 'Your City'}</h1></div>
+              </div>
+            </section>
+            <nav className={styles.participantOpportunityTabs} aria-label="Volunteer opportunity workspace">
+              <Link data-active={activeTab === 'onboarding'} aria-current={activeTab === 'onboarding' ? 'page' : undefined} href="/aesthetic-lab/opportunities"><Compass size={15} /> Discover</Link>
+              <Link data-active={activeTab === 'organizations'} aria-current={activeTab === 'organizations' ? 'page' : undefined} href="/aesthetic-lab/opportunities?tab=organizations"><Building2 size={15} /> My Organizations</Link>
+              <Link href="/aesthetic-lab/commitments"><CalendarDays size={15} /> My Commitments</Link>
+              <Link href="/aesthetic-lab/profile"><UserRound size={15} /> Volunteer Profile</Link>
+            </nav>
+          </div>
           {savedOnly ? <>
             <div className={styles.pageIntro}>
               <p className={styles.eyebrow}>Saved opportunities</p>
               <h1>Keep the work that matters close.</h1>
               <p>These are the sessions you saved while exploring local organizations and their missions.</p>
             </div>
-            <OpportunityTabs activeTab="onboarding" organizationCount={joinedOrganizations.length} />
             <div className={styles.listHeading} id="onboarding"><div><p className={styles.eyebrow}>Saved introductions</p><h2>{visibleOnboarding.length} session{visibleOnboarding.length === 1 ? '' : 's'} saved</h2></div><span>Soonest first</span></div>
             <div className={styles.opportunityList}>
               {visibleOnboarding.length > 0 ? visibleOnboarding.map((row, index) => <OpportunityCard key={row.card.id} row={row} redirectTo={redirectTo} tone={index % 2 === 0 ? 'mint' : 'blue'} />) : <p className={styles.emptyCopy}>No saved introduction sessions yet. Explore an organization to find the right place to begin.</p>}
@@ -275,12 +290,6 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
             <div className={styles.listHeading}><div><p className={styles.eyebrow}>Saved shifts</p><h2>{visibleOpen.length} way{visibleOpen.length === 1 ? '' : 's'} to help</h2></div><span>Soonest first</span></div>
             <div className={styles.opportunityList}>{visibleOpen.length > 0 ? visibleOpen.map((row, index) => <OpportunityCard key={row.card.id} row={row} redirectTo={redirectTo} tone={index % 3 === 0 ? 'coral' : index % 3 === 1 ? 'blue' : 'mint'} />) : <p className={styles.emptyCopy}>No saved opportunities yet. Save a shift from an organization you would like to support.</p>}</div>
           </> : activeTab === 'organizations' ? <>
-            <div className={styles.pageIntro}>
-              <p className={styles.eyebrow}>{city?.name ?? 'City/Sync'} volunteer discovery</p>
-              <h1>Find a cause worth showing up for.</h1>
-              <p>Start with the change you want to help make. Then get to know the local organization and volunteer program behind it.</p>
-            </div>
-            <OpportunityTabs activeTab="organizations" organizationCount={joinedOrganizations.length} />
             <section className={styles.myOrganizationsSummary}>
               <span><Building2 size={20} /></span>
               <div><p className={styles.eyebrow}>Your local network</p><h2>{joinedOrganizations.length ? `${joinedOrganizations.length} organization${joinedOrganizations.length === 1 ? '' : 's'} in your volunteer network.` : 'Your local volunteer network starts here.'}</h2><p>{joinedOrganizations.length ? 'Each organization can offer its own programs, materials, and volunteer opportunities.' : 'Complete an introduction session with an organization to add it here.'}</p></div>
@@ -307,13 +316,6 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
               })}
             </div>
           </> : <>
-            <div className={styles.pageIntro}>
-              <p className={styles.eyebrow}>{city?.name ?? 'City/Sync'} volunteer discovery</p>
-              <h1>Find a cause worth showing up for.</h1>
-              <p>Start with the change you want to help make. Then get to know the local organization and volunteer program behind it.</p>
-            </div>
-            <OpportunityTabs activeTab="onboarding" organizationCount={joinedOrganizations.length} />
-
             <section className={styles.missionDiscovery}>
               <div className={styles.missionDiscoveryHeading}>
                 <div><p className={styles.eyebrow}>Explore by mission</p><h2>What kind of difference do you want to make?</h2></div>

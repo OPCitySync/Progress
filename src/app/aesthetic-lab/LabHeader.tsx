@@ -16,6 +16,9 @@ import type { ActorContext } from '@/lib/services/identity-access'
 import { getUnreadIssuerNotificationCount, getUnreadNotificationCount } from '@/lib/services/notifications'
 import { getUnreadMessageCount } from '@/lib/services/roster'
 import { getProfile } from '@/lib/services/profile'
+import { db } from '@/lib/db/client'
+import { users } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
 
 export type LabSection =
   | 'feed'
@@ -61,7 +64,7 @@ export async function LabHeader({
 }) {
   const isIssuer = workspace === 'issuer'
   const sections = isIssuer ? issuerSections : participantSections
-  const [inboxCount, organizationProfile] = await Promise.all([
+  const [inboxCount, organizationProfile, participantAppearance] = await Promise.all([
     session
       ? isIssuer
         ? Promise.all([
@@ -74,6 +77,14 @@ export async function LabHeader({
           ]).then(([updates, messages]) => updates + messages)
       : Promise.resolve(0),
     isIssuer && session?.orgId ? getProfile(session.orgId) : Promise.resolve(null),
+    !isIssuer && session
+      ? db
+          .select({ avatarUrl: users.avatarUrl, bannerPalette: users.bannerPalette })
+          .from(users)
+          .where(eq(users.id, session.sub))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : Promise.resolve(null),
   ])
 
   return (
@@ -120,6 +131,8 @@ export async function LabHeader({
           contexts={contexts}
           organizationLogoUrl={organizationProfile?.logoUrl}
           organizationPalette={organizationProfile?.bannerPalette}
+          participantAvatarUrl={participantAppearance?.avatarUrl}
+          participantPalette={participantAppearance?.bannerPalette}
         />
       </div>
     </header>

@@ -6,6 +6,7 @@ import { getPublishedOrganizationResources } from '@/lib/services/organization-r
 import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
+import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +24,7 @@ export default async function VolunteerResourcesPage() {
   return <main className={styles.app}>
     <LabHeader activeSection="resources" session={session} city={city} cities={cities} contexts={contexts} />
     <section className={styles.detailLayout}>
-      <aside className={styles.leftRail}><section className={styles.cityCard}><MapPin size={20} /><h2>{city?.name ?? 'Your city network'}</h2><p>Resources deliberately shared by organizations in your current City/Sync network.</p><Link href="/aesthetic-lab/organizations">Discover organizations <ArrowUpRight size={14} /></Link></section></aside>
+      <aside className={styles.leftRail}><ParticipantIdentityCard session={session} city={city} redirectTo="/aesthetic-lab/resources" /><section className={styles.cityCard}><MapPin size={20} /><h2>{city?.name ?? 'Your city network'}</h2><p>Resources deliberately shared by organizations in your current City/Sync network.</p><Link href="/aesthetic-lab/organizations">Discover organizations <ArrowUpRight size={14} /></Link></section></aside>
       <section className={styles.primaryColumn} aria-label="Volunteer Resources">
         <div className={styles.pageIntro}><p className={styles.eyebrow}>Volunteer resources</p><h1>Prepared by organizations, ready when you are.</h1><p>Find guides, safety materials, planning tools, and other resources local organizations have chosen to share.</p></div>
         <section className={`${styles.labPanel} ${styles.labStack}`}>

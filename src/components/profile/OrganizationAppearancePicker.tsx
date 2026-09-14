@@ -15,17 +15,19 @@ export function OrganizationAppearancePicker({
   bannerPalette,
   onStyleChange,
   onPaletteChange,
+  subjectLabel = 'Organization',
 }: {
   bannerStyle: OrganizationBannerStyle
   bannerPalette: OrganizationBannerPalette
   onStyleChange: (style: OrganizationBannerStyle) => void
   onPaletteChange: (palette: OrganizationBannerPalette) => void
+  subjectLabel?: string
 }) {
   return (
-    <section className={styles.picker} aria-label="Organization banner appearance">
+    <section className={styles.picker} aria-label={`${subjectLabel} banner appearance`}>
       <input type="hidden" name="bannerStyle" value={bannerStyle} />
       <input type="hidden" name="bannerPalette" value={bannerPalette} />
-      <div className={styles.heading}><b>Organization Banner</b><span>Used throughout City/Sync</span></div>
+      <div className={styles.heading}><b>{subjectLabel} Banner</b><span>Used throughout City/Sync</span></div>
       <div className={styles.templates} role="group" aria-label="Banner template">
         {ORGANIZATION_BANNER_STYLES.map((option) => (
           <button key={option.value} type="button" className={styles.template} aria-pressed={bannerStyle === option.value} onClick={() => onStyleChange(option.value)}>

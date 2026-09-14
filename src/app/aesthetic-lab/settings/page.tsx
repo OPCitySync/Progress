@@ -9,6 +9,7 @@ import { getEditorProfile } from '@/lib/services/profile'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
 import { LabNotice } from '../LabNotice'
+import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import { IssuerLabSidebar } from '../issuer/IssuerLabSidebar'
 import { OrganizationManagementSettings } from './OrganizationManagementSettings'
 import styles from '../prototype.module.css'
@@ -41,7 +42,7 @@ export default async function LabSettingsPage({ searchParams }: { searchParams: 
   return <main className={styles.app}>
     <LabHeader activeSection="feed" workspace="participant" session={session} city={city} cities={cities} contexts={contexts} />
     <section className={styles.detailLayout}>
-      <aside className={styles.leftRail}><section className={styles.cityCard}><Settings2 size={19} /><h2>Profile &amp; settings</h2><p>Control the information associated with your active identity.</p><Link href="/aesthetic-lab">Return home</Link></section></aside>
+      <aside className={styles.leftRail}><ParticipantIdentityCard session={session} city={city} redirectTo="/aesthetic-lab/settings" /><section className={styles.cityCard}><Settings2 size={19} /><h2>Profile &amp; settings</h2><p>Control the information associated with your active identity.</p><Link href="/aesthetic-lab">Return home</Link></section></aside>
       <section className={styles.primaryColumn}>
         <div className={styles.pageIntro}><p className={styles.eyebrow}>Account settings</p><h1>Keep your identity current.</h1><p>Only the information needed to participate is kept here.</p></div>
         <LabNotice ok={searchParams.ok} error={searchParams.error} />

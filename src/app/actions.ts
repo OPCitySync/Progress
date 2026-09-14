@@ -9,7 +9,7 @@ import { claims, organizationDocumentAssignments, organizationDocuments, organiz
 import { verifyPassword } from '@/lib/auth/password'
 import { aestheticHomeFor, createSession, clearSession, getSession, homeFor, type Session } from '@/lib/auth/session'
 import { participantCreditsEnabled } from '@/lib/config'
-import { registerParticipant, registerOrg, setOrgStatus, updateAccountIdentity } from '@/lib/services/identity'
+import { registerParticipant, registerOrg, setOrgStatus, updateAccountIdentity, updateParticipantAppearance } from '@/lib/services/identity'
 import {
   createTask,
   updateTask,
@@ -358,6 +358,21 @@ export async function saveAccountSettingsAction(formData: FormData) {
     authorityId: session.authorityId,
   })
   back(formData, '/settings', { ok: 'Account settings saved.' })
+}
+
+export async function saveParticipantAppearanceAction(formData: FormData) {
+  const session = await requireActor('participant')
+  const result = await updateParticipantAppearance({
+    userId: session.sub,
+    avatarUrl: str(formData, 'avatarUrl'),
+    bannerStyle: str(formData, 'bannerStyle'),
+    bannerPalette: str(formData, 'bannerPalette'),
+  })
+  back(
+    formData,
+    '/aesthetic-lab',
+    result.ok ? { ok: 'Your appearance was saved.' } : { error: result.error },
+  )
 }
 
 // ---------------------------------------------------------------------------

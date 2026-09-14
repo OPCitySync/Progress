@@ -11,6 +11,7 @@ import {
   Mail,
   MapPinned,
   Settings2,
+  UserRound,
 } from 'lucide-react'
 import { signOutAction, switchCityAction, switchIdentityAction } from '@/app/actions'
 import type { Session } from '@/lib/auth/session'
@@ -35,6 +36,8 @@ export function UserMenu({
   contexts = [],
   organizationLogoUrl = '',
   organizationPalette = 'citysync',
+  participantAvatarUrl = '',
+  participantPalette = 'citysync',
 }: {
   workspace?: 'participant' | 'issuer'
   session?: Session
@@ -42,7 +45,9 @@ export function UserMenu({
   cities?: CityNetwork[]
   contexts?: ActorContext[]
   organizationLogoUrl?: string
-  organizationPalette?: OrganizationBannerPalette
+  organizationPalette?: OrganizationBannerPalette | string
+  participantAvatarUrl?: string
+  participantPalette?: OrganizationBannerPalette | string
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -54,15 +59,16 @@ export function UserMenu({
     : `Civic Participant${city ? ` · ${city.name}` : ''}`
   const switchTargets = session ? contexts.filter((context) => context.identityId !== session.activeIdentityId) : []
   const currentPath = isIssuer ? '/aesthetic-lab/issuer' : '/aesthetic-lab'
-  const initials = isIssuer ? organizationInitials(identityName) : identityName.slice(0, 1).toUpperCase() || 'U'
-  const palette = organizationBannerPalette(organizationPalette)
-  const organizationAvatarStyle = isIssuer ? {
+  const initials = organizationInitials(identityName, 'U')
+  const palette = organizationBannerPalette(isIssuer ? organizationPalette : participantPalette)
+  const avatarStyle = {
     '--organization-avatar-deep': palette.colors[0],
     '--organization-avatar-mid': palette.colors[1],
-  } as CSSProperties : undefined
+  } as CSSProperties
+  const activeAvatarUrl = isIssuer ? organizationLogoUrl : participantAvatarUrl
   const accountAvatar = (inMenu = false) => (
-    <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : ''}`} style={organizationAvatarStyle}>
-      {isIssuer && organizationLogoUrl ? <img src={organizationLogoUrl} alt={inMenu ? `${identityName} logo` : ''} /> : initials}
+    <span className={`${styles.avatarSmall} ${isIssuer ? styles.organizationAvatar : styles.participantAvatar}`} style={avatarStyle}>
+      {activeAvatarUrl ? <img src={activeAvatarUrl} alt={inMenu ? `${identityName} profile` : ''} /> : initials}
     </span>
   )
 
@@ -113,7 +119,10 @@ export function UserMenu({
           <div className={styles.userMenuSection}>
             <p className={styles.eyebrow}>{isIssuer ? 'Organization' : 'Account'}</p>
             {isIssuer ? <Link href="/aesthetic-lab/issuer/reports" onClick={() => setIsOpen(false)}><FileBarChart2 size={17} /><span>Reports<small>Impact, exports, and activity</small></span></Link> : null}
-            <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>{isIssuer ? 'Settings' : 'Profile'}{isIssuer ? <small>Organization and account controls</small> : null}</span></Link>
+            {isIssuer ? <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Settings<small>Organization and account controls</small></span></Link> : <>
+              <Link href="/aesthetic-lab/profile" onClick={() => setIsOpen(false)}><UserRound size={17} /><span>Volunteer Profile</span></Link>
+              <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Account Settings</span></Link>
+            </>}
             {!isIssuer ? <Link href="/aesthetic-lab/messages" onClick={() => setIsOpen(false)}><Mail size={17} /><span>Messages</span></Link> : null}
           </div>
 

@@ -30,6 +30,8 @@ const statements = [
     org_id TEXT,
     credit_balance INTEGER NOT NULL DEFAULT 0,
     lifetime_earned INTEGER NOT NULL DEFAULT 0,
+    banner_style TEXT NOT NULL DEFAULT 'original',
+    banner_palette TEXT NOT NULL DEFAULT 'citysync',
     created_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS orgs (
@@ -738,6 +740,8 @@ const columnMigrations = [
   `ALTER TABLE redemptions ADD COLUMN city_id TEXT NOT NULL DEFAULT 'berkeley'`,
   `ALTER TABLE users ADD COLUMN username TEXT`,
   `ALTER TABLE users ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE users ADD COLUMN banner_style TEXT NOT NULL DEFAULT 'original'`,
+  `ALTER TABLE users ADD COLUMN banner_palette TEXT NOT NULL DEFAULT 'citysync'`,
   `ALTER TABLE organization_delegations ADD COLUMN role_id TEXT`,
   `ALTER TABLE organization_invites ADD COLUMN role_id TEXT`,
   `ALTER TABLE volunteer_programs ADD COLUMN operating_mode TEXT NOT NULL DEFAULT 'flexible'`,

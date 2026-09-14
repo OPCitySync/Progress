@@ -74,6 +74,7 @@ function destinationName(value: string) {
   if (path === '/aesthetic-lab/issuer/feed') return 'MyCity Feed'
   if (path === '/aesthetic-lab/opportunities') return 'Opportunities'
   if (/^\/aesthetic-lab\/opportunities\/[^/]+/.test(path)) return 'Opportunity'
+  if (path === '/aesthetic-lab/profile') return 'Volunteer Profile'
   if (path === '/aesthetic-lab/organizations') return 'Organizations'
   if (/^\/aesthetic-lab\/organizations\/[^/]+/.test(path) || /^\/orgs\/[^/]+/.test(path)) return 'Organization Profile'
   if (path.startsWith('/aesthetic-lab/reflections') || path === '/aesthetic-lab/history') return 'Activity History'

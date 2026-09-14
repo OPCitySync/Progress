@@ -8,8 +8,12 @@ import {
   organizationDocumentAssignments,
   organizationDocuments,
   organizationResourcePublications,
+  programApplicants,
+  programDocumentReceipts,
   shifts,
   tasks,
+  volunteerAdmissionDecisions,
+  waiverAcceptances,
   waiverTaskAssignments,
   waiverVersions,
 } from '@/lib/db/schema'
@@ -110,6 +114,57 @@ async function participantCanReadFile(input: { kind: FileKind; file: StoredFile;
   return task.status === 'open' && Boolean(publicShift)
 }
 
+function storedIds(value: string) {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** Participants may always reopen documents that an organization recorded as
+ * received from them, and waiver versions they personally signed or supplied
+ * on paper. This is narrower than general organization-library access. */
+async function participantOwnsFileRecord(input: { kind: FileKind; file: StoredFile; userId: string }) {
+  if (input.kind === 'document') {
+    const receipt = (await db
+      .select({ id: programDocumentReceipts.id })
+      .from(programDocumentReceipts)
+      .where(and(
+        eq(programDocumentReceipts.orgId, input.file.orgId),
+        eq(programDocumentReceipts.userId, input.userId),
+        eq(programDocumentReceipts.documentId, input.file.id),
+      ))
+      .limit(1))[0]
+    return Boolean(receipt)
+  }
+
+  const acceptance = (await db
+    .select({ id: waiverAcceptances.id })
+    .from(waiverAcceptances)
+    .where(and(
+      eq(waiverAcceptances.orgId, input.file.orgId),
+      eq(waiverAcceptances.userId, input.userId),
+      eq(waiverAcceptances.waiverVersionId, input.file.id),
+    ))
+    .limit(1))[0]
+  if (acceptance) return true
+
+  const [admissions, applications] = await Promise.all([
+    db
+      .select({ waiverIds: volunteerAdmissionDecisions.paperWaiverIds })
+      .from(volunteerAdmissionDecisions)
+      .where(and(eq(volunteerAdmissionDecisions.orgId, input.file.orgId), eq(volunteerAdmissionDecisions.userId, input.userId))),
+    db
+      .select({ waiverIds: programApplicants.paperWaiverIds, confirmedAt: programApplicants.paperWaiverConfirmedAt })
+      .from(programApplicants)
+      .where(and(eq(programApplicants.orgId, input.file.orgId), eq(programApplicants.userId, input.userId))),
+  ])
+  return admissions.some((row) => storedIds(row.waiverIds).includes(input.file.id))
+    || applications.some((row) => Boolean(row.confirmedAt) && storedIds(row.waiverIds).includes(input.file.id))
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { kind: string; id: string } },
@@ -130,6 +185,9 @@ export async function GET(
   const welcomeAuthorized=Boolean(welcome?.application&&(params.kind==='waiver'?welcome.waivers:welcome?.documents||[]).some(item=>item.id===file.id))
   const authorized = issuerAuthorized
     || welcomeAuthorized
+    || (session?.role === 'participant'
+      ? await participantOwnsFileRecord({ kind: params.kind, file, userId: session.sub })
+      : false)
     || (session?.role === 'participant' && taskId
       ? await participantCanReadFile({ kind: params.kind, file, taskId, userId: session.sub })
       : false)

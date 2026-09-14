@@ -14,6 +14,7 @@ import { requireRole } from '@/lib/auth/session'
 import { listPublicIssuers } from '@/lib/services/profile'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
+import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +37,7 @@ export default async function OrganizationsLabPage({ searchParams }: { searchPar
 
       <div className={styles.detailLayout}>
         <aside className={styles.leftRail}>
+          <ParticipantIdentityCard session={session} city={city} redirectTo="/aesthetic-lab/organizations" />
           <section className={styles.cityCard}>
             <div className={styles.cityCardTop}><span className={styles.cityOverline}>Discover in</span></div>
             <div className={styles.cityName}><MapPin size={17} /><span>{city?.name ?? 'Choose a city'}</span></div>

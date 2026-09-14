@@ -14,8 +14,45 @@ import {
   grantOrganizationAuthority,
 } from '@/lib/services/identity-access'
 import { normalizeOrganizationLocation, rememberOrganizationLocation } from './organization-locations'
+import {
+  normalizeOrganizationBannerPalette,
+  normalizeOrganizationBannerStyle,
+} from '@/lib/profile/organization-appearance'
 
 export type Result<T = unknown> = ({ ok: true } & T) | { ok: false; error: string }
+
+/** Save the visual identity owned by a Civic Participant. */
+export async function updateParticipantAppearance(input: {
+  userId: string
+  avatarUrl: string
+  bannerStyle: string
+  bannerPalette: string
+}): Promise<Result> {
+  const avatarUrl = input.avatarUrl.trim()
+  if (avatarUrl && !avatarUrl.startsWith('/uploads/avatars/') && !/^https:\/\//.test(avatarUrl)) {
+    return { ok: false, error: 'Profile pictures must be uploaded through City/Sync.' }
+  }
+
+  const user = (await db.select().from(users).where(eq(users.id, input.userId)).limit(1))[0]
+  if (!user) return { ok: false, error: 'Account not found.' }
+
+  const bannerStyle = normalizeOrganizationBannerStyle(input.bannerStyle)
+  const bannerPalette = normalizeOrganizationBannerPalette(input.bannerPalette)
+  const changed = [
+    user.avatarUrl !== avatarUrl ? 'avatarUrl' : null,
+    user.bannerStyle !== bannerStyle ? 'bannerStyle' : null,
+    user.bannerPalette !== bannerPalette ? 'bannerPalette' : null,
+  ].filter((value): value is string => Boolean(value))
+
+  if (!changed.length) return { ok: true }
+
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ avatarUrl, bannerStyle, bannerPalette }).where(eq(users.id, input.userId))
+    await appendEvent(tx, EventTypes.USER_PROFILE_UPDATED, { userId: input.userId, changed }, input.userId)
+  })
+
+  return { ok: true }
+}
 
 /** Update the account-holder fields that City/Sync keeps in the control plane. */
 export async function updateAccountIdentity(input: {

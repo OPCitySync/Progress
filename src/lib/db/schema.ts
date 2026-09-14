@@ -28,6 +28,8 @@ export const users = sqliteTable(
     resumePublic: integer('resume_public').notNull().default(0),
     username: text('username'),
     avatarUrl: text('avatar_url').notNull().default(''),
+    bannerStyle: text('banner_style').notNull().default('original'),
+    bannerPalette: text('banner_palette').notNull().default('citysync'),
     // The city a participant selected during signup. It is only considered
     // proven once their first onboarding shift has a verified check-in.
     homeCityId: text('home_city_id'),

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { and, asc, eq, inArray } from 'drizzle-orm'
-import { ArrowUpRight, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronDown, ClipboardCheck, Download, FileText, Heart, Mail, MapPin, Phone, ShieldCheck, Sparkles, UsersRound } from 'lucide-react'
+import { ArrowUpRight, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronDown, ClipboardCheck, Download, FileText, Heart, Mail, MapPin, Phone, ShieldCheck, UsersRound } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { claims, orgs, shifts, tasks, volunteerIdentityVerifications } from '@/lib/db/schema'
@@ -19,6 +19,7 @@ import { LabHeader } from '../../../../LabHeader'
 import { HistoryBackButton } from '../../../../HistoryBackButton'
 import { LabNotice } from '../../../../LabNotice'
 import { DigitalWaiverSignature } from '../../../../DigitalWaiverSignature'
+import { ParticipantIdentityCard } from '../../../../ParticipantIdentityCard'
 import styles from '../../../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -123,26 +124,12 @@ export default async function ReservedSessionPage({
   const opportunityUrl = `/aesthetic-lab/opportunities/${record.task.id}`
   const welcomePolicy=await (await import('@/lib/services/program-workspace')).programPolicy(record.task.orgId,record.task.programId||'organization')
   const sessionLocation = record.task.location || profile?.location || 'Location to be confirmed by the organization'
-  const participation = city?.participation?.status
-  const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
 
   return <main className={styles.app}>
     <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
     <section className={`${styles.detailLayout} ${styles.sessionPrepLayout}`}>
       <aside className={styles.leftRail}>
-        <section className={styles.profileCard}>
-          <div className={styles.profileCover}><i /><i /><i /></div>
-          <div className={styles.profileBody}>
-            <div className={styles.avatarLarge}>{session.name.slice(0, 1).toUpperCase() || 'U'}</div>
-            <div className={styles.profileTitle}><p className={styles.eyebrow}>Civic participant</p><h2>{session.name}</h2><p>{cityLabel}</p></div>
-            <div className={styles.membershipStatus}>
-              <span><Sparkles size={15} /> {participation === 'active' ? 'City Member' : participation === 'barred' ? 'Participation restricted' : 'New participant'}</span>
-              <p>{participation === 'active' ? 'Your local participation is verified.' : participation === 'barred' ? 'Your participation is temporarily paused.' : 'Complete one local onboarding session to become a City Member.'}</p>
-              <div><i /><i /><i /></div>
-              <Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link>
-            </div>
-          </div>
-        </section>
+        <ParticipantIdentityCard session={session} city={city} redirectTo={sessionUrl} />
 
         <section className={styles.quickLinks}>
           <p className={styles.eyebrow}>Quick Actions</p>

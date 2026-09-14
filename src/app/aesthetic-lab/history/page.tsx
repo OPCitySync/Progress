@@ -15,6 +15,7 @@ import { requireRole } from '@/lib/auth/session'
 import { getMyResume } from '@/lib/services/resume'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
+import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import { ResumeControls } from '../ResumeControls'
 import styles from '../prototype.module.css'
 
@@ -37,6 +38,7 @@ export default async function HistoryLabPage() {
 
       <div className={styles.detailLayout}>
         <aside className={styles.leftRail}>
+          <ParticipantIdentityCard session={session} city={city} redirectTo="/aesthetic-lab/history" />
           <section className={styles.impactCard}>
             <p className={styles.eyebrow}>Your year in service</p>
             <div className={styles.impactGrid}>

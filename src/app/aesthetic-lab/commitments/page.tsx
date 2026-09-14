@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { and, asc, eq, inArray } from 'drizzle-orm'
-import { ArrowUpRight, Bookmark, Building2, CalendarDays, CheckCircle2, Heart, MapPin, Sparkles, UsersRound } from 'lucide-react'
+import { ArrowUpRight, Bookmark, Building2, CalendarDays, CheckCircle2, Heart, MapPin, UsersRound } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { cities as cityNetworks, claims, orgs, shifts, tasks } from '@/lib/db/schema'
@@ -8,6 +8,7 @@ import { getParticipantOrganizations } from '@/lib/services/participant-workspac
 import { getMyResume } from '@/lib/services/resume'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
+import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -44,26 +45,13 @@ export default async function CommitmentsPage() {
   ])
 
   const participation = city?.participation?.status
-  const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
 
   return <main className={styles.app}>
     <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
 
     <section className={`${styles.detailLayout} ${styles.commitmentsLayout}`}>
       <aside className={styles.leftRail}>
-        <section className={styles.profileCard}>
-          <div className={styles.profileCover}><i /><i /><i /></div>
-          <div className={styles.profileBody}>
-            <div className={styles.avatarLarge}>{session.name.slice(0, 1).toUpperCase() || 'U'}</div>
-            <div className={styles.profileTitle}><p className={styles.eyebrow}>Civic participant</p><h2>{session.name}</h2><p>{cityLabel}</p></div>
-            <div className={styles.membershipStatus}>
-              <span><Sparkles size={15} /> {participation === 'active' ? 'City Member' : participation === 'barred' ? 'Participation restricted' : 'New participant'}</span>
-              <p>{participation === 'active' ? 'Your local participation is verified.' : participation === 'barred' ? 'Your participation is temporarily paused.' : 'Complete one local onboarding session to become a City Member.'}</p>
-              <div><i /><i /><i /></div>
-              <Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={14} /></Link>
-            </div>
-          </div>
-        </section>
+        <ParticipantIdentityCard session={session} city={city} redirectTo="/aesthetic-lab/commitments" />
 
         <section className={styles.quickLinks}>
           <p className={styles.eyebrow}>Quick Actions</p>

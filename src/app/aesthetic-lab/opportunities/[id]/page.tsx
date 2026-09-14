@@ -28,6 +28,7 @@ import { LabNotice } from '../../LabNotice'
 import { SaveTaskButton } from '../../SaveTaskButton'
 import { DigitalWaiverSignature } from '../../DigitalWaiverSignature'
 import { WithdrawCommitmentButton } from '../../WithdrawCommitmentButton'
+import { ParticipantIdentityCard } from '../../ParticipantIdentityCard'
 import styles from '../../prototype.module.css'
 import {programPolicy,scopeOf} from '@/lib/services/program-workspace'
 import { getIntakeForm, getPublishedApplicationForTask, intakeApplicationForTaskScope, intakeReservationGate, getAdmissionDecision } from '@/lib/services/volunteer-intake'
@@ -112,6 +113,7 @@ export default async function LabOpportunityDetailPage({ params, searchParams }:
       <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
       <section className={`${styles.detailLayout} ${styles.onboardingDetailLayout}`}>
         <aside className={styles.leftRail}>
+          <ParticipantIdentityCard session={session} city={city} redirectTo={`/aesthetic-lab/opportunities/${task.id}`} />
           <section className={styles.cityCard}>
             <p className={styles.eyebrow}>{isOnboarding ? 'Onboarding with' : 'Volunteer with'}</p>
             <h2>{org.name}</h2>

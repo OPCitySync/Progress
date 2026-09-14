@@ -7,6 +7,7 @@ import { organizationFileUrl } from '@/lib/storage/organization-file-url'
 import { getLabWorkspace } from '../../lab-workspace'
 import { LabHeader } from '../../LabHeader'
 import { HistoryBackButton } from '../../HistoryBackButton'
+import { ParticipantIdentityCard } from '../../ParticipantIdentityCard'
 import styles from '../../prototype.module.css'
 import {db} from '@/lib/db/client'
 import {programWorkspaceSettings,volunteerPrograms,onboardingIntakes,tasks} from '@/lib/db/schema'
@@ -38,7 +39,7 @@ export default async function LabOrganizationProfilePage({ params }: { params: {
   return <main className={styles.app}>
     <LabHeader {...headerProps} />
     <section className={styles.detailLayout}>
-      <aside className={styles.leftRail}><section className={styles.cityCard}><Building2 size={20} /><h2>{org.name}</h2><p>{causes}</p><HistoryBackButton fallback="/aesthetic-lab/organizations" /></section></aside>
+      <aside className={styles.leftRail}>{session.role === 'participant' ? <ParticipantIdentityCard session={session} city={city} redirectTo={`/aesthetic-lab/organizations/${params.slug}`} /> : null}<section className={styles.cityCard}><Building2 size={20} /><h2>{org.name}</h2><p>{causes}</p><HistoryBackButton fallback="/aesthetic-lab/organizations" /></section></aside>
       <section className={styles.primaryColumn}>
         {welcomes.length?<section className={styles.organizationStartCard}><p className={styles.eyebrow}>Volunteer with us</p><h2>Find your place in our work.</h2>{welcomes.map(({welcome,program})=><article key={welcome.id} className={styles.labChoice}><div><b>{welcome.headline||program?.name||'Organization welcome'}</b><p>{welcome.welcome}</p></div><Link className={styles.labLinkButton} href={'/aesthetic-lab/onboarding/'+org.id+'/'+welcome.scope}>Get started <ArrowUpRight size={14}/></Link></article>)}</section>:null}
         <div className={styles.pageIntro}><p className={styles.eyebrow}>Approved local organization</p><h1>{org.name} <CheckCircle2 size={19} /></h1><p>{profile?.tagline || org.description || 'A City/Sync organization helping its local community.'}</p></div>
