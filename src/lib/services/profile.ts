@@ -431,10 +431,12 @@ export type DirectoryEntry = {
   openCount: number
 }
 
-/** Approved issuer orgs for the public directory, with open-opportunity counts. */
+/** Active issuer orgs for the public directory, with open-opportunity counts.
+ * Organization registration is currently ungated, so Discover excludes only
+ * organizations that have been explicitly suspended. */
 export async function listPublicIssuers(opts: { search?: string; cause?: string; cityId?: string } = {}): Promise<DirectoryEntry[]> {
   const search = opts.search?.trim()
-  const conds = [eq(orgs.type, 'issuer'), eq(orgs.status, 'approved')]
+  const conds = [eq(orgs.type, 'issuer'), inArray(orgs.status, ['pending', 'approved'])]
   if (search) {
     const q = `%${search.toLowerCase()}%`
     conds.push(or(like(sql`lower(${orgs.name})`, q), like(sql`lower(${orgs.description})`, q))!)

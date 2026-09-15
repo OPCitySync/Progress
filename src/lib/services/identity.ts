@@ -233,9 +233,9 @@ export async function registerOrg(input: {
     })
     if (address) {
       await rememberOrganizationLocation(tx, { orgId, address, makeDefault: true })
-      // Keep the public-profile editor in sync, but leave the profile as a
-      // draft; organizations still choose when and whether to publish it.
-      await tx.insert(orgProfiles).values({ orgId, location: address, updatedAt: now })
+      // Keep the public-profile editor in sync. Auto-approved organizations
+      // are public immediately; reviewed environments retain the draft flag.
+      await tx.insert(orgProfiles).values({ orgId, location: address, published: sandbox ? 1 : 0, updatedAt: now })
     }
     await tx.insert(cityMemberships).values({
       id: randomUUID(),

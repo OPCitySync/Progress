@@ -12,7 +12,6 @@ import {
   Compass,
   Heart,
   MapPin,
-  Search,
   UserRound,
   UsersRound,
 } from 'lucide-react'
@@ -201,7 +200,7 @@ function OrganizationRosterOpportunities({ openRosterShifts, privateShifts }: { 
   </details>
 }
 
-export default async function OpportunitiesLabPage({ searchParams }: { searchParams: { saved?: string; q?: string; cause?: string; tab?: string } }) {
+export default async function OpportunitiesLabPage({ searchParams }: { searchParams: { saved?: string; tab?: string } }) {
   const session = await requireRole('participant')
   const { city, cities, contexts } = await getLabWorkspace(session)
   const savedOnly = searchParams.saved === '1'
@@ -212,8 +211,6 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
       : searchParams.tab === 'profile'
         ? 'profile'
       : 'opportunities'
-  const search = searchParams.q?.trim() ?? ''
-  const cause = searchParams.cause?.trim() ?? ''
   const [directory, rows, resume, joinedOrganizations, commitmentRows, participantAppearance, assignedPrivateShifts, openRosterShifts] = await Promise.all([
     listPublicIssuers({ cityId: city?.id }),
     savedOnly && city
@@ -298,10 +295,6 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
         .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
       : Promise.resolve([]),
   ])
-  const filteredOrganizations = directory.filter((organization) => {
-    const searchable = `${organization.org.name} ${organization.tagline} ${organization.mission} ${organization.causes.join(' ')}`.toLowerCase()
-    return (!cause || organization.causes.includes(cause)) && (!search || searchable.includes(search.toLowerCase()))
-  })
   const directoryById = new Map(directory.map((organization) => [organization.org.id, organization]))
   const organizationIds = Array.from(new Set([...directory.map((organization) => organization.org.id), ...joinedOrganizations.map((organization) => organization.id)]))
   const organizationTaskRows = city && organizationIds.length
@@ -459,14 +452,8 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
               })}
             </div>
           </> : <>
-            <form action="/aesthetic-lab/opportunities" method="get" className={styles.organizationSearch}>
-              {cause ? <input type="hidden" name="cause" value={cause} /> : null}
-              <Search size={18} aria-hidden="true" />
-              <input type="search" name="q" defaultValue={search} placeholder={`Search ${city?.name ?? ''} organizations or missions`} aria-label="Search organizations or missions" />
-            </form>
-
             <div className={styles.organizationList}>
-              {filteredOrganizations.length === 0 ? <section className={styles.calendarEmpty}><Building2 size={20} /><div><b>No organizations match this mission yet.</b><p>Try another area of work, or check back as more local partners join your city network.</p></div></section> : filteredOrganizations.map((organization, index) => {
+              {directory.length === 0 ? <section className={styles.calendarEmpty}><Building2 size={20} /><div><b>No organizations are available yet.</b><p>Check back as more local partners join your city network.</p></div></section> : directory.map((organization, index) => {
                 const href = organization.org.slug ? `/orgs/${organization.org.slug}` : '/orgs'
                 const message = organization.tagline || organization.mission || organization.org.description || 'A City/Sync organization helping its local community.'
                 const organizationOpportunities = opportunitiesByOrganization.get(organization.org.id) ?? []
