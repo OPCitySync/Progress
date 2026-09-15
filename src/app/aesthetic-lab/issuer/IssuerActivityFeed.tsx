@@ -1,10 +1,18 @@
 import { BookOpenCheck } from 'lucide-react'
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
+import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { listOrganizationActivity } from '@/lib/services/organization-activity'
+import type { OrgProfile } from '@/lib/services/profile'
 import styles from '../prototype.module.css'
 
 type OrganizationActivity = Awaited<ReturnType<typeof listOrganizationActivity>>
 type ActivityAudience = 'Civic Participant' | 'Issuer Organization' | 'Redeemer Organization' | 'Admin'
+type ActivityPaletteStyle = CSSProperties & {
+  '--activity-deep': string
+  '--activity-mid': string
+  '--activity-accent': string
+}
 
 function formattedDate(timestamp: number) {
   return new Intl.DateTimeFormat('en-US', {
@@ -186,8 +194,15 @@ function PersonLink({ name, userId }: { name: string; userId: string | null }) {
     : <strong>{name}</strong>
 }
 
-export function IssuerActivityFeed({ activity }: { activity: OrganizationActivity }) {
-  return <section className={styles.manageActivityFeed}>
+export function IssuerActivityFeed({ activity, profile }: { activity: OrganizationActivity; profile?: Pick<OrgProfile, 'bannerPalette'> }) {
+  const palette = profile ? organizationBannerPalette(profile.bannerPalette) : null
+  const paletteStyle: ActivityPaletteStyle | undefined = palette ? {
+    '--activity-deep': palette.colors[0],
+    '--activity-mid': palette.colors[1],
+    '--activity-accent': palette.colors[2],
+  } : undefined
+
+  return <section className={styles.manageActivityFeed} style={paletteStyle}>
     <div className={styles.manageSectionHeading}>
       <div><p className={styles.eyebrow}>Activity Feed</p></div>
       <BookOpenCheck size={19} />
@@ -223,7 +238,7 @@ export function IssuerActivityFeed({ activity }: { activity: OrganizationActivit
         const messageHref = entry.messageId
           ? `/aesthetic-lab/issuer/notifications?pane=messages&message=${encodeURIComponent(entry.messageId)}`
           : null
-        const programHref=entry.programId?'/aesthetic-lab/issuer/programs/'+encodeURIComponent(entry.programId)+'?section='+(entry.type.includes('RECOGNITION')?'recognition':entry.type.includes('ONBOARDING')||entry.type.includes('APPLICATION')||entry.type.includes('CANDIDATE')||entry.type.includes('DOCUMENT_RECEIVED')?'onboarding':'overview'):null
+        const programHref=entry.programId?'/aesthetic-lab/issuer/programs/'+encodeURIComponent(entry.programId)+'?section='+(entry.type.includes('RECOGNITION')?'recognition':entry.type.includes('ONBOARDING')||entry.type.includes('APPLICATION')||entry.type.includes('CANDIDATE')||entry.type.includes('DOCUMENT_RECEIVED')?'onboarding':'positions'):null
         return <article key={entry.hash}>
           <details className={styles.issuerLedgerDetails}>
             <summary className={styles.issuerLedgerSummary}>

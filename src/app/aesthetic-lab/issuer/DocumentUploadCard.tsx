@@ -50,8 +50,8 @@ export function DocumentUploadCard({
         </div>
         <Link className={styles.catalogWorkspaceAction} href="/aesthetic-lab/issuer/waiver">Add Waivers</Link>
       </article>
-      <article className={documentCount ? styles.workspaceSetupStepComplete : undefined}>
-        <span>{documentCount ? <CheckCircle2 size={18} /> : <FileText size={18} />}</span>
+      <article>
+        <span><FileText size={18} /></span>
         <div>
           <p>Additional Documents</p>
           <h3>{documentCount ? `${documentCount} document${documentCount === 1 ? '' : 's'} saved` : 'Add a document'}</h3>
@@ -61,8 +61,10 @@ export function DocumentUploadCard({
       </article>
     </div>
 
-  return <section aria-label="Organizational Resources" className={`${styles.workspaceSetupCard} ${styles.uploadDocumentsCard} ${attached ? styles.workspaceAttachedUploadDocuments : styles.organizationResourcesCard}`} style={attached ? undefined : paletteVariables}>
-    {!attached ? <div className={styles.organizationResourcesHeading}><p className={styles.eyebrow}>Organizational Resources</p>{headerAction}</div> : null}
-    {attached ? resources : <div className={styles.organizationResourcesBody}>{resources}</div>}
+  return <section aria-label="Organizational Resources" className={`${styles.workspaceSetupCard} ${styles.uploadDocumentsCard} ${attached ? `${styles.workspaceAttachedUploadDocuments} ${styles.paletteTreatmentCard}` : styles.organizationResourcesCard}`} style={attached ? undefined : paletteVariables}>
+    {attached
+      ? <div className={`${styles.workspaceSetupHeading} ${styles.paletteTreatmentHeader}`}><div><p className={styles.eyebrow}>Upload Documents</p></div></div>
+      : <div className={styles.organizationResourcesHeading}><p className={styles.eyebrow}>Organizational Resources</p>{headerAction}</div>}
+    {attached ? <div className={styles.paletteTreatmentBody}>{resources}</div> : <div className={styles.organizationResourcesBody}>{resources}</div>}
   </section>
 }

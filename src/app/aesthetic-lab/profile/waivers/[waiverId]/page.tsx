@@ -43,7 +43,7 @@ export default async function ParticipantSignedWaiverProofPage({ params }: { par
           <header>
             <span><ShieldCheck size={21} /></span>
             <div><p className={styles.eyebrow}>Signed waiver proof</p><h1>{proof.waiver.title}</h1><p>Your private signature record with {proof.organization.name}.</p></div>
-            <HistoryBackButton fallback="/aesthetic-lab/profile" />
+            <HistoryBackButton fallback="/aesthetic-lab/opportunities?tab=profile" />
           </header>
           <div className={styles.signedWaiverProofDetails}>
             <article><UserRound size={17} /><div><p>Volunteer</p><b>{session.name}</b></div></article>

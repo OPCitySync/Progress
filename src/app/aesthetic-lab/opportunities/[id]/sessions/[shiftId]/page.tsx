@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { ArrowUpRight, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronDown, ClipboardCheck, Download, FileText, Heart, Mail, MapPin, Phone, ShieldCheck, UsersRound } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
@@ -9,7 +9,6 @@ import { getOnboardingWaiverSetup, getWaiverSignatures } from '@/lib/services/wa
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
 import { getWaiversAttachedToTask } from '@/lib/services/organization-resources'
 import { getShiftsWithCounts } from '@/lib/services/opportunities'
-import { getCityImpact } from '@/lib/services/leaderboard'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
 import { getMyResume } from '@/lib/services/resume'
 import { getProfile } from '@/lib/services/profile'
@@ -33,11 +32,6 @@ function sessionTime(startsAt: number | null, endsAt: number | null) {
 
 function signatureDate(signedAt: number | null) {
   return signedAt ? new Date(signedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
-}
-
-function shortTime(timestamp: number | null) {
-  if (!timestamp) return 'Time TBD'
-  return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
 function cancellationCopy(startsAt: number | null) {
@@ -75,7 +69,7 @@ export default async function ReservedSessionPage({
   }
 
   const isOnboarding = record.task.isOnboarding === 1
-  const [waiverSetup, attachedWaivers, organizationDocuments, shiftRows, profile, resume, joinedOrganizations, impact, identityVerification, activeClaimRows, cityEvents] = await Promise.all([
+  const [waiverSetup, attachedWaivers, organizationDocuments, shiftRows, profile, resume, joinedOrganizations, identityVerification, activeClaimRows] = await Promise.all([
     getOnboardingWaiverSetup(record.organization.id, record.task),
     getWaiversAttachedToTask(record.task.id),
     getOrganizationDocuments(record.organization.id),
@@ -83,7 +77,6 @@ export default async function ReservedSessionPage({
     getProfile(record.organization.id),
     getMyResume(session.sub),
     getParticipantOrganizations(session.sub),
-    getCityImpact(city?.id),
     db
       .select({ status: volunteerIdentityVerifications.status })
       .from(volunteerIdentityVerifications)
@@ -99,16 +92,6 @@ export default async function ReservedSessionPage({
           .from(claims)
           .innerJoin(tasks, eq(claims.taskId, tasks.id))
           .where(and(eq(claims.userId, session.sub), eq(tasks.cityId, city.id), inArray(claims.status, ['claimed', 'submitted'])))
-      : Promise.resolve([]),
-    city
-      ? db
-          .select({ task: tasks, organization: orgs, shift: shifts })
-          .from(shifts)
-          .innerJoin(tasks, eq(shifts.taskId, tasks.id))
-          .innerJoin(orgs, eq(tasks.orgId, orgs.id))
-          .where(and(eq(tasks.cityId, city.id), eq(tasks.status, 'open'), eq(shifts.status, 'open'), eq(shifts.visibility, 'public')))
-          .orderBy(asc(shifts.startsAt), asc(shifts.createdAt))
-          .limit(3)
       : Promise.resolve([]),
   ])
   const waivers = isOnboarding ? waiverSetup.waivers : attachedWaivers
@@ -127,14 +110,14 @@ export default async function ReservedSessionPage({
 
   return <main className={styles.app}>
     <LabHeader activeSection="opportunities" session={session} city={city} cities={cities} contexts={contexts} />
-    <section className={`${styles.detailLayout} ${styles.sessionPrepLayout}`}>
+    <section className={`${styles.detailLayout} ${styles.sessionPrepLayout} ${styles.sessionStatusLayout}`}>
       <aside className={styles.leftRail}>
         <ParticipantIdentityCard session={session} city={city} redirectTo={sessionUrl} />
 
         <section className={styles.quickLinks}>
           <p className={styles.eyebrow}>Quick Actions</p>
-          <Link href="/aesthetic-lab/commitments"><CalendarDays size={17} /> My Commitments</Link>
-          <Link href="/aesthetic-lab/organizations"><Building2 size={17} /> Discover organizations</Link>
+          <Link href="/aesthetic-lab/opportunities?tab=commitments"><CalendarDays size={17} /> My Commitments</Link>
+          <Link href="/aesthetic-lab/opportunities"><Building2 size={17} /> Discover organizations</Link>
           <Link href="/aesthetic-lab/opportunities?saved=1"><Heart size={17} /> Saved opportunities</Link>
         </section>
 
@@ -145,7 +128,7 @@ export default async function ReservedSessionPage({
             <div><strong>{resume?.totals.hours ?? 0}h</strong><span>Service record</span></div>
             <div><strong>{String(joinedOrganizations.length).padStart(2, '0')}</strong><span>Organizations</span></div>
           </div>
-          <Link href="/aesthetic-lab/history"><Bookmark size={15} /> View service history</Link>
+          <Link href="/aesthetic-lab/opportunities?tab=profile"><Bookmark size={15} /> View service history</Link>
         </section>
       </aside>
 
@@ -219,24 +202,6 @@ export default async function ReservedSessionPage({
         </section>
       </section>
 
-      <aside className={styles.rightRail}>
-        <section className={styles.todayEventsCard}>
-          <div className={styles.sectionHeading}><p className={styles.eyebrow}>My Calendar</p><CalendarDays size={17} /></div>
-          <div className={styles.todayEventList}>
-            {cityEvents.length === 0 ? <p className={styles.emptyCopy}>No upcoming public shifts are scheduled yet.</p> : cityEvents.map(({ task, organization, shift }) => <Link href={`/aesthetic-lab/opportunities/${task.id}`} key={shift.id}><span>{shortTime(shift.startsAt)}</span><div><b>{task.title}</b><p>{task.location || organization.name}</p></div><ArrowUpRight size={14} /></Link>)}
-          </div>
-          <Link className={styles.viewEventsLink} href="/aesthetic-lab/opportunities">View city calendar <ArrowUpRight size={14} /></Link>
-        </section>
-
-        <section className={styles.cityPulse}>
-          <div className={styles.sectionHeading}><p className={styles.eyebrow}>{city?.name ?? 'City'} Pulse</p><span>Live</span></div>
-          {[
-            { label: 'Active volunteers', detail: `${impact.volunteers} people participating`, color: 'sun' },
-            { label: 'Contributions', detail: `${impact.contributions} verified locally`, color: 'blue' },
-            { label: 'Organizations', detail: `${impact.organizations} local partners`, color: 'coral' },
-          ].map((note) => <div key={note.label} className={styles.pulseItem}><i className={styles[note.color]} /><span><b>{note.label}</b><small>{note.detail}</small></span></div>)}
-        </section>
-      </aside>
     </section>
   </main>
 }

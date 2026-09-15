@@ -51,13 +51,13 @@ export function VolunteerGroupingManager({ groups, volunteers }: { groups: Group
     setSelectedIds([])
   }
 
-  return <section className={`${styles.labPanel} ${styles.volunteerGroupingCard}`}>
-    <div className={styles.volunteerGroupingHeading}>
-      <div><p className={styles.eyebrow}>Volunteer groupings</p><h2>Organize your roster your way.</h2><p>Use groups to keep crews, programs, and repeat volunteers easy to find.</p></div>
+  return <section className={`${styles.labPanel} ${styles.volunteerGroupingCard} ${styles.paletteTreatmentCard}`}>
+    <div className={`${styles.volunteerGroupingHeading} ${styles.paletteTreatmentHeader}`}>
+      <div><p className={styles.eyebrow}>Volunteer groupings</p></div>
       <button type="button" className={`${styles.catalogWorkspaceAction} ${styles.groupingCreateTrigger}`} onClick={() => setOpen(true)}>Create group</button>
     </div>
 
-    {groups.length ? <div className={styles.groupingAccordionList}>{groups.map((group) => {
+    <div className={styles.paletteTreatmentBody}>{groups.length ? <div className={styles.groupingAccordionList}>{groups.map((group) => {
       const members = group.memberIds.map((userId) => volunteersById.get(userId)).filter((volunteer): volunteer is Volunteer => Boolean(volunteer))
       return <details className={styles.groupingDetails} key={group.id}>
         <summary><span><UsersRound size={15} /></span><div><b>{group.name}</b><small>{group.memberIds.length} volunteer{group.memberIds.length === 1 ? '' : 's'}</small></div></summary>
@@ -65,7 +65,7 @@ export function VolunteerGroupingManager({ groups, volunteers }: { groups: Group
           {members.length ? members.map((volunteer) => <article key={volunteer.userId}><span>{volunteer.name.slice(0, 2).toUpperCase()}</span><div><b>{volunteer.name}</b><small>{volunteer.email}</small></div></article>) : <p>This group does not have any current roster members yet.</p>}
         </div>
       </details>
-    })}</div> : <div className={styles.groupingEmpty}><UsersRound size={18} /><div><b>No groups yet.</b><p>Create a grouping whenever a team, program, or crew would be useful.</p></div></div>}
+    })}</div> : <div className={styles.groupingEmpty}><UsersRound size={18} /><div><b>No groups yet.</b><p>Create a grouping whenever a team, program, or crew would be useful.</p></div></div>}</div>
 
     {open ? <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={close}>
       <section className={styles.issuerCalendarModal} role="dialog" aria-modal="true" aria-labelledby="create-volunteer-group-title" onMouseDown={(event) => event.stopPropagation()}>

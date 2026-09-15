@@ -1,5 +1,4 @@
 import type { CSSProperties } from 'react'
-import { Building2 } from 'lucide-react'
 import { saveOrganizationSettingsAction } from '@/app/actions'
 import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import type { OrgProfile } from '@/lib/services/profile'
@@ -24,11 +23,6 @@ export function IssuerOrganizationIdentityForm({ organizationId, organizationNam
       <header className={styles.settingsIdentityHeader}>
         <div>
           <p>Organization identity</p>
-          <h2>{organizationName}</h2>
-        </div>
-        <div className={styles.settingsIdentityHeaderMeta}>
-          <span><small>Organizational ID</small><code>{organizationId}</code></span>
-          <Building2 size={20} aria-hidden="true" />
         </div>
       </header>
       <form action={saveOrganizationSettingsAction} className={styles.settingsIdentityForm}>

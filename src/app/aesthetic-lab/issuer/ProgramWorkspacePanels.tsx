@@ -123,16 +123,17 @@ export async function ProgramOnboardingPanel({orgId,scope,programName,programs,l
   const volunteersWithReservation=new Set(reservedRows.map(row=>row.userId))
   const invitedVolunteerIds=new Set(invitationRows.map(row=>row.userId))
   return <div className={styles.onboardingWorkspaceColumns}>
-    <section className={styles.card}>
-      {!active?<p className={styles.hint}>Onboarding is optional. No requirements are applied until you save an active pathway.</p>:null}
-      <div className={styles.approvedVolunteerSection}>
-        <div className={styles.approvedVolunteerHeading}><div><p className={styles.eyebrow}>Awaiting orientation</p><h3>Approved volunteers ready for onboarding</h3></div>{own?<WorkspaceDialog label="Manage onboarding" title="How should volunteers get started?" icon={false}><OnboardingSetupEditor scope={scope} initial={own} documents={documents.map(d=>({id:d.id,title:d.title}))}/></WorkspaceDialog>:null}</div>
+    <section className={`${styles.card} ${styles.paletteCard}`}>
+      <div className={`${styles.approvedVolunteerHeading} ${styles.paletteHeader}`}><div><p className={styles.eyebrow}>Awaiting orientation</p></div>{own?<WorkspaceDialog label="Manage onboarding" title="How should volunteers get started?" icon={false}><OnboardingSetupEditor scope={scope} initial={own} documents={documents.map(d=>({id:d.id,title:d.title}))}/></WorkspaceDialog>:null}</div>
+      <div className={`${styles.approvedVolunteerSection} ${styles.paletteBody}`}>
+        <h3 className={styles.paletteIntro}>Approved volunteers ready for onboarding</h3>
+        {!active?<p className={styles.hint}>Onboarding is optional. No requirements are applied until you save an active pathway.</p>:null}
         {approvedVolunteers.length?<div className={styles.approvedVolunteerList}>{approvedVolunteers.map(volunteer=><article className={styles.approvedVolunteerRow} key={volunteer.id}><span aria-hidden="true">{volunteer.name.split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase()||'V'}</span><div><b>{volunteer.name}</b><small>Approved for {volunteer.roleTitles.join(' · ')}</small>{volunteersWithReservation.has(volunteer.id)?<small>Onboarding session reserved</small>:invitedVolunteerIds.has(volunteer.id)?<small className={styles.invitationSent}><CheckCircle2 size={12}/>Invitation sent</small>:<small>{volunteer.approvedAt?`Approved ${date(volunteer.approvedAt)} · Ready to invite`:'Ready to invite'}</small>}</div><Link className={styles.button} href={'/aesthetic-lab/issuer/volunteers/'+volunteer.id}>View Profile</Link></article>)}</div>:<p className={styles.approvedVolunteerEmpty}>No approved volunteers are currently awaiting orientation.</p>}
       </div>
     </section>
-    <section className={styles.card}>
-      <header className={styles.heading}><div><p className={styles.eyebrow}>Onboarding Templates</p><h2>Volunteer Orientation</h2></div><AddOnboardingSessionButton programs={programs} defaultProgramId={effectiveScope==='organization'?null:effectiveScope} lockProgramContext activeProgramName={shared?'Organization':programName} defaultLocation={location} documents={documentOptions} waivers={waiverOptions} redirectTo={redirectTo}/></header>
-      {sessions.length?<div className={styles.onboardingSessionDefinitions}>{sessions.map(({task,dates})=>{
+    <section className={`${styles.card} ${styles.paletteCard}`}>
+      <header className={`${styles.heading} ${styles.paletteHeader}`}><div><p className={styles.eyebrow}>Onboarding Templates</p></div><AddOnboardingSessionButton programs={programs} defaultProgramId={effectiveScope==='organization'?null:effectiveScope} lockProgramContext activeProgramName={shared?'Organization':programName} defaultLocation={location} documents={documentOptions} waivers={waiverOptions} redirectTo={redirectTo}/></header>
+      <div className={styles.paletteBody}><h2 className={styles.paletteIntro}>Volunteer Orientation</h2>{sessions.length?<div className={styles.onboardingSessionDefinitions}>{sessions.map(({task,dates})=>{
         const upcoming=dates.filter(({shift})=>shift.status==='open'&&Boolean(shift.startsAt&&shift.startsAt>now))
         const attachedDocumentIds=documents.filter(document=>document.taskIds.includes(task.id)).map(document=>document.id)
         const explicitlyAttachedWaiverIds=waiverSetup.waivers.filter(waiver=>(waiverTaskIds.get(waiver.id)??[]).includes(task.id)).map(waiver=>waiver.id)
@@ -153,7 +154,7 @@ export async function ProgramOnboardingPanel({orgId,scope,programName,programs,l
           </div>
           {upcoming.length?<div className={styles.onboardingSessionDateList}>{upcoming.map(({shift,taken})=><div className={styles.onboardingSessionDateRow} key={shift.id}><div><b>{dateTime(shift.startsAt!)}</b><small>{taken} reserved · {Math.max(0,shift.capacity-taken)} open</small></div></div>)}</div>:<p className={styles.onboardingSessionEmpty}>No upcoming dates.</p>}
         </article>
-      })}</div>:<p className={styles.empty}>Create a reusable onboarding session and invite approved volunteers when you are ready.</p>}
+      })}</div>:<p className={styles.empty}>Create a reusable onboarding session and invite approved volunteers when you are ready.</p>}</div>
     </section>
   </div>
 }

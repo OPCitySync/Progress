@@ -13,6 +13,13 @@
 .eyebrow{font-size:.54rem}
 .dialog .button.button{min-height:34px;padding:.45rem .58rem;border-radius:9px;font-size:.59rem}
 .dialog .iconButton{width:28px;height:28px;min-height:28px;padding:0;border-radius:8px}
+.dialog{border-color:color-mix(in srgb,var(--program-palette-accent-deep,#dd9e33) 52%,#c9b98d);background:color-mix(in srgb,var(--program-palette-accent,#9aace7) 9%,#fffdf8)}
+.dialog>header{min-height:64px;box-sizing:border-box;align-items:center;margin:-1rem -1rem .85rem;padding:.72rem 1rem;border-bottom:0;border-radius:17px 17px 0 0;color:#fff;background:var(--program-palette-mid,#35488b);box-shadow:inset 0 1px rgba(255,255,255,.18),inset 0 -4px 9px rgba(5,6,15,.2),0 4px 10px color-mix(in srgb,var(--program-palette-deep,#15151e) 20%,transparent)}
+.dialog>header .eyebrow{color:rgba(255,255,255,.82);font-weight:900}.dialog>header h2{color:#fff}.dialog>header .iconButton{width:30px;height:30px;min-height:30px;padding:0;border-color:#d7d9df;border-radius:9px;color:#343943;background:#fff;box-shadow:inset 0 1px rgba(255,255,255,.92),inset 0 -2px 3px rgba(31,35,45,.06),0 2px 4px rgba(10,12,18,.2)}
+.dialog>header .iconButton:hover{border-color:#b8bbc4;color:#343943;background:#f4f5f7;filter:none}
+.dialog>header .iconButton:focus-visible{outline:2px solid #737985;outline-offset:3px}
+.dialog .button.primary{border-color:color-mix(in srgb,var(--program-palette-accent-deep,#5870c3) 78%,var(--program-palette-deep,#15151e));color:var(--program-palette-deep,#15151e);background:linear-gradient(145deg,color-mix(in srgb,var(--program-palette-accent,#9aace7) 84%,#fff),var(--program-palette-accent-deep,#5870c3));box-shadow:inset 0 1px rgba(255,255,255,.5),inset 0 -2px 4px color-mix(in srgb,var(--program-palette-deep,#15151e) 16%,transparent),0 2px 4px color-mix(in srgb,var(--program-palette-deep,#15151e) 24%,transparent)}
+.dialog .button.primary:hover{border-color:color-mix(in srgb,var(--program-palette-accent,#9aace7) 78%,#fff);color:var(--program-palette-deep,#15151e);background:linear-gradient(145deg,color-mix(in srgb,var(--program-palette-accent,#9aace7) 68%,#fff),var(--program-palette-accent,#9aace7));filter:none}
 .form,.form>fieldset,.questions{gap:.7rem}
 .form label{gap:.27rem;font-size:.59rem}
 .form :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea,select){min-height:32px;padding:.5rem .55rem;border-radius:9px;font-size:.64rem}
@@ -54,3 +61,13 @@
 @media(prefers-reduced-motion:reduce){.step{animation:none}}
 @media(max-width:850px){.sessionTop{align-items:flex-start;flex-direction:column}.actions{width:100%}.reviewRow{flex-wrap:wrap}.reviewState{margin-left:auto}}
 @media(max-width:600px){.backdrop{padding:12px}.dialog{padding:18px;max-height:calc(100dvh - 24px)}.two{grid-template-columns:1fr}.steps{gap:5px}.steps li{padding:8px;font-size:11px}.actions .button{flex:1}.profile{align-items:flex-start;flex-direction:column}.sessionTop,.sessionBody{padding:15px}}
+.inlineApplicationCard{margin:0;border-top:1px solid #d0c09f}
+.inlineApplicationHeader{display:flex;align-items:center}
+.inlineApplicationBody{gap:.75rem}
+.surface .inlineApplicationTitle{margin:0;color:#41434c;font:500 1.05rem/1.25 Georgia,Times,serif;letter-spacing:-.04em}
+.inlineApplicationBody .form{gap:.75rem}
+.inlineApplicationBody .preserve p{margin:.2rem 0 0}
+.inlineApplicationBody .applicationFileField{box-sizing:border-box;width:fit-content;min-width:calc(150px + 1.24rem);max-width:100%;justify-self:start}
+.inlineApplicationBody .applicationFileUpload{width:fit-content;min-width:150px;justify-self:start;padding:0 .7rem}
+.inlineApplicationFooter .button{min-height:34px;padding:.48rem .7rem;border-color:color-mix(in srgb,var(--program-palette-accent-deep,#dd9e33) 72%,var(--program-palette-deep,#352120));color:var(--program-palette-deep,#352120);background:linear-gradient(145deg,color-mix(in srgb,var(--program-palette-accent,#e4a24e) 82%,#fff),var(--program-palette-accent-deep,#c78138));box-shadow:inset 0 1px rgba(255,255,255,.5),inset 0 -2px 4px color-mix(in srgb,var(--program-palette-deep,#352120) 14%,transparent),0 2px 4px color-mix(in srgb,var(--program-palette-deep,#352120) 18%,transparent)}
+.inlineApplicationFooter .button:hover{border-color:color-mix(in srgb,var(--program-palette-accent,#e4a24e) 72%,#fff);color:var(--program-palette-deep,#352120);background:linear-gradient(145deg,color-mix(in srgb,var(--program-palette-accent,#e4a24e) 66%,#fff),var(--program-palette-accent,#e4a24e));filter:none}

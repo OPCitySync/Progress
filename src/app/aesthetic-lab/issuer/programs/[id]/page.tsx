@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm'
-import { CheckCircle2 } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import { claims, onboardingApplicationForms, onboardingApplications, orgs, plannedRecurringAssignments, plannedRecurringStaffAssignments, recurringEventSchedules, shiftStaffAssignments, tasks, users } from '@/lib/db/schema'
@@ -17,7 +16,7 @@ import { ScheduleNewShiftButton } from '../../ScheduleNewShiftButton'
 import { VolunteerRoleWorkspace } from '../../VolunteerRoleWorkspace'
 import { ProgramRosterScheduler } from '../../ProgramRosterScheduler'
 import { ProgramNavigation } from '../../ProgramWorkspace'
-import { ProgramOnboardingPanel, ProgramOverviewPanel, ProgramRecognitionPanel } from '../../ProgramWorkspacePanels'
+import { ProgramOnboardingPanel, ProgramRecognitionPanel } from '../../ProgramWorkspacePanels'
 import { programPolicy } from '@/lib/services/program-workspace'
 import { getOrganizationLocations } from '@/lib/services/organization-locations'
 import { getProfile } from '@/lib/services/profile'
@@ -28,12 +27,6 @@ import { getActiveWaivers } from '@/lib/services/waivers'
 import styles from '../../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
-
-function formatDate(timestamp: number | null) {
-  return timestamp
-    ? new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : 'Date to be confirmed'
-}
 
 type ProgramControlPaletteVariables = CSSProperties & {
   '--program-palette-deep': string
@@ -185,8 +178,6 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
     ? await db.select({ userId: claims.userId, shiftId: claims.shiftId, status: claims.status }).from(claims)
       .where(and(inArray(claims.shiftId, shiftIds), ne(claims.status, 'unclaimed')))
     : []
-  const verifiedContributions = programClaims.filter((claim) => claim.status === 'verified').length
-  const participatingVolunteers = new Set(programClaims.filter((claim) => claim.status !== 'no_show').map((claim) => claim.userId)).size
   const planningShiftIds = publishedEvents
     .filter(({ task, shift }) => task.isOnboarding !== 1 && Boolean(shift.startsAt && shift.startsAt > now))
     .map(({ shift }) => shift.id)
@@ -263,12 +254,6 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
       durationMinutes: schedule.durationMinutes,
     }]
   })
-  const impactMetrics = [
-    { label: 'Verified contributions', value: verifiedContributions, detail: 'Completed participation recorded' },
-    { label: 'Volunteers involved', value: participatingVolunteers, detail: 'People who signed up or participated' },
-    { label: 'Verified shifts', value: new Set(programClaims.filter(c=>c.status==='verified').map(c=>c.shiftId)).size, detail: 'Shifts with verified participation' },
-    { label: 'Upcoming events', value: publishedEvents.length, detail: 'Public and private scheduled shifts' },
-  ]
   const organizationPalette = organizationBannerPalette(profile?.bannerPalette)
   const programControlPalette: ProgramControlPaletteVariables = {
     '--program-palette-deep': organizationPalette.colors[0],
@@ -295,13 +280,6 @@ export default async function IssuerVolunteerProgramDetailsPage({ params, search
           </section>
 
           <ProgramNavigation initialSection={searchParams.section} panels={{
-            overview: <ProgramOverviewPanel orgId={orgId} scope={params.id} positions={standardTemplates.map(r=>r.task)} history={          <section className={styles.programDetailSection}>
-            <div className={styles.programDetailHeading}><div><p className={styles.eyebrow}>Program history</p><h2>Participation history</h2></div></div>
-            {pastEvents.length ? <div className={styles.programDetailList}>{pastEvents.slice(0, 8).map(({ task, shift, taken }) => <article key={shift.id}><CheckCircle2 size={17} /><div><b>{task.title}</b><p>{formatDate(shift.startsAt)} · {taken} participant{taken === 1 ? '' : 's'} recorded</p><small>{shift.status === 'closed' ? 'Closed shift' : 'Awaiting verification'}</small></div><Link href={`/aesthetic-lab/issuer/opportunities/${task.id}`}>View</Link></article>)}</div> : <p className={styles.programDetailEmpty}>Completed events will collect here as this program grows.</p>}
-          </section>} impact={          <section className={styles.programDetailImpactCard}>
-            <div className={styles.issuerPanelHeading}><div><p className={styles.eyebrow}>Program impact</p><h2>Progress at a glance</h2><p>This summary is specific to {program.name} in {city?.name ?? 'your active city'}.</p></div><CheckCircle2 size={19} /></div>
-            <div className={styles.programDetailMetricGrid}>{impactMetrics.map((metric) => <article key={metric.label}><strong>{metric.value.toLocaleString()}</strong><b>{metric.label}</b><span>{metric.detail}</span></article>)}</div>
-          </section>}/>,
             onboarding: <ProgramOnboardingPanel orgId={orgId} scope={params.id} programName={program.name} programs={programs} location={defaultLocation}/>,
             positions: <VolunteerRoleWorkspace
               roles={standardTemplates.map(({task,sessions})=>{

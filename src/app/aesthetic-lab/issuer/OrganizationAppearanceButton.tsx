@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Camera, X } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import { saveProfileAction } from '@/app/actions'
 import { OrganizationAppearancePicker } from '@/components/profile/OrganizationAppearancePicker'
 import {
   DEFAULT_ORGANIZATION_BANNER_PALETTE,
   DEFAULT_ORGANIZATION_BANNER_STYLE,
+  organizationBannerPalette,
 } from '@/lib/profile/organization-appearance'
 import type { OrgProfile } from '@/lib/services/profile'
 import styles from '../prototype.module.css'
@@ -19,6 +20,13 @@ async function uploadOrganizationLogo(file: File) {
   const body = (await response.json().catch(() => ({}))) as { url?: string; error?: string }
   if (!response.ok || !body.url) throw new Error(body.error || 'Upload failed.')
   return body.url
+}
+
+type AppearancePaletteVariables = CSSProperties & {
+  '--program-palette-deep': string
+  '--program-palette-mid': string
+  '--program-palette-accent': string
+  '--program-palette-accent-deep': string
 }
 
 export function OrganizationAppearanceButton({
@@ -38,6 +46,13 @@ export function OrganizationAppearanceButton({
   const [bannerPalette, setBannerPalette] = useState(profile?.bannerPalette ?? DEFAULT_ORGANIZATION_BANNER_PALETTE)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
+  const palette = organizationBannerPalette(bannerPalette)
+  const appearancePaletteStyle: AppearancePaletteVariables = {
+    '--program-palette-deep': palette.colors[0],
+    '--program-palette-mid': palette.colors[1],
+    '--program-palette-accent': palette.colors[2],
+    '--program-palette-accent-deep': palette.colors[3],
+  }
 
   useEffect(() => {
     if (!open) return
@@ -79,12 +94,11 @@ export function OrganizationAppearanceButton({
 
       {open ? createPortal(
         <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setOpen(false)}>
-          <section className={`${styles.issuerCalendarModal} ${styles.issuerAppearanceModal}`} role="dialog" aria-modal="true" aria-labelledby="organization-appearance-title" onMouseDown={(event) => event.stopPropagation()}>
+          <section className={`${styles.issuerCalendarModal} ${styles.issuerAppearanceModal}`} style={appearancePaletteStyle} role="dialog" aria-modal="true" aria-labelledby="organization-appearance-title" onMouseDown={(event) => event.stopPropagation()}>
             <div className={styles.issuerCalendarModalHeading}>
               <div><p className={styles.eyebrow}>Organization Identity</p><h2 id="organization-appearance-title">Choose Your Appearance</h2></div>
-              <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
             </div>
-            <form action={saveProfileAction} className={`${styles.issuerCalendarForm} ${styles.issuerAppearanceForm}`}>
+            <form action={saveProfileAction} className={`${styles.issuerCalendarForm} ${styles.issuerAppearanceForm}`} onSubmit={() => setOpen(false)}>
               <input type="hidden" name="payload" value={payload} />
               <input type="hidden" name="redirectTo" value="/aesthetic-lab/issuer" />
               <div className={styles.issuerAppearanceLogo}>

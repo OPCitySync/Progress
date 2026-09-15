@@ -21,6 +21,11 @@ import { IssuerHeroClock } from './IssuerHeroClock'
 import { IssuerSchedulePanel } from './IssuerSchedulePanel'
 import { getProfile } from '@/lib/services/profile'
 import { ORGANIZATION_BANNER_PALETTES } from '@/lib/profile/organization-appearance'
+import { getRoster } from '@/lib/services/roster'
+import { listOrganizationDelegations } from '@/lib/services/identity-access'
+import { getOrganizationLocations } from '@/lib/services/organization-locations'
+import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
+import { getActiveWaivers } from '@/lib/services/waivers'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -49,6 +54,11 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     calendarEntries,
     acknowledgedQueueRows,
     profile,
+    roster,
+    delegations,
+    organizationLocations,
+    organizationDocuments,
+    activeWaivers,
   ] = await Promise.all([
     db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1).then((rows) => rows[0] ?? null),
     city
@@ -84,12 +94,30 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     city ? getOrganizationCalendarEntries(orgId, city.id, schedule.from, schedule.to) : Promise.resolve([]),
     db.select({ actionKey: organizationQueueAcknowledgements.actionKey }).from(organizationQueueAcknowledgements).where(eq(organizationQueueAcknowledgements.orgId, orgId)),
     getProfile(orgId),
+    getRoster(orgId),
+    listOrganizationDelegations(orgId),
+    getOrganizationLocations(orgId),
+    getOrganizationDocuments(orgId),
+    getActiveWaivers(orgId),
   ])
   const organizationPalette = ORGANIZATION_BANNER_PALETTES.find((option) => option.value === profile?.bannerPalette) ?? ORGANIZATION_BANNER_PALETTES[0]
   const usesOriginalCitySyncAppearance = !profile || (profile.bannerStyle === 'original' && profile.bannerPalette === 'citysync')
+  const organizationAddress = organizationLocations.find((location) => location.isDefault)?.address
+    || organizationLocations[0]?.address
+    || ''
+  const calendarStaff = delegations
+    .filter(({ delegation }) => delegation.status === 'active')
+    .map(({ delegation, user, role }) => ({
+      userId: user.id,
+      name: user.username?.trim() || user.name,
+      email: user.email,
+      roleLabel: role?.name || (delegation.role === 'owner' ? 'Organization owner' : delegation.role === 'manager' ? 'Organization manager' : 'Organization staff'),
+    }))
   const issuerHeroStyle = {
     '--issuer-hero-deep': usesOriginalCitySyncAppearance ? '#15151e' : organizationPalette.colors[0],
     '--issuer-hero-mid': usesOriginalCitySyncAppearance ? '#29386f' : organizationPalette.colors[1],
+    '--issuer-hero-accent': organizationPalette.colors[2],
+    '--issuer-hero-accent-deep': organizationPalette.colors[3],
   } as CSSProperties
   const activeByShift = new Map<string | null, number>()
   for (const { claim } of rosterClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
@@ -195,7 +223,21 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
             </div>
           </ActionQueueCard>
 
-          <IssuerSchedulePanel entries={scheduleEntries} />
+          <IssuerSchedulePanel
+            entries={scheduleEntries}
+            scheduleShift={{
+              suggestedStartsAt: now + 24 * 60 * 60 * 1000,
+              defaultLocation: organizationAddress,
+              volunteers: roster.volunteers.map(({ userId, name, email, status }) => ({ userId, name, email, status })),
+              staff: calendarStaff,
+              documents: organizationDocuments.map((document) => ({
+                id: document.id,
+                title: document.title,
+                categoryLabel: ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label,
+              })),
+              waivers: activeWaivers.map((waiver) => ({ id: waiver.id, title: waiver.title })),
+            }}
+          />
         </section>
       </div>
     </main>

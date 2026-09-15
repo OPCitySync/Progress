@@ -5,6 +5,7 @@ import { ArrowLeft, CalendarDays, CheckCircle2, Clock3, LayoutGrid, List, Messag
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cancelShiftAndNotifyAction } from '@/app/actions'
 import { AddCalendarEntryButton } from './AddCalendarEntryButton'
+import { ScheduleNewShiftButton } from './ScheduleNewShiftButton'
 import styles from '../prototype.module.css'
 
 export type IssuerScheduleEntry = {
@@ -17,6 +18,15 @@ export type IssuerScheduleEntry = {
   reserved: number | null
   isOnboarding: boolean
   color?: 'blue' | 'gold' | 'mint' | 'coral'
+}
+
+type CalendarShiftOptions = {
+  suggestedStartsAt: number
+  defaultLocation?: string
+  volunteers: Array<{ userId: string; name: string; email: string; status?: string }>
+  staff: Array<{ userId: string; name: string; email: string; roleLabel: string }>
+  documents?: Array<{ id: string; title: string; categoryLabel: string }>
+  waivers?: Array<{ id: string; title: string }>
 }
 
 type Period = 'week' | 'month'
@@ -137,7 +147,7 @@ function calendarDays(period: Period) {
 }
 
 /** An issuer-only schedule that can move between a compact agenda and a calendar. */
-export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[] }) {
+export function IssuerSchedulePanel({ entries, scheduleShift }: { entries: IssuerScheduleEntry[]; scheduleShift?: CalendarShiftOptions }) {
   const [period, setPeriod] = useState<Period>('month')
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
@@ -349,6 +359,22 @@ export function IssuerSchedulePanel({ entries }: { entries: IssuerScheduleEntry[
       {calendarStage === 'calendar' ? <div className={styles.issuerScheduleHeader}>
         <div className={styles.issuerScheduleHeaderAction} ref={scheduleHeaderActionRef} style={{ marginLeft: scheduleHeaderActionOffset }}>
           <AddCalendarEntryButton />
+          {scheduleShift ? <ScheduleNewShiftButton
+            programId={null}
+            redirectTo="/aesthetic-lab/issuer"
+            suggestedStartsAt={scheduleShift.suggestedStartsAt}
+            defaultLocation={scheduleShift.defaultLocation}
+            defaultCapacity={2}
+            defaultDurationMinutes={120}
+            defaultVisibility="private"
+            documents={scheduleShift.documents}
+            waivers={scheduleShift.waivers}
+            volunteers={scheduleShift.volunteers}
+            staff={scheduleShift.staff}
+            privateRosterFlow
+            buttonLabel="Schedule Shift"
+            triggerClassName={styles.issuerAddCalendarButton}
+          /> : null}
         </div>
         <div className={styles.issuerScheduleTitle}>
           <h2>Calendar Overview</h2>

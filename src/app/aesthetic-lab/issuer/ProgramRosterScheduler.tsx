@@ -475,14 +475,15 @@ export function ProgramRosterScheduler({
   }
 
   return <>
-  <section id="program-staffing" className={`${styles.programDetailSection} ${styles.programRosterSchedulingSection}`}>
-    <div className={styles.programDetailHeading}>
-      <div><p className={styles.eyebrow}>Shift planning <span className={styles.shiftPlanningHeadingContext}><b>{programName}</b><span>{dateRangeLabel(rangeStart, rangeEnd)}</span></span></p><h2>Plan the people and work ahead</h2></div>
+  <section id="program-staffing" className={`${styles.programDetailSection} ${styles.programRosterSchedulingSection} ${styles.paletteTreatmentCard}`}>
+    <div className={`${styles.programDetailHeading} ${styles.paletteTreatmentHeader}`}>
+      <div><p className={styles.eyebrow}>Shift planning</p></div>
       <div className={`${styles.programDetailHeadingActions} ${styles.shiftPlanningCardActions}`}>
         {headerActions}
       </div>
     </div>
-    <div className={styles.shiftPlanning}>
+    <div className={`${styles.shiftPlanning} ${styles.paletteTreatmentBody}`}>
+      <div className={styles.shiftPlanningBodyIntro}><h2>Plan the people and work ahead</h2><span className={styles.shiftPlanningHeadingContext}><b>{programName}</b><span>{dateRangeLabel(rangeStart, rangeEnd)}</span></span></div>
       <div className={styles.shiftPlanningToolbar}>
         <div className={styles.shiftPlanningRange}>
           <button type="button" aria-label="Previous planning period" onClick={() => setRangeStart((value) => value - rangeWeeks * 7 * DAY)}><ChevronLeft size={15} /></button>

@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import { ArrowUpRight, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { users } from '@/lib/db/schema'
@@ -36,12 +35,10 @@ export async function ParticipantIdentityCard({
   const bannerPalette = normalizeOrganizationBannerPalette(account?.bannerPalette)
   const cityLabel = city ? (city.id === 'mexico-city' ? 'Mexico City, Mexico' : `${city.name}, California`) : 'Choose a city'
   const participation = city?.participation?.status
-  const statusLabel = participation === 'active' ? 'City Member' : participation === 'barred' ? 'Participation restricted' : 'New participant'
+  const statusLabel = participation === 'active' ? 'City Member' : 'Participation restricted'
   const statusCopy = participation === 'active'
     ? 'Your local participation is verified.'
-    : participation === 'barred'
-      ? 'Your participation is temporarily paused.'
-      : 'Complete one local onboarding session to become a City Member.'
+    : 'Your participation is temporarily paused.'
 
   return (
     <section className={styles.issuerIdentityCard}>
@@ -57,11 +54,10 @@ export async function ParticipantIdentityCard({
       <div className={styles.issuerIdentityBody}>
         <h1>{session.name} <Sparkles size={16} /></h1>
         <p>{cityLabel}</p>
-        <div className={styles.participantIdentityStatus}>
+        {participation === 'active' || participation === 'barred' ? <div className={styles.participantIdentityStatus}>
           <span><Sparkles size={14} /> {statusLabel}</span>
           <small>{statusCopy}</small>
-          {participation !== 'active' && participation !== 'barred' ? <Link href="/aesthetic-lab/opportunities">Find onboarding <ArrowUpRight size={13} /></Link> : null}
-        </div>
+        </div> : null}
       </div>
     </section>
   )

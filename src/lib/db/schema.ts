@@ -518,9 +518,9 @@ export const organizationResourcePublications = sqliteTable(
   }),
 )
 
-// A waiver can be made visible beside a particular non-onboarding task. This
-// is intentionally a visibility association only: onboarding acceptance is
-// still governed solely by the active-waiver flow above.
+// A waiver attached to a non-onboarding task is shown in that shift's sign-up
+// flow and must be signed before a participant can claim one of its shifts.
+// Onboarding acceptance remains governed by the separate active-waiver setup.
 export const waiverTaskAssignments = sqliteTable(
   'waiver_task_assignments',
   {

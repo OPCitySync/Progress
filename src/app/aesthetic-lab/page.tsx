@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { redirect } from 'next/navigation'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import {
@@ -10,10 +11,11 @@ import {
   ClipboardList,
   Heart,
 } from 'lucide-react'
-import { claims, orgs, shifts, tasks } from '@/lib/db/schema'
+import { claims, orgs, shifts, tasks, users } from '@/lib/db/schema'
 import { db } from '@/lib/db/client'
 import { markNotificationReadAction } from '@/app/actions'
 import { requireSession } from '@/lib/auth/session'
+import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { getFeed } from '@/lib/services/feed'
 import { getCityImpact } from '@/lib/services/leaderboard'
 import { getNotifications } from '@/lib/services/notifications'
@@ -28,6 +30,13 @@ import { getLabWorkspace } from './lab-workspace'
 import styles from './prototype.module.css'
 
 export const dynamic = 'force-dynamic'
+
+type ParticipantFeedPaletteVariables = CSSProperties & {
+  '--issuer-hero-deep': string
+  '--issuer-hero-mid': string
+  '--issuer-hero-accent': string
+  '--issuer-hero-accent-deep': string
+}
 
 function shortTime(timestamp: number | null) {
   if (!timestamp) return 'Time TBD'
@@ -59,7 +68,7 @@ export default async function AestheticLabPage() {
   if (session.role !== 'participant') redirect('/participant')
 
   const { city, cities, contexts } = await getLabWorkspace(session)
-  const [resume, joinedOrganizations, feed, impact, claimRows, cityEvents, notifications] = await Promise.all([
+  const [resume, joinedOrganizations, feed, impact, claimRows, cityEvents, notifications, participantAppearance] = await Promise.all([
     getMyResume(session.sub),
     getParticipantOrganizations(session.sub),
     getFeed(session.sub),
@@ -85,6 +94,7 @@ export default async function AestheticLabPage() {
           .limit(3)
       : Promise.resolve([]),
     getNotifications(session.sub, 20),
+    db.select({ bannerPalette: users.bannerPalette }).from(users).where(eq(users.id, session.sub)).limit(1).then((rows) => rows[0] ?? null),
   ])
   const savedPostIds = await savedItemIds(session.sub, 'post', feed.map(({ post }) => post.id))
 
@@ -111,6 +121,13 @@ export default async function AestheticLabPage() {
   const actionItems = notifications.filter(
     (notification) => notification.readAt === null && needsParticipantAction(notification.kind),
   )
+  const participantPalette = organizationBannerPalette(participantAppearance?.bannerPalette)
+  const participantFeedPalette: ParticipantFeedPaletteVariables = {
+    '--issuer-hero-deep': participantPalette.colors[0],
+    '--issuer-hero-mid': participantPalette.colors[1],
+    '--issuer-hero-accent': participantPalette.colors[2],
+    '--issuer-hero-accent-deep': participantPalette.colors[3],
+  }
   const renderQueueItem = (notification: typeof actionItems[number]) => (
     <article key={notification.id} data-queue-kind="action">
       <span className={`${styles.issuerQueueIcon} ${styles.issuerQueueAction}`}><ClipboardList size={17} /></span>
@@ -136,8 +153,8 @@ export default async function AestheticLabPage() {
 
           <section className={styles.quickLinks}>
             <p className={styles.eyebrow}>Quick Actions</p>
-            <Link href="/aesthetic-lab/commitments"><CalendarDays size={17} /> My Commitments</Link>
-            <Link href="/aesthetic-lab/organizations"><Building2 size={17} /> Discover organizations</Link>
+            <Link href="/aesthetic-lab/opportunities?tab=commitments"><CalendarDays size={17} /> My Commitments</Link>
+            <Link href="/aesthetic-lab/opportunities"><Building2 size={17} /> Discover organizations</Link>
             <Link href="/aesthetic-lab/opportunities?saved=1"><Heart size={17} /> Saved opportunities</Link>
           </section>
 
@@ -148,12 +165,12 @@ export default async function AestheticLabPage() {
               <div><strong>{resume?.totals.hours ?? 0}h</strong><span>Service record</span></div>
               <div><strong>{String(joinedOrganizations.length).padStart(2, '0')}</strong><span>Organizations</span></div>
             </div>
-            <Link href="/aesthetic-lab/history"><Bookmark size={15} /> View service history</Link>
+            <Link href="/aesthetic-lab/opportunities?tab=profile"><Bookmark size={15} /> View service history</Link>
           </section>
         </aside>
 
         <section className={styles.feed} aria-label="MyCity Feed">
-          <section className={`${styles.issuerHero} ${styles.participantFeedHero}`}>
+          <section className={`${styles.issuerHero} ${styles.participantFeedHero}`} style={participantFeedPalette}>
             <div><p className={`${styles.eyebrow} ${styles.myCityFeedLabel}`}>MyCity Feed</p><h2>There are good things happening today.</h2></div>
           </section>
           <ActionQueueCard

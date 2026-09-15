@@ -202,6 +202,7 @@ export type PublicOpportunity = {
   status: 'open' | 'closed'
   openShiftCount: number
   totalOpenSlots: number
+  nextShiftId: string | null
   nextShiftAt: number | null
   nextShiftLabel: string
   nextEnrollmentMode: 'open_claims' | 'organization_managed'
@@ -307,6 +308,7 @@ export async function aggregateOpportunities(taskRows: TaskRow[]): Promise<Map<s
       status: t.status,
       openShiftCount: sh.length,
       totalOpenSlots,
+      nextShiftId: next?.id ?? null,
       nextShiftAt: next?.startsAt ?? null,
       nextShiftLabel: next?.label ?? '',
       nextEnrollmentMode: next?.enrollmentMode ?? 'open_claims',
@@ -411,7 +413,7 @@ export async function getPublicProfileBySlug(slug: string): Promise<PublicProfil
     await db
       .select()
       .from(orgs)
-      .where(and(eq(orgs.slug, slug), eq(orgs.type, 'issuer'), eq(orgs.status, 'approved')))
+      .where(and(or(eq(orgs.slug, slug), eq(orgs.id, slug)), eq(orgs.type, 'issuer'), eq(orgs.status, 'approved')))
       .limit(1)
   )[0]
   if (!org) return null

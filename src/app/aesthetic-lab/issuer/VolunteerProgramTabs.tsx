@@ -1,17 +1,14 @@
 import Link from 'next/link'
-import type { CSSProperties, ReactNode } from 'react'
 import {
   CalendarDays,
   CheckCircle2,
   Circle,
-  FolderOpen,
   FolderKanban,
   LayoutList,
   UsersRound,
 } from 'lucide-react'
 import { VolunteerProgramCreateButton } from './VolunteerProgramCreateButton'
 import styles from '../prototype.module.css'
-import { organizationBannerPalette, type OrganizationBannerPalette } from '@/lib/profile/organization-appearance'
 
 type ProgramResource = {
   id: string
@@ -77,52 +74,26 @@ function readinessSteps(program: VolunteerProgramTab): ReadinessStep[] {
   ]
 }
 
-type ProgramPaletteVariables = CSSProperties & {
-  '--program-palette-deep': string
-  '--program-palette-mid': string
-  '--program-palette-accent': string
-  '--program-palette-accent-deep': string
-}
-
 export function VolunteerProgramTabs({
   tabs,
-  uploadDocuments,
-  bannerPalette = 'citysync',
 }: {
   tabs: VolunteerProgramTab[]
-  uploadDocuments?: ReactNode
-  bannerPalette?: OrganizationBannerPalette | string
 }) {
-  const palette = organizationBannerPalette(bannerPalette)
-  const paletteVariables: ProgramPaletteVariables = {
-    '--program-palette-deep': palette.colors[0],
-    '--program-palette-mid': palette.colors[1],
-    '--program-palette-accent': palette.colors[2],
-    '--program-palette-accent-deep': palette.colors[3],
-  }
-
   return <>
-    <section className={`${styles.volunteerProgramsOverview} ${uploadDocuments ? styles.volunteerProgramsOverviewWithDocuments : ''}`}>
-      <div className={styles.volunteerProgramsOverviewHeading} style={paletteVariables}>
-        <div>
-          <h2>Volunteer Programs</h2>
-          <p>Keep each area of your mission ready to welcome people, publish work, and retain its history.</p>
-        </div>
-        <div className={styles.volunteerProgramsOverviewActions}>
-          <Link className={styles.volunteerProgramsDocumentLink} href="/aesthetic-lab/issuer/documents"><FolderOpen size={14} /> Document Library</Link>
-          <VolunteerProgramCreateButton />
-        </div>
+    <section className={`${styles.volunteerProgramsOverview} ${styles.paletteTreatmentCard} ${styles.paletteTreatmentHeader} ${tabs.length ? styles.volunteerProgramsOverviewConnected : ''}`}>
+      <div>
+        <p className={styles.eyebrow}>Volunteer Programs</p>
       </div>
-      {uploadDocuments}
+      <VolunteerProgramCreateButton />
     </section>
 
-    <div className={styles.volunteerProgramGrid}>
-      {tabs.map((program) => {
+    <div className={`${styles.volunteerProgramGrid} ${tabs.length ? styles.volunteerProgramGridConnected : ''}`}>
+      {tabs.map((program, index) => {
         const status = statusFor(program)
         const steps = readinessSteps(program)
         const completedSteps = steps.filter((step) => step.complete).length
 
-        return <section key={program.id} className={styles.volunteerProgramCard}>
+        return <section key={program.id} className={`${styles.volunteerProgramCard} ${index === 0 ? styles.volunteerProgramCardConnected : ''}`}>
           <header className={styles.volunteerProgramHeading}>
             <span>{program.id === 'organization' ? <LayoutList size={18} /> : <FolderKanban size={18} />}</span>
             <div>

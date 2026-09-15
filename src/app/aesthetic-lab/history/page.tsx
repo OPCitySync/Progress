@@ -51,7 +51,7 @@ export default async function HistoryLabPage() {
           <section className={styles.quickLinks}>
             <Link href="/aesthetic-lab/opportunities"><Heart size={17} /> Saved opportunities</Link>
             <Link href="/aesthetic-lab"><CalendarDays size={17} /> Upcoming commitments</Link>
-            <Link href="/aesthetic-lab/organizations"><Building2 size={17} /> Discover organizations</Link>
+            <Link href="/aesthetic-lab/opportunities"><Building2 size={17} /> Discover organizations</Link>
           </section>
         </aside>
 

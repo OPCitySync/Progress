@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { claims, organizationDocumentAssignments, organizationDocuments, organizationQueueAcknowledgements, organizationResourcePublications, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants, waiverTaskAssignments, waiverVersions } from '@/lib/db/schema'
+import { claims, organizationDelegations, organizationDocumentAssignments, organizationDocuments, organizationQueueAcknowledgements, organizationResourcePublications, tasks, users, volunteerEligibilityRecords, volunteerIdentityVerifications, volunteerTaskEligibilityGrants, waiverTaskAssignments, waiverVersions } from '@/lib/db/schema'
 import { verifyPassword } from '@/lib/auth/password'
 import { aestheticHomeFor, createSession, clearSession, getSession, homeFor, type Session } from '@/lib/auth/session'
 import { participantCreditsEnabled } from '@/lib/config'
@@ -13,6 +13,7 @@ import { registerParticipant, registerOrg, setOrgStatus, updateAccountIdentity, 
 import {
   createTask,
   updateTask,
+  setOpportunityPublicationStatus,
   deleteOpportunityTemplate,
   getTaskCapacityConflicts,
   createShift,
@@ -699,6 +700,24 @@ export async function updateTaskAction(formData: FormData) {
   back(formData, `/aesthetic-lab/issuer/opportunities/${taskId}`, result.ok ? { ok: 'Opportunity details saved.' } : { error: result.error })
 }
 
+export async function setOpportunityPublicationStatusAction(formData: FormData) {
+  const session = await requireActor('issuer', 'opportunities.manage')
+  if (!session.orgId) redirect('/issuer')
+  const status = str(formData, 'status') === 'closed' ? 'closed' : 'open'
+  const destination = str(formData, 'redirectTo') || '/aesthetic-lab/issuer/catalog?workspace=opportunities'
+  const result = await setOpportunityPublicationStatus({
+    taskId: str(formData, 'taskId'),
+    orgId: session.orgId,
+    actorId: session.sub,
+    status,
+  })
+  revalidatePath('/aesthetic-lab/issuer/catalog')
+  revalidatePath('/aesthetic-lab/opportunities')
+  back(formData, destination, result.ok
+    ? { ok: status === 'open' ? 'Opportunity opened to public discovery.' : 'Opportunity closed to new public discovery.' }
+    : { error: result.error })
+}
+
 export async function deleteOpportunityTemplateAction(formData: FormData) {
   const session = await requireActor('issuer', 'opportunities.manage')
   if (!session.orgId) redirect('/issuer')
@@ -841,8 +860,13 @@ export async function scheduleNewShiftAction(formData: FormData) {
   if (visibility === 'public' && !description) {
     back(formData, destination, { error: 'Add a public description so Civic Participants know what to expect.' })
   }
-  const assignedUserIds = visibility === 'private' ? strList(formData, 'assignedUserId') : []
-  if (assignedUserIds.length) await requireActor('issuer', 'participants.manage')
+  const assignedUserIds = visibility === 'private' ? Array.from(new Set(strList(formData, 'assignedUserId'))) : []
+  const assignedStaffUserIds = visibility === 'private' ? Array.from(new Set(strList(formData, 'assignedStaffUserId'))) : []
+  const rosterSelectionRequired = visibility === 'private' && str(formData, 'requirePrivateRosterSelection') === 'true'
+  if (rosterSelectionRequired && !assignedUserIds.length && !assignedStaffUserIds.length) {
+    back(formData, destination, { error: 'Choose at least one staff member or volunteer for this private shift.' })
+  }
+  if (assignedUserIds.length || assignedStaffUserIds.length) await requireActor('issuer', 'participants.manage')
 
   if(assignedUserIds.length){
     const roster=await (await import('@/lib/services/roster')).getRoster(session.orgId)
@@ -853,6 +877,40 @@ export async function scheduleNewShiftAction(formData: FormData) {
       const error=await programAccessError(session.orgId,str(formData,'programId')||'organization',userId)
       if(error)back(formData,destination,{error})
     }
+  }
+  if (assignedStaffUserIds.length) {
+    const activeStaff = await db.select({ userId: organizationDelegations.userId }).from(organizationDelegations).where(and(
+      eq(organizationDelegations.orgId, session.orgId),
+      eq(organizationDelegations.status, 'active'),
+      inArray(organizationDelegations.userId, assignedStaffUserIds),
+    ))
+    if (activeStaff.length !== assignedStaffUserIds.length) back(formData, destination, { error: 'Choose active staff from your organization.' })
+  }
+  const assignPrivateRoster = async (shiftId: string) => {
+    let volunteerCount = 0
+    let staffCount = 0
+    if (assignedUserIds.length) {
+      const assignment = await assignVolunteersToShift({
+        shiftId,
+        orgId: session.orgId!,
+        actorId: session.sub,
+        userIds: assignedUserIds,
+      })
+      if (!assignment.ok) return { ok: false as const, error: assignment.error }
+      volunteerCount = assignment.assigned
+    }
+    for (const userId of assignedStaffUserIds) {
+      const assignment = await assignStaffToShift({ shiftId, orgId: session.orgId!, actorId: session.sub, userId })
+      if (!assignment.ok) return { ok: false as const, error: assignment.error }
+      if (assignment.assigned) staffCount += 1
+    }
+    return { ok: true as const, volunteerCount, staffCount }
+  }
+  const assignmentSummary = (volunteerCount: number, staffCount: number) => {
+    const parts = []
+    if (volunteerCount) parts.push(`${volunteerCount} volunteer${volunteerCount === 1 ? '' : 's'}`)
+    if (staffCount) parts.push(`${staffCount} staff member${staffCount === 1 ? '' : 's'}`)
+    return parts.join(' and ')
   }
   if (templateId) {
     const requestedProgramId = str(formData, 'programId') || null
@@ -873,6 +931,11 @@ export async function scheduleNewShiftAction(formData: FormData) {
     })
     if (!result.ok) back(formData, destination, { error: result.error })
     if (result.mode === 'published' && result.visibility === 'public') await notifyMatchingParticipants(result.taskId)
+    if (result.visibility === 'private' && result.shiftId && (assignedUserIds.length || assignedStaffUserIds.length)) {
+      const assignment = await assignPrivateRoster(result.shiftId)
+      if (!assignment.ok) back(formData, destination, { error: `Shift scheduled, but its roster could not be completed: ${assignment.error}` })
+      back(formData, destination, { ok: `Shift scheduled with ${assignmentSummary(assignment.volunteerCount, assignment.staffCount)}.` })
+    }
     back(formData, destination, { ok: recurring ? 'Recurring shift scheduled from the selected template.' : 'Shift scheduled from the selected template.' })
   }
   const result = await createTask({
@@ -900,17 +963,12 @@ export async function scheduleNewShiftAction(formData: FormData) {
   if (!result.ok) back(formData, destination, { error: result.error })
 
   if (visibility === 'public') await notifyMatchingParticipants(result.id)
-  if (visibility === 'private' && assignedUserIds.length && result.shiftId) {
-    const assignment = await assignVolunteersToShift({
-      shiftId: result.shiftId,
-      orgId: session.orgId,
-      actorId: session.sub,
-      userIds: assignedUserIds,
-    })
+  if (visibility === 'private' && result.shiftId && (assignedUserIds.length || assignedStaffUserIds.length)) {
+    const assignment = await assignPrivateRoster(result.shiftId)
     if (!assignment.ok) {
-      back(formData, destination, { error: `Shift scheduled and its reusable template saved, but volunteers could not be assigned: ${assignment.error}` })
+      back(formData, destination, { error: `Shift scheduled and its reusable template saved, but its roster could not be completed: ${assignment.error}` })
     }
-    back(formData, destination, { ok: `Shift scheduled, reusable template saved, and ${assignment.assigned} volunteer${assignment.assigned === 1 ? '' : 's'} added.` })
+    back(formData, destination, { ok: `Shift scheduled, reusable template saved, and ${assignmentSummary(assignment.volunteerCount, assignment.staffCount)} added.` })
   }
   back(formData, destination, { ok: recurring
     ? 'First shift scheduled and its reusable weekly template saved.'

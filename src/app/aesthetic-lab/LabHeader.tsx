@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import {
   Building2,
   ClipboardList,
@@ -9,6 +10,7 @@ import {
 import { NotificationsControl } from './NotificationsControl'
 import { UserMenu } from './UserMenu'
 import { WeatherWidget } from './WeatherWidget'
+import { IssuerPaletteRoot } from './IssuerPaletteRoot'
 import styles from './prototype.module.css'
 import type { Session } from '@/lib/auth/session'
 import type { CityNetwork } from '@/lib/services/city-networks'
@@ -19,6 +21,7 @@ import { getProfile } from '@/lib/services/profile'
 import { db } from '@/lib/db/client'
 import { users } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 
 export type LabSection =
   | 'feed'
@@ -35,9 +38,16 @@ export type LabSection =
 
 export type LabWorkspace = 'participant' | 'issuer'
 
+type HeaderPaletteStyle = CSSProperties & {
+  '--program-palette-deep': string
+  '--program-palette-mid': string
+  '--program-palette-accent': string
+  '--program-palette-accent-deep': string
+}
+
 const participantSections = [
   { key: 'feed', label: 'Home', href: '/aesthetic-lab', icon: Home },
-  { key: 'opportunities', label: 'Opportunities', href: '/aesthetic-lab/opportunities', icon: Compass },
+  { key: 'opportunities', label: 'Discover', href: '/aesthetic-lab/opportunities', icon: Compass },
 ] as const
 
 const issuerSections = [
@@ -86,9 +96,19 @@ export async function LabHeader({
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
   ])
+  const issuerPalette = organizationBannerPalette(organizationProfile?.bannerPalette)
+  const participantPalette = organizationBannerPalette(participantAppearance?.bannerPalette)
+  const headerPalette = isIssuer ? issuerPalette : participantPalette
+  const headerPaletteStyle: HeaderPaletteStyle = {
+    '--program-palette-deep': headerPalette.colors[0],
+    '--program-palette-mid': headerPalette.colors[1],
+    '--program-palette-accent': headerPalette.colors[2],
+    '--program-palette-accent-deep': headerPalette.colors[3],
+  }
 
   return (
-    <header className={styles.topbar}>
+    <header className={styles.topbar} style={headerPaletteStyle}>
+      {isIssuer ? <IssuerPaletteRoot colors={issuerPalette.colors} /> : null}
       <div className={styles.topbarInner}>
         <Link href="/aesthetic-lab" className={styles.brand} aria-label="City/Sync prototype home">
           {/* The same official wordmark used by the City/Sync application. */}

@@ -6,11 +6,10 @@ export const ORGANIZATION_BANNER_STYLES = [
 ] as const
 
 export const ORGANIZATION_BANNER_PALETTES = [
-  { value: 'citysync', label: 'City/Sync', colors: ['#15151e', '#35488b', '#f7c95d', '#dd9e33'] },
-  { value: 'harbor', label: 'Harbor', colors: ['#112a3d', '#28627a', '#efc15d', '#c88f32'] },
-  { value: 'civic-teal', label: 'Civic Teal', colors: ['#172829', '#3e7471', '#e9bd58', '#bf8730'] },
-  { value: 'forest', label: 'Forest', colors: ['#1c2924', '#456750', '#d8b45a', '#ab7d31'] },
+  { value: 'citysync', label: 'City/Sync', colors: ['#15151e', '#35488b', '#9aace7', '#5870c3'] },
   { value: 'terracotta', label: 'Terracotta', colors: ['#352120', '#865044', '#efbd67', '#c78138'] },
+  { value: 'forest', label: 'Forest', colors: ['#1c2924', '#456750', '#b9d0ae', '#6f9272'] },
+  { value: 'amethyst', label: 'Amethyst', colors: ['#261b35', '#684c8f', '#d7b8f3', '#a878cf'] },
 ] as const
 
 export type OrganizationBannerStyle = (typeof ORGANIZATION_BANNER_STYLES)[number]['value']

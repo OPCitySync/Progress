@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { BarChart3, CalendarDays, Check, ClipboardList, HeartHandshake, Plus, UserRoundPlus, X } from 'lucide-react'
+import { CalendarDays, Check, ClipboardList, HeartHandshake, Plus, UserRoundPlus, X } from 'lucide-react'
 import { programWorkspaceAction, participantOnboardingAction } from './program-workspace-actions'
 import styles from './ProgramWorkspace.module.css'
 
@@ -75,16 +75,15 @@ const sections=[
   {id:'positions',label:'Roles & Applications',icon:ClipboardList},
   {id:'onboarding',label:'Onboarding',icon:UserRoundPlus},
   {id:'scheduling',label:'Shift Planning',icon:CalendarDays},
-  {id:'recognition',label:'Recognition',icon:HeartHandshake},
-  {id:'overview',label:'Program Overview',icon:BarChart3},
+  {id:'recognition',label:'Verification',icon:HeartHandshake},
 ]
-export function ProgramNavigation({initialSection='overview',panels}:{initialSection?:string;panels:Record<string,ReactNode>}){
-  const [active,setActive]=useState(sections.some(s=>s.id===initialSection)?initialSection:'overview')
+export function ProgramNavigation({initialSection='positions',panels}:{initialSection?:string;panels:Record<string,ReactNode>}){
+  const [active,setActive]=useState(sections.some(s=>s.id===initialSection)?initialSection:'positions')
   const nav=useRef<HTMLDivElement>(null)
   const select=(id:string)=>{setActive(id);const url=new URL(location.href);url.searchParams.set('section',id);url.hash='';history.replaceState({},'',url)}
   useEffect(()=>{if(initialSection&&sections.some(s=>s.id===initialSection))setActive(initialSection)},[initialSection])
   useEffect(()=>{
-    function sync(){const hash=location.hash;const mapped=hash.includes('opportunities')?'positions':hash.includes('schedule')||hash.includes('staffing')?'scheduling':null; const id=mapped||new URLSearchParams(location.search).get('section')||'overview';if(sections.some(s=>s.id===id))setActive(id)}
+    function sync(){const hash=location.hash;const mapped=hash.includes('opportunities')?'positions':hash.includes('schedule')||hash.includes('staffing')?'scheduling':null; const id=mapped||new URLSearchParams(location.search).get('section')||'positions';setActive(sections.some(s=>s.id===id)?id:'positions')}
     sync();window.addEventListener('hashchange',sync);window.addEventListener('popstate',sync)
     return()=>{window.removeEventListener('hashchange',sync);window.removeEventListener('popstate',sync)}
   },[])

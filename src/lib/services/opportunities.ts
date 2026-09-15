@@ -337,6 +337,41 @@ export async function updateTask(input: {
   return { ok: true }
 }
 
+/** Toggle whether an opportunity can be discovered publicly. Unlike deleting
+ * a template, closing publication preserves its shifts, reservations,
+ * recurring plans, and history so the organization can reopen it later. */
+export async function setOpportunityPublicationStatus(input: {
+  taskId: string
+  orgId: string
+  actorId: string
+  status: 'open' | 'closed'
+}): Promise<Result> {
+  const task = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, input.taskId), eq(tasks.orgId, input.orgId)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!task || task.isOnboarding === 1) return { ok: false, error: 'Published opportunity not found.' }
+  if (task.status === input.status) return { ok: true }
+
+  await db.transaction(async (tx) => {
+    await tx.update(tasks).set({ status: input.status }).where(eq(tasks.id, task.id))
+    await appendEvent(
+      tx,
+      input.status === 'open' ? EventTypes.TASK_REOPENED : EventTypes.TASK_CLOSED,
+      {
+        orgId: input.orgId,
+        taskId: task.id,
+        cityId: task.cityId,
+        reason: 'public_opportunity_toggle',
+      },
+      input.actorId,
+    )
+  })
+  return { ok: true }
+}
+
 export async function createShift(input: {
   taskId: string
   orgId: string
@@ -1062,6 +1097,24 @@ export async function checkClaimGate(
         identityMatchRequired: waiverSetup.identityCheck === 'staff_attested',
       },
     }
+  }
+
+  const attachedWaivers = await db
+    .select({ id: waiverVersions.id })
+    .from(waiverTaskAssignments)
+    .innerJoin(waiverVersions, eq(waiverVersions.id, waiverTaskAssignments.waiverVersionId))
+    .where(and(
+      eq(waiverTaskAssignments.taskId, task.id),
+      eq(waiverVersions.orgId, task.orgId),
+      eq(waiverVersions.active, 1),
+    ))
+  const unacceptedWaiverIds = (
+    await Promise.all(attachedWaivers.map(async (waiver) => (
+      (await hasSignedWaiver(userId, waiver.id)) ? null : waiver.id
+    )))
+  ).filter((id): id is string => Boolean(id))
+  if (unacceptedWaiverIds.length > 0) {
+    return { ok: false, reason: 'waiver_required', waiverVersionIds: unacceptedWaiverIds }
   }
 
   return { ok: true }

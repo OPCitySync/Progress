@@ -41,8 +41,8 @@ export async function getOrganizationResourcePublicationMap(orgId: string) {
   return map
 }
 
-/** Current task visibility assignments for active waivers. They do not affect
- * the separate onboarding acceptance requirement. */
+/** Current task requirements for active waivers. They do not affect the
+ * separate onboarding acceptance requirement. */
 export async function getWaiverTaskIdsByWaiver(orgId: string) {
   const waivers = await db
     .select({ id: waiverVersions.id })
@@ -116,8 +116,7 @@ export async function getPublishedOrganizationResources(input: {
   })
 }
 
-/** Waivers deliberately attached to a non-onboarding task as included
- * reference materials. */
+/** Active waivers deliberately required by a non-onboarding task. */
 export async function getWaiversAttachedToTask(taskId: string) {
   return db
     .select({ waiver: waiverVersions })

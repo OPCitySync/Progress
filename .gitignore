@@ -16,4 +16,7 @@ next-env.d.ts
 # Locally uploaded profile images (STORAGE_MODE=local). Prod uses Vercel Blob.
 public/uploads/*
 !public/uploads/.gitkeep
+
+# Private application uploads must never enter source control or a deployment bundle.
+.private-uploads/
 .vercel

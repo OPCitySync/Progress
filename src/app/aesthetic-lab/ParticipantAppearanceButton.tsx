@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Camera, X } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import { saveParticipantAppearanceAction } from '@/app/actions'
 import { OrganizationAppearancePicker } from '@/components/profile/OrganizationAppearancePicker'
 import {
@@ -24,6 +24,13 @@ async function uploadParticipantPicture(file: File) {
 type PictureVariables = CSSProperties & {
   '--profile-picture-top': string
   '--profile-picture-bottom': string
+}
+
+type AppearancePaletteVariables = CSSProperties & {
+  '--program-palette-deep': string
+  '--program-palette-mid': string
+  '--program-palette-accent': string
+  '--program-palette-accent-deep': string
 }
 
 export function ParticipantAppearanceButton({
@@ -52,6 +59,12 @@ export function ParticipantAppearanceButton({
     '--profile-picture-top': palette.colors[2],
     '--profile-picture-bottom': palette.colors[1],
   }
+  const appearancePaletteStyle: AppearancePaletteVariables = {
+    '--program-palette-deep': palette.colors[0],
+    '--program-palette-mid': palette.colors[1],
+    '--program-palette-accent': palette.colors[2],
+    '--program-palette-accent-deep': palette.colors[3],
+  }
 
   useEffect(() => {
     if (!open) return
@@ -78,12 +91,11 @@ export function ParticipantAppearanceButton({
 
       {open ? createPortal(
         <div className={styles.issuerCalendarModalBackdrop} role="presentation" onMouseDown={() => setOpen(false)}>
-          <section className={`${styles.issuerCalendarModal} ${styles.issuerAppearanceModal}`} role="dialog" aria-modal="true" aria-labelledby="participant-appearance-title" onMouseDown={(event) => event.stopPropagation()}>
+          <section className={`${styles.issuerCalendarModal} ${styles.issuerAppearanceModal}`} style={appearancePaletteStyle} role="dialog" aria-modal="true" aria-labelledby="participant-appearance-title" onMouseDown={(event) => event.stopPropagation()}>
             <div className={styles.issuerCalendarModalHeading}>
               <div><p className={styles.eyebrow}>Civic Participant</p><h2 id="participant-appearance-title">Choose Your Appearance</h2></div>
-              <button type="button" aria-label="Close" onClick={() => setOpen(false)}><X size={18} /></button>
             </div>
-            <form action={saveParticipantAppearanceAction} className={`${styles.issuerCalendarForm} ${styles.issuerAppearanceForm}`}>
+            <form action={saveParticipantAppearanceAction} className={`${styles.issuerCalendarForm} ${styles.issuerAppearanceForm}`} onSubmit={() => setOpen(false)}>
               <input type="hidden" name="redirectTo" value={redirectTo} />
               <input type="hidden" name="avatarUrl" value={avatarUrl} />
               <div className={styles.issuerAppearanceLogo}>
