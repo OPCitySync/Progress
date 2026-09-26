@@ -18,6 +18,7 @@ import { LabHeader } from '../LabHeader'
 import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import { ResumeControls } from '../ResumeControls'
 import styles from '../prototype.module.css'
+import { PassportTabs } from '../passport/PassportTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,7 @@ export default async function HistoryLabPage() {
             <p>Keep a clear, participant-owned history of the ways you&apos;ve contributed across your city network.</p>
           </div>
 
+          <PassportTabs active="history" />
           <section className={styles.serviceResumeCard}>
             <div className={styles.resumeSeal}><CheckCircle2 size={25} /></div>
             <div><p className={styles.eyebrow}>Shareable service resume</p><h2>{resume.name}&apos;s service record</h2><p>{resume.totals.contributions} completed shift{resume.totals.contributions === 1 ? '' : 's'} · {resume.totals.hours} verified volunteer hours · Updated today</p></div>

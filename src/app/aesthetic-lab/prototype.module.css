@@ -2896,3 +2896,197 @@ textarea.profileInlineField { min-height: 66px; resize: vertical; }
   .publishedOpportunityActions { grid-column: 2; flex-wrap: wrap; }
   .publishedOpportunityActions :is(a, button) { min-height: 30px; }
 }
+
+/* Coordination design integration. Keep these shared presentation rules together
+   while legacy pages migrate; actions, permissions and data remain server-owned. */
+.app {
+  --blue: #294f40; --blue-deep: #26392f; --ink: #26392f; --muted: #758078;
+  --line: #e5e9e1; --paper: #fff; --mint: #eaf0df; --sun: #c59a4a;
+  --coordination-green: #294f40; --coordination-bg: #f6f7f3;
+  background: var(--coordination-bg); font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.app :is(h1,h2,h3) { font-family: inherit; letter-spacing: -.035em; }
+.app :is(button, a, summary):focus-visible { outline: 2px solid #60865a; outline-offset: 3px; }
+.app .eyebrow { color: #72816b; font-size: 10px; letter-spacing: .13em; font-weight: 600; }
+.app .issuerLayout { display: flex; flex-direction: column; max-width: 1360px; margin: auto; padding: 0 32px 64px; gap: 0; }
+.app .issuerMain { width: 100%; gap: 24px; }
+.app .issuerContext { display: flex; position: relative; z-index: 12; width: 100%; align-items: center; justify-content: space-between; gap: 24px; min-height: 96px; padding-block: 20px; }
+.issuerContextIdentity { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.issuerContextIdentity > div { display: grid; gap: 4px; }
+.issuerContextIdentity strong { font-size: 14px; font-weight: 600; }
+.issuerContextIdentity span { color: var(--muted); font-size: 11px; }
+.app .issuerContextIdentity > button { position: relative; inset: auto; width: 42px; height: 42px; min-width: 42px; margin: 0; border: 0; border-radius: 12px; box-shadow: none; font-size: 13px; }
+.issuerContextActions { display: flex; align-items: center; gap: 24px; }
+.issuerContextActions > a, .issuerContextShortcuts > summary { display: flex; align-items: center; gap: 7px; color: #52634d; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.issuerContextShortcuts { position: relative; }
+.issuerContextShortcuts > summary { list-style: none; padding: 10px 0; }
+.issuerContextShortcuts > summary::-webkit-details-marker { display: none; }
+.app .issuerContextShortcuts > section { position: absolute; z-index: 20; top: 40px; right: 0; width: 280px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: white; box-shadow: 0 12px 40px #26392f22; }
+.app .issuerHero { background: #294f40; border: 1px solid #294f40; border-radius: 18px; color: #fff; min-height: 200px; height: auto; padding: 32px 36px; align-items: center; box-shadow: none; }
+.app .issuerHero h2 { color: #fff; font-size: clamp(26px,3vw,36px); font-weight: 500; letter-spacing: -.04em; margin: 10px 0 14px; line-height: 1.15; }
+.app .issuerHero .eyebrow { color: #d7e5b9; }
+.app .issuerHero p:last-child { max-width: 550px; font-size: 13px; line-height: 1.7; color: #d8e3d6; }
+.app .issuerHeroActions :is(a, button) { min-height: 44px; padding: 12px 18px; border: 0; background: #e2ecbd; color: #294f40; box-shadow: none; font-size: 12px; font-weight: 600; }
+.app .issuerHomeMain { perspective: none; }
+.app .issuerHomeMain > :is(.issuerHero,.issuerTaskQueue,.issuerScheduleCard), .app .issuerHomeMain > :is(.issuerTaskQueue,.issuerScheduleCard):hover { transform: none; box-shadow: none; }
+.app .issuerHomeMain > :is(.issuerHero,.issuerTaskQueue,.issuerScheduleCard)::after { display: none; }
+.app :is(.issuerTaskQueue,.issuerScheduleCard,.issuerCatalogCard,.issuerRosterCard,.issuerReportCard,.issuerPublicProfileCard,.profilePreviewCard,.issuerMessageCard,.opportunityCard,.serviceResumeCard,.historyEntry,.impactCard,.quickLinks,.todayEventsCard,.cityPulse,.cityCard,.participantIdentityCard,.issuerIdentityCard) { border: 1px solid var(--line); background: #fff; border-radius: 16px; box-shadow: 0 4px 20px #2d4b3104; }
+.app :is(.issuerTaskQueue,.issuerScheduleCard) { padding: 24px 28px; border-color: #dce4d5; }
+.app .issuerPanelHeading { margin: 0 0 18px; }
+.app .issuerPanelHeading h2 { margin: 5px 0 0; color: var(--ink); font-size: 24px; font-weight: 500; }
+.app .issuerTaskQueueCollapsed .issuerPanelHeading { margin: 0; }
+.app :is(.issuerQueueCollapseButton,.issuerQueueHistoryLink) { width: 36px; height: 36px; border-radius: 9px; color: #69815b; }
+.app .issuerQueueList { max-height: 380px; }
+.app .issuerQueueGroup[data-queue-group='action'] { padding: 0; border: 0; background: none; box-shadow: none; }
+.app .issuerQueueGroupHeading { padding: 0 0 12px; }
+.app .issuerQueueGroupHeading b { color: #758078; font-size: 10px; }
+.app .issuerQueueGroup[data-queue-group='action'] .issuerQueueGroupItems article { margin: 0; padding: 18px 0; border: 0; border-top: 1px solid var(--line); background: none; box-shadow: none; border-radius: 0; gap: 15px; }
+.app .issuerQueueList article b { font-size: 13px; color: var(--ink); font-weight: 600; white-space: normal; }
+.app .issuerQueueList article small { font-size: 11px; line-height: 1.65; color: var(--muted); white-space: normal; }
+.app .issuerQueueIcon { width: 37px; height: 37px; }
+.app .issuerQueueList article a, .app .issuerQueueActions button { min-height: 36px; font-size: 11px; border: 1px solid var(--line); background: #f4f7ee; color: #46643a; box-shadow: none; padding: 8px 12px; }
+.app .issuerQueueEmpty { padding: 20px 0; background: none; }
+.app .issuerQueueEmpty b { font-size: 14px; font-weight: 500; line-height: 1.6; color: #526b49; }
+.app .issuerScheduleHeader { margin-bottom: 24px; gap: 16px; }
+.app .issuerScheduleHeader h2 { font-size: 24px; font-weight: 500; }
+.app .issuerScheduleTitle > p:not(.eyebrow) { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.app .issuerScheduleButtons { background: #f0f4e8; border: 1px solid var(--line); padding: 4px; box-shadow: none; }
+.app .issuerScheduleButtons button { padding: 9px 13px; font-size: 11px; }
+.app .issuerScheduleButtons .issuerScheduleButtonActive { background: white; color: #35543c; box-shadow: 0 1px 5px #36513212; }
+.app .issuerAddCalendarButton { min-height: 36px; height: auto; padding: 8px 12px; font-size: 11px; background: #f4f7ee; color: #46643a; border: 1px solid var(--line); box-shadow: none; }
+.app .issuerCalendarGrid { border-color: var(--line); background: var(--line); gap: 1px; box-shadow: none; }
+.app .issuerCalendarDay { background: white; border-color: var(--line); padding: 8px; min-height: 118px; }
+.app .issuerCalendarMuted { background: #fafbf7; }
+.app .issuerCalendarToday { background: #f4f8eb; box-shadow: none; }
+.app .issuerCalendarDay > :first-child { font-size: 11px; color: #718563; }
+.app .issuerCalendarEvent { height: auto; min-height: 44px; margin-block: 6px; padding: 8px; border: 0; border-left: 3px solid #9db17d; border-radius: 6px; box-shadow: none; }
+.app .issuerCalendarEvent span { font-size: 11px; white-space: normal; line-height: 1.4; }
+.app .issuerCalendarEvent b { display: block; font-size: 9px; }
+.app :is(.issuerCalendarBlue,.issuerScheduleBlue) { background: #eaf0df; color: #47623a; }
+.app :is(.issuerCalendarGold,.issuerScheduleGold) { background: #f8efd9; color: #78612c; }
+.app :is(.issuerCalendarMint,.issuerScheduleMint) { background: #eee8f3; color: #756080; }
+.app :is(.issuerCalendarCoral,.issuerScheduleCoral) { background: #f9e9df; color: #86604b; }
+.app .issuerScheduleFooter { margin-top: 20px; font-size: 11px; }
+.app .layout { max-width: 1360px; grid-template-columns: 230px minmax(0,1fr) 270px; padding: 30px 32px 64px; gap: 24px; }
+.app .detailLayout { max-width: 1360px; padding: 30px 32px 64px; }
+.app .leftRail, .app .rightRail { top: 140px; }
+.app .pageIntro h1 { font-size: clamp(26px,3vw,34px); font-weight: 500; line-height: 1.2; }
+.app .pageIntro > p:last-child { font-size: 13px; line-height: 1.7; color: var(--muted); }
+.app .participantOpportunityTabs { background: white; border: 1px solid var(--line); border-radius: 12px; padding: 5px; box-shadow: none; }
+.app .participantOpportunityTabs > a { background: transparent; border: 0; color: #72816b; font-size: 12px; font-weight: 500; }
+.app .participantOpportunityTabs > a[data-active='true'] { background: #eaf0df; color: #294f40; box-shadow: none; }
+.app .participantOpportunityTabs > a svg { color: inherit; }
+.app .feedFilters { background: #fff; border-color: var(--line); box-shadow: none; padding: 10px; }
+.app .feedFilters button { font-size: 12px; font-weight: 500; }
+.app .feedFilters .feedFilterActive { background: #eaf0df; color: #294f40; box-shadow: none; }
+.app .profileButton, .app .utilityNav :is(a,button) { border: 1px solid #ffffff25; color: #efe7dc; background: #ffffff08; box-shadow: none; }
+.app .profileButton { min-height: 42px; border-radius: 24px; padding: 4px 7px 4px 4px; }
+.app .utilityNav a { width: 42px; height: 42px; border-radius: 12px; }
+.app .profileButton:hover, .app .utilityNav a:hover { background: #ffffff18; color: #e9c886; }
+.app .userMenu { grid-column: auto; }
+.app .userPopover { color: #354e40; background: #fff; border-color: var(--line); box-shadow: 0 14px 50px #102c3329; width: 290px; }
+.app .userPopover :is(a,button) { box-shadow: none; }
+.app .userPopover .eyebrow { color: #758078; }
+.app .passportLayout { grid-template-columns: 230px minmax(0,1fr); gap: 30px; }
+.coordinationTabs { display: flex; gap: 28px; border-bottom: 1px solid var(--line); margin: 0 0 24px; }
+.app .coordinationTabs a { display: flex; align-items: center; gap: 8px; padding: 14px 0; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; }
+.app .coordinationTabs a[aria-current='page'] { color: #294f40; border-bottom-color: #456750; font-weight: 600; }
+.passportResume { padding: 32px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.passportResume h2 { font-size: 28px; margin: 8px 0; }
+.passportResume > p { font-size: 13px; line-height: 1.7; color: var(--muted); }
+.passportSharingNote { margin-block: 24px; padding: 14px; background: #f4f7ee; border-radius: 8px; }
+.passportContributions article { display: flex; justify-content: space-between; gap: 24px; padding: 20px 0; border-top: 1px solid var(--line); }
+.passportContributions h3 { font-size: 15px; margin: 0; }
+.passportContributions p, .passportContributions span { font-size: 12px; color: var(--muted); }
+.passportContributions small { display: block; margin-top: 6px; }
+@media (max-width: 1100px) {
+  .app .layout { grid-template-columns: 220px minmax(0,1fr); }.app .rightRail { display: none; }
+  .app .issuerScheduleHeader { grid-template-columns: 1fr auto; }.app .issuerScheduleTitle { grid-column: 1; grid-row: 1; text-align: left; }.app .issuerScheduleControls { grid-column: 2; grid-row: 1; }.app .issuerScheduleHeaderAction { grid-column: 1/-1; grid-row: 2; height: auto; margin-left: 0 !important; }
+}
+@media (max-width: 760px) {
+  .app .issuerLayout { padding: 0 18px 40px; }.app .issuerMain { gap: 18px; }
+  .app .issuerContext { gap: 12px; flex-wrap: wrap; padding-block: 18px; min-height: 88px; }.issuerContextIdentity strong { font-size: 12px; }.issuerContextActions { gap: 18px; }.issuerContextActions > a,.issuerContextShortcuts > summary { font-size: 11px; }
+  .app .issuerHero { min-height: 220px; padding: 25px; gap: 24px; align-items: flex-start; }.app .issuerHero h2 { font-size: 27px; }.app .issuerHeroActions { width: auto; }
+  .app :is(.issuerTaskQueue,.issuerScheduleCard) { padding: 20px 16px; }.app .issuerPanelHeading h2,.app .issuerScheduleHeader h2 { font-size: 21px; }
+  .app .issuerQueueActions { grid-column: 2; flex-wrap: wrap; }.app .issuerQueueList article b { font-size: 12px; }
+  .app .issuerCalendarDay { padding: 4px; min-height: 100px; }.app .issuerCalendarEvent { padding: 5px; }.app .issuerCalendarEvent span { font-size: 9px; }.app .issuerCalendarEvent b { font-size: 8px; }
+  .app .layout,.app .detailLayout,.app .passportLayout { display: block; padding: 24px 18px 40px; }.app .leftRail { display: none; }
+  .passportResume { padding: 22px; }.passportContributions article { flex-direction: column; gap: 4px; }
+}
+@media print { .app { background: #fff; }.app .coordinationTabs,.app .passportSharingNote,.app .resumeActions { display: none; }.app .passportLayout { display: block; }.app .passportLayout > aside { display: none; }.passportResume { border: 0; } }
+.app .storyCard { padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 4px 20px #2d4b3104; }
+.app .storyHeader { padding: 22px 24px 12px; }
+.app .storyHeader h3 { font-size: 14px; font-weight: 600; }
+.app .storyHeader p { font-size: 11px; }
+.app .storyText { margin: 0; padding: 5px 24px 22px; font-size: 14px; color: #52634d; line-height: 1.75; }
+.app .storyFooter { padding: 16px 24px; border-top: 1px solid var(--line); background: #fff; font-size: 12px; }
+.app .orgAvatar { background: #eaf0df; color: #46643a; box-shadow: none; border: 0; }
+.app :is(.volunteerProfileHero,.volunteerProfileOrgCard,.profileEditorCard) { border-color: var(--line); background: #fff; box-shadow: none; color: var(--ink); }
+.app .publicProfileBody { padding: 30px; }
+.app .publicProfileBody h1 { font-size: 32px; font-weight: 500; }
+.app .publicProfileMission { font-size: 14px; color: #65735d; line-height: 1.8; }
+.app .programControlCenterCard { min-height: auto; padding: 28px 0 22px; color: var(--ink); background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.app .programControlCenterHeading h1 { color: var(--ink); font-size: 30px; font-weight: 500; margin: 8px 0 10px; }
+.app .programControlCenterHeading .eyebrow { color: var(--muted); }
+.app .programControlCenterHeading p:last-child { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.app .paletteTreatmentCard, .app :is(.profileInfoCard,.profileSharingCard,.volunteerProgramCard,.workspaceSetupCard,.rosterWorkspaceCard) { border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: none; }
+.app .paletteTreatmentHeader { color: var(--ink); background: #f4f7ee; border-color: var(--line); box-shadow: none; }
+.app .paletteTreatmentHeader :is(h2,h3,.eyebrow), .app .paletteTreatmentBody :is(h2,h3) { color: var(--ink); }
+.app .paletteTreatmentBody { color: var(--ink); background: #fff; border-color: var(--line); box-shadow: none; }
+.app .profileSharingCard, .app .profileInfoCard { padding: 24px; }
+.app .profileSharingHeading h2, .app .profileInfoCard h2 { font-size: 21px; font-weight: 500; }
+.app .profileSharingOptions article { background: #fafbf8; border-color: var(--line); box-shadow: none; }
+.app .profileSharingOptions b { font-size: 12px; }
+.app .profileSharingOptions p { font-size: 11px; line-height: 1.65; }
+.app .profileFieldList :is(p,b) { font-size: 12px; line-height: 1.65; }
+.app :is(.profileSharingOptions button,.publicProfileActions a,.rosterManageButton,.catalogWorkspaceAction) { padding: 9px 13px; background: #f4f7ee; color: #46643a; border-color: var(--line); box-shadow: none; font-size: 11px; }
+/* These dialogs use portals outside .app; keep their surface consistent too. */
+.issuerCalendarModal { background: #fff; border: 1px solid #e5e9e1; box-shadow: 0 24px 80px #26392f30; border-radius: 18px; font-family: Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.issuerCalendarModal h2 { color: #26392f; font-family: inherit; }
+@media (max-width:760px) { .app .programControlCenterHeading h1 { font-size:26px; }.app .profileSharingCard,.app .profileInfoCard { padding:20px; } }
+.app .shiftPlanning { border-color: var(--line); box-shadow: none; background: white; }
+.app .shiftPlanningToolbar { background: #fafbf8; border-color: var(--line); padding: 18px; }
+.app .rosterSchedulerRoster { background: #f7f9f2; border-color: var(--line); }
+.app .rosterSchedulerBoard { background: #fff; border-color: var(--line); }
+.app .shiftPlanningBodyIntro { background: #fff; color: var(--ink); border-color: var(--line); }
+.app .rosterSchedulerColumnHeading { color: var(--ink); background: transparent; border-color: var(--line); }
+.app .shiftPlanningPeopleList button { background: white; border-color: var(--line); box-shadow: none; color: #46643a; }
+.app .rosterSchedulerSearch { background: white; border-color: var(--line); box-shadow: none; }
+.app .shiftPlanningBoard > article { background: #fafbf8; border-color: var(--line); box-shadow: none; }
+.app .volunteerProfileHero { padding: 24px; }
+.app .volunteerProfileHero :is(h1,h2) { margin: 6px 0; font-size: 24px; color: var(--ink); font-weight: 500; }
+.app .volunteerProfileHero p:last-child { color: var(--muted); font-size: 12px; }
+.app .volunteerProfileHero > span { color: #46643a; background: #eaf0df; box-shadow: none; }
+.app :is(.organizationVolunteerRecord,.volunteerHistoryCard) { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: none; }
+.app .organizationVolunteerRecord > header, .app .volunteerServiceHistoryHeading { padding: 24px; color: var(--ink); background: #f4f7ee; border-color: var(--line); box-shadow: none; }
+.app .organizationVolunteerRecord h2, .app .volunteerServiceHistoryHeading h2 { font-size: 20px; color: var(--ink); font-weight: 500; }
+.app .organizationVolunteerRecord :is(footer,small) { font-size: 12px; line-height: 1.7; color: var(--muted); }
+.app .organizationVolunteerRecord > footer { padding: 20px 24px; border-color: var(--line); }
+.app .volunteerServiceHistoryList { padding: 20px 24px; background: white; }
+.app .volunteerServiceHistoryList :is(b,p) { font-size: 13px; line-height: 1.7; }
+.app .organizationVolunteerRecord > header h2 { font-family: inherit; }
+.app .organizationVolunteerRecord > header small { white-space: normal; }
+.app .organizationCard { background: white; border: 1px solid var(--line); box-shadow: none; border-radius: 16px; }
+.app .organizationCardTop { background: white; }
+.app .organizationDetails { padding: 22px; }
+.app .organizationDetails h3 { font-size: 19px; font-weight: 500; }
+.app .organizationDetails > p:not(.organizationCause) { font-size: 13px; line-height: 1.6; color: var(--muted); }
+.app .organizationDetails > div { flex-wrap: wrap; gap: 14px; }
+.app .organizationDetails > div > span { font-size: 11px; color: #758078; }
+.app .organizationArt:not(.organizationArtWithImage) { background: #eaf0df; color: #46643a; }
+.app .organizationArt > span { color: #46643a; background: #f4f7ee; box-shadow: none; border-color: #d6e0c9; }
+.app .organizationArt > i { display: none; }
+.app .organizationPublishedOpportunities { background: #fafbf8; border-color: var(--line); }
+.app .organizationSessionHeading { padding: 18px 22px; color: #46643a; font-size: 12px; }
+.app .organizationOpportunityList { padding: 0 18px 18px; gap: 10px; }
+.app .organizationOpportunityList article { padding: 16px; border-color: var(--line); background: white; box-shadow: none; }
+.app .organizationOpportunityList b { font-size: 13px; font-weight: 600; }
+.app .organizationOpportunityList :is(small,span) { font-size: 11px; line-height: 1.6; }
+.app .organizationProfileButton, .app .organizationOpportunityList a { background: #eaf0df; color: #46643a; border: 1px solid #d6e0c9; box-shadow: none; padding: 9px 12px; font-size: 11px; }
+@media (max-width:760px) { .app .organizationDetails { padding:18px; }.app .organizationDetails h3 { font-size:17px; } }
+/* Constrain grid tracks so the detailed calendar scrolls inside its card on phones. */
+.app .issuerMain { grid-template-columns: minmax(0,1fr); }
+.app .issuerMain > * { min-width: 0; }
+.app .issuerHomeMain > :is(.issuerTaskQueue,.issuerScheduleCard):hover { border-color: #dce4d5; }
+.app .issuerAgendaDay { background: #fafbf8; border: 1px solid var(--line); box-shadow: none; }
+.app .issuerAgendaDayDate { color: #46643a; background: #eaf0df; box-shadow: none; }

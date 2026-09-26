@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Bell, Inbox } from 'lucide-react'
+import { Bell, MessageCircle } from 'lucide-react'
 import styles from './prototype.module.css'
 
 export function NotificationsControl({
@@ -13,7 +13,7 @@ export function NotificationsControl({
   label?: string
   variant?: 'notifications' | 'messages'
 }) {
-  const Icon = variant === 'messages' ? Inbox : Bell
+  const Icon = variant === 'messages' ? MessageCircle : Bell
 
   return (
     <nav className={styles.utilityNav} data-utility={variant} aria-label={`${label} utilities`}>

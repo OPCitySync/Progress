@@ -17,7 +17,6 @@ import { LabNotice } from '../LabNotice'
 import { ActionQueueCard } from '../ActionQueueCard'
 import { getLabWorkspace } from '../lab-workspace'
 import { IssuerLabSidebar } from './IssuerLabSidebar'
-import { IssuerHeroClock } from './IssuerHeroClock'
 import { IssuerSchedulePanel } from './IssuerSchedulePanel'
 import { getProfile } from '@/lib/services/profile'
 import { ORGANIZATION_BANNER_PALETTES } from '@/lib/profile/organization-appearance'
@@ -221,7 +220,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
               <h2>Keep today’s work moving.</h2>
               <p>{scheduledShifts.length ? `${scheduledShifts.length} scheduled volunteer event${scheduledShifts.length === 1 ? '' : 's'} are ready for your organization.` : 'Start by creating an opportunity your community can join.'}</p>
             </div>
-            <IssuerHeroClock className={styles.issuerHeroClock} />
             <div className={styles.issuerHeroActions}>
               <Link href="/aesthetic-lab/issuer/catalog" className={styles.issuerHomeWorkspaceAction}><ClipboardList size={18} /> Open Workspace</Link>
             </div>

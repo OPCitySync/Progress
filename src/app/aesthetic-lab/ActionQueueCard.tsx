@@ -19,7 +19,7 @@ export function ActionQueueCard({ children, historyHref, historyLabel, className
 
   return <section className={`${styles.issuerTaskQueue}${className ? ` ${className}` : ''}${collapsed ? ` ${styles.issuerTaskQueueCollapsed}` : ''}`} aria-label="Action queue">
     <div className={styles.issuerPanelHeading}>
-      <div><p className={styles.eyebrow}>Action Queue</p></div>
+      <div><p className={styles.eyebrow}>Your next steps</p><h2>Action Queue</h2></div>
       <div className={styles.issuerQueueHeaderActions}>
         <button
           type="button"

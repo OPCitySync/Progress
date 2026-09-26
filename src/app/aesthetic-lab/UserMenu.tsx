@@ -77,8 +77,17 @@ export function UserMenu({
     const closeOutside = (event: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setIsOpen(false)
     }
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setIsOpen(false)
+      menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    }
     document.addEventListener('pointerdown', closeOutside)
-    return () => document.removeEventListener('pointerdown', closeOutside)
+    document.addEventListener('keydown', closeWithEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('keydown', closeWithEscape)
+    }
   }, [isOpen])
 
   return (
@@ -120,7 +129,7 @@ export function UserMenu({
             <p className={styles.eyebrow}>{isIssuer ? 'Organization' : 'Account'}</p>
             {isIssuer ? <Link href="/aesthetic-lab/issuer/reports" onClick={() => setIsOpen(false)}><FileBarChart2 size={17} /><span>Reports<small>Impact, exports, and activity</small></span></Link> : null}
             {isIssuer ? <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Settings<small>Organization and account controls</small></span></Link> : <>
-              <Link href="/aesthetic-lab/opportunities?tab=profile" onClick={() => setIsOpen(false)}><UserRound size={17} /><span>Volunteer Profile</span></Link>
+              <Link href="/aesthetic-lab/passport" onClick={() => setIsOpen(false)}><UserRound size={17} /><span>Volunteer Passport</span></Link>
               <Link href="/aesthetic-lab/settings" onClick={() => setIsOpen(false)}><Settings2 size={17} /><span>Account Settings</span></Link>
             </>}
             {!isIssuer ? <Link href="/aesthetic-lab/messages" onClick={() => setIsOpen(false)}><Mail size={17} /><span>Messages</span></Link> : null}

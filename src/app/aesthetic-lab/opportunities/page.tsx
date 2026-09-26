@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import {
@@ -27,7 +28,6 @@ import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
 import { ParticipantIdentityCard } from '../ParticipantIdentityCard'
 import { SaveTaskButton } from '../SaveTaskButton'
-import { VolunteerProfileTab } from '../profile/VolunteerProfileTab'
 import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -201,6 +201,7 @@ function OrganizationRosterOpportunities({ openRosterShifts, privateShifts }: { 
 }
 
 export default async function OpportunitiesLabPage({ searchParams }: { searchParams: { saved?: string; tab?: string } }) {
+  if (searchParams.tab === 'profile') redirect('/aesthetic-lab/passport')
   const session = await requireRole('participant')
   const { city, cities, contexts } = await getLabWorkspace(session)
   const savedOnly = searchParams.saved === '1'
@@ -208,8 +209,6 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
     ? 'organizations'
     : searchParams.tab === 'commitments'
       ? 'commitments'
-      : searchParams.tab === 'profile'
-        ? 'profile'
       : 'opportunities'
   const [directory, rows, resume, joinedOrganizations, commitmentRows, participantAppearance, assignedPrivateShifts, openRosterShifts] = await Promise.all([
     listPublicIssuers({ cityId: city?.id }),
@@ -334,8 +333,6 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
     ? '/aesthetic-lab/opportunities?saved=1'
     : activeTab === 'commitments'
       ? '/aesthetic-lab/opportunities?tab=commitments'
-      : activeTab === 'profile'
-        ? '/aesthetic-lab/opportunities?tab=profile'
       : activeTab === 'organizations'
         ? '/aesthetic-lab/opportunities?tab=organizations'
         : '/aesthetic-lab/opportunities'
@@ -389,7 +386,6 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
               <Link data-active={activeTab === 'opportunities'} aria-current={activeTab === 'opportunities' ? 'page' : undefined} href="/aesthetic-lab/opportunities"><Compass size={15} /> Opportunities</Link>
               <Link data-active={activeTab === 'organizations'} aria-current={activeTab === 'organizations' ? 'page' : undefined} href="/aesthetic-lab/opportunities?tab=organizations"><Building2 size={15} /> My Organizations</Link>
               <Link data-active={activeTab === 'commitments'} aria-current={activeTab === 'commitments' ? 'page' : undefined} href="/aesthetic-lab/opportunities?tab=commitments"><CalendarDays size={15} /> My Commitments</Link>
-              <Link data-active={activeTab === 'profile'} aria-current={activeTab === 'profile' ? 'page' : undefined} href="/aesthetic-lab/opportunities?tab=profile"><UserRound size={15} /> Volunteer Profile</Link>
             </nav>
           </div>
           {savedOnly ? <>
@@ -422,12 +418,7 @@ export default async function OpportunitiesLabPage({ searchParams }: { searchPar
                 }) : <div className={styles.commitmentsEmpty}><UsersRound size={21} /><div><b>You have no current commitments.</b><p>Choose a volunteer shift when you are ready to get involved.</p><Link href="/aesthetic-lab/opportunities">Explore opportunities <ArrowUpRight size={14} /></Link></div></div>}
               </div>
             </section>
-          </> : activeTab === 'profile' ? <VolunteerProfileTab
-            userId={session.sub}
-            resumeToken={resume?.token ?? null}
-            resumeIsPublic={resume?.isPublic ?? false}
-            resumeTotals={resume?.totals ?? { contributions: 0, hours: 0, organizations: 0 }}
-          /> : activeTab === 'organizations' ? <>
+          </> : activeTab === 'organizations' ? <>
             <div className={styles.organizationList}>
               {joinedOrganizations.length === 0 ? <section className={styles.calendarEmpty}><Building2 size={20} /><div><b>You have not joined an organization yet.</b><p>Explore a mission that matters to you, then choose an organization’s introduction session to begin.</p></div></section> : joinedOrganizations.map((joined, index) => {
                 const organization = directoryById.get(joined.id)

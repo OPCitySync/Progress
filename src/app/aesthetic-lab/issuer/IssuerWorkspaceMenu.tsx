@@ -6,9 +6,9 @@ import workspaceStyles from './ProgramWorkspace.module.css'
 import styles from '../prototype.module.css'
 
 const sections = [
-  { id: 'documents', label: 'Document Library', icon: FolderOpen },
-  { id: 'programs', label: 'Volunteer Programs', icon: FolderKanban },
+  { id: 'programs', label: 'Programs', icon: FolderKanban },
   { id: 'opportunities', label: 'Published Opportunities', icon: Megaphone },
+  { id: 'documents', label: 'Documents', icon: FolderOpen },
 ] as const
 
 type WorkspaceSection = (typeof sections)[number]['id']
@@ -18,7 +18,7 @@ function isWorkspaceSection(value: string | undefined): value is WorkspaceSectio
 }
 
 export function IssuerWorkspaceMenu({
-  initialSection = 'documents',
+  initialSection = 'programs',
   documents,
   programs,
   opportunities,
@@ -28,7 +28,7 @@ export function IssuerWorkspaceMenu({
   programs: ReactNode
   opportunities: ReactNode
 }) {
-  const [active, setActive] = useState<WorkspaceSection>(isWorkspaceSection(initialSection) ? initialSection : 'documents')
+  const [active, setActive] = useState<WorkspaceSection>(isWorkspaceSection(initialSection) ? initialSection : 'programs')
   const nav = useRef<HTMLDivElement>(null)
 
   function select(id: WorkspaceSection) {
@@ -46,7 +46,7 @@ export function IssuerWorkspaceMenu({
   useEffect(() => {
     function sync() {
       const section = new URLSearchParams(window.location.search).get('workspace') ?? undefined
-      setActive(isWorkspaceSection(section) ? section : 'documents')
+      setActive(isWorkspaceSection(section) ? section : 'programs')
     }
 
     window.addEventListener('popstate', sync)

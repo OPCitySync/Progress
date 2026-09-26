@@ -74,7 +74,9 @@ export async function VolunteerProfileTab({
   resumeToken,
   resumeIsPublic,
   resumeTotals,
+  section = 'all',
 }: {
+  section?: 'profile' | 'history' | 'all'
   userId: string
   resumeToken: string | null
   resumeIsPublic: boolean
@@ -177,9 +179,10 @@ export async function VolunteerProfileTab({
   }
 
   return <>
+        {section !== 'history' ? <>
         <section className={styles.volunteerProfileHero} style={volunteerProfilePalette}>
           <span><UserRound size={22} /></span>
-          <div><p className={styles.eyebrow}>Volunteer Profile</p><h1>{participantDisplayName(participant)}</h1><p>{organizations.length} organization{organizations.length === 1 ? '' : 's'} · {activityRows.filter((row) => row.claim.status === 'verified').length} verified contribution{activityRows.filter((row) => row.claim.status === 'verified').length === 1 ? '' : 's'}</p></div>
+          <div><p className={styles.eyebrow}>Volunteer Profile</p><h2>{participantDisplayName(participant)}</h2><p>{organizations.length} organization{organizations.length === 1 ? '' : 's'} · {activityRows.filter((row) => row.claim.status === 'verified').length} verified contribution{activityRows.filter((row) => row.claim.status === 'verified').length === 1 ? '' : 's'}</p></div>
         </section>
 
         <section className={styles.participantVolunteerProfileGrid}>
@@ -241,7 +244,8 @@ export async function VolunteerProfileTab({
           </div>
         </section>
 
-        <section className={`${styles.volunteerHistoryCard} ${styles.volunteerServiceHistoryCard}`} style={volunteerProfilePalette}>
+        </> : null}
+        {section !== 'profile' ? <section className={`${styles.volunteerHistoryCard} ${styles.volunteerServiceHistoryCard}`} style={volunteerProfilePalette}>
           <div className={styles.volunteerServiceHistoryHeading}>
             <p className={styles.eyebrow}>My Service History</p>
             <h2>Every volunteer event in one place</h2>
@@ -252,7 +256,7 @@ export async function VolunteerProfileTab({
                 : `/aesthetic-lab/opportunities/${activity.task.id}`
               return <article key={activity.claim.id}><CalendarDays size={16} /><div><b>{activity.task.title}</b><small>{activity.organization.name} · {activityLabel(activity.claim.status, activity.claim.checkedInAt)} · {date(activity.shift?.startsAt ?? activity.claim.updatedAt)}</small></div><Link href={href}>View event</Link></article>
             }) : <p className={styles.emptyCopy}>Your service history will begin when you apply for or reserve a volunteer event.</p>}</div>
-          <section className={`${styles.serviceResumeCard} ${styles.volunteerProfileShareableResume}`}>
+          {section === 'all' ? <section className={`${styles.serviceResumeCard} ${styles.volunteerProfileShareableResume}`}>
             <div className={styles.resumeSeal}><CheckCircle2 size={25} /></div>
             <div>
               <p className={styles.eyebrow}>Shareable Service Resume</p>
@@ -260,7 +264,7 @@ export async function VolunteerProfileTab({
               <p>{resumeTotals.contributions} completed shift{resumeTotals.contributions === 1 ? '' : 's'} · {resumeTotals.hours} verified volunteer hours · Updated today</p>
             </div>
             <ResumeControls token={resumeToken} isPublic={resumeIsPublic} redirectTo="/aesthetic-lab/opportunities?tab=profile" />
-          </section>
-        </section>
+          </section> : null}
+        </section> : null}
   </>
 }

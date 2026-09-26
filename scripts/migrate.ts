@@ -8,12 +8,14 @@ import { programWorkspaceDDL } from '../src/lib/db/program-workspace-schema'
 import { volunteerIntakeDDL } from '../src/lib/db/volunteer-intake-schema'
 import { isPrivateOnboardingEvent } from '../src/lib/ledger/onboarding-privacy'
 import { createClient } from '@libsql/client'
+import { previewDatabaseUrl } from '../src/lib/db/preview-url'
 import { getCityClient } from '../src/lib/db/city-client'
 import { flushAllCityLedgerOutbox } from '../src/lib/ledger/city-outbox'
 
+const previewUrl = previewDatabaseUrl('application.db')
 const client = createClient({
-  url: process.env.DATABASE_URL ?? 'file:local.db',
-  authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
+  url: previewUrl ?? process.env.DATABASE_URL ?? 'file:local.db',
+  authToken: previewUrl ? undefined : process.env.DATABASE_AUTH_TOKEN || undefined,
 })
 
 const schemaOnly = process.argv.includes('--schema-only')

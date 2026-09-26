@@ -5,13 +5,13 @@ import {
   ClipboardList,
   Compass,
   Home,
+  ContactRound,
   UsersRound,
 } from 'lucide-react'
 import { NotificationsControl } from './NotificationsControl'
 import { UserMenu } from './UserMenu'
-import { WeatherWidget } from './WeatherWidget'
 import { IssuerPaletteRoot } from './IssuerPaletteRoot'
-import styles from './prototype.module.css'
+import shell from './CoordinationHeader.module.css'
 import type { Session } from '@/lib/auth/session'
 import type { CityNetwork } from '@/lib/services/city-networks'
 import type { ActorContext } from '@/lib/services/identity-access'
@@ -27,6 +27,7 @@ export type LabSection =
   | 'feed'
   | 'opportunities'
   | 'organizations'
+  | 'passport'
   | 'history'
   | 'resources'
   | 'issuer-overview'
@@ -47,7 +48,8 @@ type HeaderPaletteStyle = CSSProperties & {
 
 const participantSections = [
   { key: 'feed', label: 'Home', href: '/aesthetic-lab', icon: Home },
-  { key: 'opportunities', label: 'Discover', href: '/aesthetic-lab/opportunities', icon: Compass },
+  { key: 'opportunities', label: 'Opportunities', href: '/aesthetic-lab/opportunities', icon: Compass },
+  { key: 'passport', label: 'Passport', href: '/aesthetic-lab/passport', icon: ContactRound },
 ] as const
 
 const issuerSections = [
@@ -107,41 +109,31 @@ export async function LabHeader({
   }
 
   return (
-    <header className={styles.topbar} style={headerPaletteStyle}>
+    <header className={shell.header} style={headerPaletteStyle}>
       {isIssuer ? <IssuerPaletteRoot colors={issuerPalette.colors} /> : null}
-      <div className={styles.topbarInner}>
-        <Link href="/aesthetic-lab" className={styles.brand} aria-label="City/Sync prototype home">
+      <div className={shell.studio}><span>CITY/SYNC · COMMUNITY COORDINATION</span><span>{isIssuer ? 'Organization workspace' : 'Volunteer workspace'}{city ? ` · ${city.name}` : ''}</span></div>
+      <div className={shell.mainbar}>
+        <Link href={isIssuer ? "/aesthetic-lab/issuer" : "/aesthetic-lab"} className={shell.brand} aria-label="City/Sync home">
           {/* The same official wordmark used by the City/Sync application. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/citysync-wordmark-dark.svg" alt="City/Sync" />
         </Link>
 
-        <nav className={styles.sectionNav} aria-label={isIssuer ? 'Issuer Organization sections' : 'Civic Participant sections'}>
+        <nav className={shell.navigation} aria-label={isIssuer ? 'Issuer Organization sections' : 'Civic Participant sections'}>
           {sections.map((section) => {
             const Icon = section.icon
-            const isActive = section.key === activeSection
-
-            return isActive ? (
-              <span className={styles.activeSection} key={section.key}>
-                <Link className={styles.sectionNavActive} href={section.href} aria-current="page" aria-label={section.label}><Icon size={18} /></Link>
-                <span className={styles.currentSectionName}>{section.label}</span>
-              </span>
-            ) : (
-              <Link key={section.key} href={section.href}><Icon size={18} /><span>{section.label}</span></Link>
-            )
+            const isActive = section.key === activeSection || (section.key === 'passport' && activeSection === 'history')
+            return <Link key={section.key} className={isActive ? shell.active : undefined} href={section.href} aria-current={isActive ? 'page' : undefined}><Icon size={18} /><span>{section.label}</span></Link>
           })}
         </nav>
 
-        <WeatherWidget />
-
-        <div className={styles.communicationUtilities}>
+        <div className={shell.account}>
           <NotificationsControl
             count={inboxCount}
             href={isIssuer ? '/aesthetic-lab/issuer/notifications' : '/aesthetic-lab/messages'}
-            label="Inbox"
+            label="Conversations"
             variant="messages"
           />
-        </div>
 
         <UserMenu
           workspace={workspace}
@@ -154,6 +146,7 @@ export async function LabHeader({
           participantAvatarUrl={participantAppearance?.avatarUrl}
           participantPalette={participantAppearance?.bannerPalette}
         />
+        </div>
       </div>
     </header>
   )
