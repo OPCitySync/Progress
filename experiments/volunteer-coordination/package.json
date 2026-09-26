@@ -1,0 +1,10 @@
+{
+  "name": "citysync-volunteer-coordination-experiment",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test model.test.mjs feed.test.mjs passport.test.mjs recruitment.test.mjs program.test.mjs profile.test.mjs planning.test.mjs issuer-home.test.mjs"
+  }
+}

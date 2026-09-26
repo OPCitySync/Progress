@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Building2, ClipboardList, FileBarChart2, FileText, FolderOpen, GripVertical, Inbox, Pencil, Plus, Trash2, UsersRound } from 'lucide-react'
 import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ScheduleNewShiftButton } from './ScheduleNewShiftButton'
 import styles from '../prototype.module.css'
 
 const actions = [
@@ -19,8 +20,17 @@ const actions = [
 type ActionId = (typeof actions)[number]['id']
 type DropEdge = 'before' | 'after'
 
+export type IssuerQuickActionScheduleShift = {
+  suggestedStartsAt: number
+  defaultLocation?: string
+  volunteers: Array<{ userId: string; name: string; email: string; status?: string }>
+  staff: Array<{ userId: string; name: string; email: string; roleLabel: string }>
+  documents?: Array<{ id: string; title: string; categoryLabel: string }>
+  waivers?: Array<{ id: string; title: string }>
+}
+
 /** Organization-local shortcuts, intentionally empty until the team pins a function. */
-export function IssuerQuickActions({ organizationId }: { organizationId: string }) {
+export function IssuerQuickActions({ organizationId, scheduleShift }: { organizationId: string; scheduleShift?: IssuerQuickActionScheduleShift }) {
   const storageKey = `citysync.aesthetic-lab.issuer-quick-actions.${organizationId}`
   const cardRef = useRef<HTMLElement>(null)
   const [pinned, setPinned] = useState<ActionId[]>([])
@@ -144,7 +154,23 @@ export function IssuerQuickActions({ organizationId }: { organizationId: string 
             onDragEnd={() => { setDraggedId(null); setDropTarget(null) }}
           >
             <span className={styles.issuerQuickActionGrip} aria-hidden="true" title="Drag to reorder"><GripVertical size={13} /></span>
-            <Link href={action.href}><Icon size={15} /> <span>{action.label}</span></Link>
+            {action.id === 'new-opportunity' && scheduleShift ? <div className={styles.issuerQuickActionScheduleTrigger}>
+              <ScheduleNewShiftButton
+                programId={null}
+                redirectTo="/aesthetic-lab/issuer"
+                suggestedStartsAt={scheduleShift.suggestedStartsAt}
+                defaultLocation={scheduleShift.defaultLocation}
+                defaultCapacity={2}
+                defaultDurationMinutes={120}
+                defaultVisibility="private"
+                documents={scheduleShift.documents}
+                waivers={scheduleShift.waivers}
+                volunteers={scheduleShift.volunteers}
+                staff={scheduleShift.staff}
+                privateRosterFlow
+                buttonLabel={action.label}
+              />
+            </div> : <Link href={action.href}><Icon size={15} /> <span>{action.label}</span></Link>}
             {isEditing ? <button type="button" onClick={() => remove(action.id)} aria-label={`Remove ${action.label} from quick actions`}><Trash2 size={13} /></button> : null}
           </div>
         })}

@@ -113,6 +113,18 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       email: user.email,
       roleLabel: role?.name || (delegation.role === 'owner' ? 'Organization owner' : delegation.role === 'manager' ? 'Organization manager' : 'Organization staff'),
     }))
+  const scheduleShiftOptions = {
+    suggestedStartsAt: now + 24 * 60 * 60 * 1000,
+    defaultLocation: organizationAddress,
+    volunteers: roster.volunteers.map(({ userId, name, email, status }) => ({ userId, name, email, status })),
+    staff: calendarStaff,
+    documents: organizationDocuments.map((document) => ({
+      id: document.id,
+      title: document.title,
+      categoryLabel: ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label,
+    })),
+    waivers: activeWaivers.map((waiver) => ({ id: waiver.id, title: waiver.title })),
+  }
   const issuerHeroStyle = {
     '--issuer-hero-deep': usesOriginalCitySyncAppearance ? '#15151e' : organizationPalette.colors[0],
     '--issuer-hero-mid': usesOriginalCitySyncAppearance ? '#29386f' : organizationPalette.colors[1],
@@ -200,7 +212,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       <LabHeader activeSection="issuer-overview" workspace="issuer" session={session} city={city} cities={cities} contexts={contexts} />
 
       <div className={styles.issuerLayout}>
-        <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} />
+        <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} scheduleShift={scheduleShiftOptions} />
 
         <section className={`${styles.issuerMain} ${styles.issuerHomeMain}`} id="overview" aria-label="Organization workspace">
           <section className={styles.issuerHero} style={issuerHeroStyle}>
@@ -225,18 +237,7 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
 
           <IssuerSchedulePanel
             entries={scheduleEntries}
-            scheduleShift={{
-              suggestedStartsAt: now + 24 * 60 * 60 * 1000,
-              defaultLocation: organizationAddress,
-              volunteers: roster.volunteers.map(({ userId, name, email, status }) => ({ userId, name, email, status })),
-              staff: calendarStaff,
-              documents: organizationDocuments.map((document) => ({
-                id: document.id,
-                title: document.title,
-                categoryLabel: ORGANIZATION_DOCUMENT_CATEGORY_DETAILS[document.category].label,
-              })),
-              waivers: activeWaivers.map((waiver) => ({ id: waiver.id, title: waiver.title })),
-            }}
+            scheduleShift={scheduleShiftOptions}
           />
         </section>
       </div>
