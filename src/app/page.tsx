@@ -2,8 +2,13 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { aestheticHomeFor, getSession } from '@/lib/auth/session'
 import { Logo } from '@/components/brand/Logo'
+import { coordinationPrototypeEnabled } from '@/lib/coordination-prototype'
+
+// Keep the local-demo switch a runtime decision, never a baked deployment redirect.
+export const dynamic = 'force-dynamic'
 
 export default async function Home() {
+  if (coordinationPrototypeEnabled()) redirect('/coordination#/coordinator/home')
   const session = await getSession()
   if (session) redirect(aestheticHomeFor(session.role))
 

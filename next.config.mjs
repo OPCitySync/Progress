@@ -37,6 +37,9 @@ const nextConfig = (phase) => ({
     ]
   },
   experimental: {
+    outputFileTracingIncludes: {
+      '/coordination/[[...asset]]': ['./experiments/volunteer-coordination/**/*'],
+    },
     // Organization documents are deliberately capped at 10 MB in the upload
     // actions, so permit that same request size before an action is invoked.
     serverActions: { bodySizeLimit: '10mb' },

@@ -1,5 +1,7 @@
 # Coordination prototype → connected platform
 
+**Superseded visual approach:** The user rejected this first styling pass. The actual prototype frontend is now the default local entrypoint, with staged backend reconnection. See [the current UI contract](PROTOTYPE_UI_CONTRACT.md). This document remains as the record of the first integration and its database incident.
+
 This is an incremental integration on `codex/prototype-platform-integration`, based on platform branch `branch1/CSV1.0` at `63b3e9b`. It is not a replacement database or a live release.
 
 ## Source preservation

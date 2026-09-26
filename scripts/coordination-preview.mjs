@@ -13,6 +13,7 @@ mkdirSync(data, { recursive: true })
 const env = {
   ...process.env,
   CITYSYNC_PREVIEW_DATABASE_DIR: data,
+  CITYSYNC_COORDINATION_UI: 'prototype',
   DATABASE_URL: `file:${resolve(data, 'application.db')}`,
   DATABASE_AUTH_TOKEN: '',
   AUTH_SECRET: 'citysync-isolated-local-coordination-preview-only',
