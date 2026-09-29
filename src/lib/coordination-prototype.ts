@@ -5,11 +5,11 @@ import { join } from 'node:path'
 export const COORDINATION_ASSETS = [
   'index.html',
   'styles.css', 'feed.css', 'passport.css', 'recruitment.css', 'program.css',
-  'profile.css', 'navigation.css', 'volunteer.css', 'planning.css', 'issuer-home.css', 'documents.css',
+  'profile.css', 'navigation.css', 'volunteer.css', 'planning.css', 'issuer-home.css', 'documents.css', 'connected-settings.css',
   'app.js', 'model.js', 'navigation-view.js',
   'feed-model.js', 'feed-view.js', 'passport-model.js', 'passport-view.js', 'resume-view.js',
   'recruitment-model.js', 'recruitment-view.js', 'program-model.js', 'program-view.js',
-  'documents-model.js', 'documents-view.js', 'documents-files.js',
+  'documents-model.js', 'documents-view.js', 'documents-files.js', 'connected-settings.js',
   'profile-model.js', 'profile-view.js', 'planning-model.js', 'planning-view.js',
   'planning-controller.js', 'issuer-home-model.js', 'issuer-home-view.js', 'issuer-home-controller.js',
   'assets/garden-story.svg', 'assets/together-story.svg',

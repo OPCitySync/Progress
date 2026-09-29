@@ -6,6 +6,7 @@ import { bindPlanning } from './planning-controller.js';
 import { ensureDocuments, isLiabilityWaiver, saveDocument } from './documents-model.js';
 import { loadDocumentFile, removeDocumentFile, saveDocumentFile } from './documents-files.js';
 import { renderDocuments, renderDocumentList, renderDocumentDetail, renderDocumentForm } from './documents-view.js';
+import { loadMyCityContext, saveOrganizationSettings, renderConnectedSettings } from './connected-settings.js';
 import { renderResume, resumeSheet } from './resume-view.js';
 import { issuerNavigation, volunteerNavigation } from './navigation-view.js';
 import { ensureProfiles, transitionProfile } from './profile-model.js';
@@ -22,8 +23,11 @@ import { STORAGE_KEY, REQUIREMENTS, createInitialState, transition, missingRequi
 
 // The branch preview and standalone prototype share an origin in local dev,
 // but must not reuse each other's browser-local sample records or asset paths.
-const storageKey = document.querySelector('meta[name="citysync-data-mode"]')?.content === 'integrated-preview-sample-data'
+const integratedPlatform = document.querySelector('meta[name="citysync-data-mode"]')?.content === 'integrated-preview-sample-data';
+const storageKey = integratedPlatform
   ? `${STORAGE_KEY}-mycity-branch` : STORAGE_KEY;
+let connectedContext = null;
+let connectedContextError = '';
 
 let state;
 try { const saved = JSON.parse(localStorage.getItem(storageKey)); state = saved?.version === 1 && Array.isArray(saved.people) && Array.isArray(saved.activities) && Array.isArray(saved.commitments) ? saved : createInitialState(); } catch { state = createInitialState(); }
@@ -118,7 +122,7 @@ function recruitmentContextOrg() {
   const orgId = ['recruitment','profile'].includes(ui.page) ? ui.recruitOrg : ui.page === 'org-profile' ? ui.item : ui.page === 'position' ? state.recruitment.positions.find(p => p.id === ui.item)?.orgId : ui.page === 'application' ? state.recruitment.applications.find(a => a.id === ui.item)?.orgId : null;
   return state.recruitment.organizations.find(o => o.id === orgId) || null;
 }
-const workspaceLabel = () => !orgMode() && ['passport','history','resume'].includes(ui.page) ? 'My passport' : recruitmentContextOrg()?.name || (['discover','applications'].includes(ui.page) ? 'Your city' : 'Berkeley Neighbors');
+const workspaceLabel = () => integratedPlatform && ui.page === 'settings' ? connectedContext?.organization?.name || 'Organization' : !orgMode() && ['passport','history','resume'].includes(ui.page) ? 'My passport' : recruitmentContextOrg()?.name || (['discover','applications'].includes(ui.page) ? 'Your city' : 'Berkeley Neighbors');
 const coordinatorName = () => recruitmentContextOrg()?.contact || 'Maya Thompson';
 function pageHeader(kicker, title, subtitle, controls = '') { return `<div class="page-heading"><div><span class="eyebrow">${kicker}</span><h1>${title}</h1><p>${subtitle}</p></div><div class="page-actions">${controls}</div></div>`; }
 function stat(label, value, detail, glyph) { return `<div class="stat"><div class="stat-top"><span>${label}</span>${icon(glyph)}</div><strong>${value}</strong><small>${detail}</small></div>`; }
@@ -196,9 +200,9 @@ function messagesPage() {
 function render() {
   try { sessionStorage.setItem(storageKey + '-persona', ui.person); sessionStorage.setItem(storageKey + '-recruit-org', ui.recruitOrg); } catch {}
   state = ensureIssuerHome(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(state)))));
-  const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'passport', 'feed', 'people', 'messages', 'activity'] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'history', 'resume', 'feed', 'work', 'schedule', 'organization', 'messages', 'activity'];
+  const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'passport', 'feed', 'people', 'messages', 'activity', ...(integratedPlatform ? ['settings'] : [])] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'history', 'resume', 'feed', 'work', 'schedule', 'organization', 'messages', 'activity'];
   if (!allowed.includes(ui.page)) ui.page = 'home';
-  const content = ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ['passport','history'].includes(ui.page) ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'schedule' ? schedulePage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
+  const content = ui.page === 'settings' && integratedPlatform ? renderConnectedSettings(connectedContext, connectedContextError, e) : ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ['passport','history'].includes(ui.page) ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'schedule' ? schedulePage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
   const issues = ['home', 'schedule', 'activity'].includes(ui.page) ? readinessIssues(state).filter(c => (orgMode() || c.personId === ui.person) && (ui.page !== 'activity' || c.activityId === ui.item)) : [];
   const recruitmentCount = state.recruitment.applications.filter(a => orgMode() ? a.orgId === HOME_ORG && !!a.submittedAt && ['submitted','reviewing','needs-info','waitlisted','offered','onboarding'].includes(a.status) : a.personId === ui.person && !['declined','withdrawn','offer-declined'].includes(a.status)).length;
   const recruitmentSummary = ((orgMode() && ui.page === 'home') || (!orgMode() && ui.page === 'schedule')) && recruitmentCount ? `<div class="info-strip">${icon('people')}<span>${recruitmentCount} ${orgMode() ? 'applications and welcome plans at Berkeley Neighbors' : 'applications and volunteer roles'} to keep track of.</span>${button(orgMode() ? 'Open recruitment →' : 'My applications →', 'rcHome', '', 'text-button')}</div>` : '';
@@ -294,7 +298,7 @@ function passportAction(action) {
   }
 }
 function feedContext() {
-  return { state, ui, e, icon, avatar, button, badge, dateLabel, confirmedCount, currentPerson, errorOutput, connectedPlatform: location.pathname.startsWith('/coordination') || location.pathname.startsWith('/mycity'), assetBase: location.pathname === '/' ? '' : location.pathname, integratedPlatform: document.querySelector('meta[name="citysync-data-mode"]')?.content === 'integrated-preview-sample-data' };
+  return { state, ui, e, icon, avatar, button, badge, dateLabel, confirmedCount, currentPerson, errorOutput, connectedPlatform: location.pathname.startsWith('/coordination') || location.pathname.startsWith('/mycity'), assetBase: location.pathname === '/' ? '' : location.pathname, integratedPlatform, platformContext: connectedContext };
 }
 function feedComposer() {
   if (!orgMode()) return;
@@ -602,6 +606,21 @@ document.addEventListener('submit', async event => {
   const form = event.target.closest('[data-form]'); if (!form) return; event.preventDefault();
   const fields = new FormData(form); const values = Object.fromEntries(fields); const d = form.dataset;
   switch (d.form) {
+    case 'organizationSettings': {
+      const submit = form.querySelector('button[type="submit"]');
+      const output = form.querySelector('.form-error');
+      submit.disabled = true; output.textContent = '';
+      try {
+        await saveOrganizationSettings(values);
+        connectedContext = await loadMyCityContext();
+        render(); toast('Organization settings saved.');
+      } catch (error) {
+        output.textContent = error.message;
+        output.focus();
+        submit.disabled = false;
+      }
+      break;
+    }
     case 'docAdd': {
       let storedFileId='';
       try {
@@ -690,6 +709,7 @@ dialog.addEventListener('close', () => { if (!dialog.open) { releaseDocumentFile
 window.addEventListener('hashchange', readRoute);
 window.addEventListener('storage', event => { if (event.key === storageKey && event.newValue) { try { const incoming = JSON.parse(event.newValue); if (incoming.version === 1) { state = ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(incoming)))))); render(); } } catch {} } });
 readRoute();
+if (integratedPlatform) loadMyCityContext().then(context => { connectedContext = context; connectedContextError = ''; render(); }).catch(error => { connectedContextError = error.message; render(); });
 
 bindPlanning({context:feedContext, render, commit:result=>{state=result.state;save();render();toast(result.notice);}, showDialog, closeDialog, toast, create:(type,programId)=>createDialog(type,programId)});
 

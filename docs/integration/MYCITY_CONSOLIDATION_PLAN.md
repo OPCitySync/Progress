@@ -48,3 +48,11 @@ The app must use the signed-in session's user, organization, delegation, and act
 ## Immediate acceptance milestone
 
 The first reviewable increment is the real MyCity shell and Organization Settings: signed-in organization and city appear in the current header, the Settings menu stays in that design, edits survive refresh in `.integration-preview/application.db`, non-owners cannot change owner-only fields, and the old settings page is no longer reached from the MyCity menu. This establishes the adapter, permissions, routing and visual pattern for the remaining pages without risking the live deployment.
+
+### September 29 local result
+
+The first increment now loads authenticated organization and city context through `/api/mycity/context`. The issuer avatar menu opens `#/coordinator/settings` in the current MyCity shell. That form saves through `/api/mycity/organization-settings`, which uses the existing owner-only `updateOrganizationIdentity` service and compares the browser Origin with the request Host. The prototype's remaining screens are still explicitly labeled sample data.
+
+In the isolated preview, the owner saved a location edit, refreshed and saw the persisted value, then restored the original location. An owner of another organization was denied by the service without changing the target organization's name. An unauthenticated request to each endpoint returned 401. TypeScript, the production build, the frontend asset check and all 106 prototype tests passed. A dedicated non-owner staff browser fixture remains to be exercised before production cutover.
+
+Vercel's preview environment listing currently scopes the application and city database variables to `branch1/CSV1.0`; this integration branch has no branch-specific preview database configuration or `CITYSYNC_COORDINATION_UI=integrated` flag. Its build command runs `db:migrate:schema`. Configure an isolated preview database and environment for this branch before relying on a Vercel preview or promoting the branch. The current local `.integration-preview/` database remains isolated from production.

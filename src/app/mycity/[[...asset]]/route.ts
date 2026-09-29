@@ -22,7 +22,7 @@ export async function GET(_request: Request, { params }: { params: { asset?: str
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'X-CitySync-Data-Mode': 'integrated-preview-sample-data',
-      'Content-Security-Policy': "connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
+      'Content-Security-Policy': "connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
     },
   })
 }
