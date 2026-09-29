@@ -35,6 +35,9 @@ export function cityDatabaseUrl(cityId: string): string {
   if (previewUrl) return previewUrl
   const configured = process.env[cityEnvKey(cityId)]
   if (configured) return configured
+  if (process.env.VERCEL) {
+    throw new Error(`${cityEnvKey(cityId)} is required for Vercel deployments.`)
+  }
   return `file:city-${cityId}.db`
 }
 

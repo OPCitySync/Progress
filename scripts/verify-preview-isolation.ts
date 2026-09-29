@@ -23,6 +23,9 @@ async function main() {
   process.env.CITYSYNC_PREVIEW_DATABASE_DIR = directory
   process.env.VERCEL = '1'
   assert.throws(() => previewDatabaseUrl('application.db'), /outside Vercel/)
+  delete process.env.CITYSYNC_PREVIEW_DATABASE_DIR
+  delete process.env.CITY_DB_BERKELEY_URL
+  assert.throws(() => cityDatabaseUrl('berkeley'), /required for Vercel deployments/)
   console.log('PASS: preview overrides configured application and city URLs, isolates new cities, rejects relative directories and Vercel.')
 }
 main().catch((error) => { console.error(error); process.exitCode = 1 })
