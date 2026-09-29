@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, transition } from './model.js';
+import { ensurePrograms } from './program-model.js';
 import { ensureRecruitment, transitionRecruitment, visibleApplications, onboardingSteps, occupiedPlaces, myApplication, positionOpen } from './recruitment-model.js';
 import { transitionPassport } from './passport-model.js';
 import { recruitmentDialog } from './recruitment-view.js';
@@ -130,4 +131,27 @@ test('role draft, publication and scoped organization editing are functional',()
   state=act(state,{type:'positionStatus',actor:'coordinator',orgId:'tool-library',positionId:id,status:'open'}).state;assert.equal(positionOpen(state.recruitment.positions[0],day),true);
   assert.throws(()=>act(state,{...payload,positionId:id}),/Published roles/);
   assert.throws(()=>act(state,{type:'saveOrganization',actor:'robin',mission:'Overwrite'}),/workspace/);
+});
+test('program role creation uses the short role form and supplies recruitment defaults',()=>{
+  const state=initial();const program=state.programWorkspace.programs.find(p=>p.name==='Neighborhood food access');
+  const ctx={state,ui:{recruitOrg:'berkeley-neighbors'},e:v=>String(v??''),button:(text)=>text,errorOutput:()=>'',currentPerson:()=>state.people.find(p=>p.id==='robin')};
+  const dialog=recruitmentDialog(ctx,'Role',{program:program.id});
+  assert.equal(dialog.title,'Create Program Role');
+  for(const text of ['The difference this role makes','Time, duration and flexibility','Experience needed / what can be learned','Support, equipment and access options','Application pathway','New volunteer places','Initial reply target','Preparation after an accepted offer','Suggested first activity']) assert.equal(dialog.content.includes(text),false);
+  const result=act(state,{type:'savePosition',actor:'coordinator',orgId:'berkeley-neighbors',programId:program.id,title:'Garden welcome role',tasks:'Welcome volunteers to the garden.',mode:'Remote'});
+  const role=result.state.recruitment.positions.find(position=>position.id===result.id);
+  assert.equal(role.programId,program.id);assert.equal(role.capacity,1);assert.equal(role.pathway,'application');assert.equal(role.requirements.length,0);
+});
+test('program roles are saved in the volunteer recruitment workspace and linked to one program',()=>{
+  const start=ensurePrograms(initial());
+  const program=start.programWorkspace.programs.find(p=>p.name==='Neighborhood food access');
+  const payload={type:'savePosition',actor:'coordinator',orgId:'berkeley-neighbors',programId:program.id,title:'Program welcome volunteer',impact:'Help neighbors join the program.',tasks:'Welcome new volunteers.',commitment:'One hour a week.',experience:'Learn with the team.',support:'A buddy helps.',mode:'In person',pathway:'application',capacity:2,responseDays:5,requirements:['welcome'],activityId:'meals'};
+  assert.throws(()=>act(start,{...payload,programId:'missing'}),/Choose an active or draft program/);
+  assert.throws(()=>act(start,{...payload,activityId:'garden'}),/activity in this program/);
+  const {state,id}=act(start,payload);
+  assert.equal(state.recruitment.positions.find(position=>position.id===id).programId,program.id);
+  assert.equal(state.programWorkspace.history[0].programId,program.id);
+  const published=act(state,{type:'positionStatus',actor:'coordinator',positionId:id,status:'open'}).state;
+  assert.equal(published.recruitment.positions.find(position=>position.id===id).status,'open');
+  assert.match(published.programWorkspace.history[0].text,/published/);
 });

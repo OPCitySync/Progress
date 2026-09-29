@@ -25,9 +25,9 @@ export default async function AestheticOrganizationInvitePage({
   return (
     <main className={styles.app}>
       <div className={styles.organizationInviteShell}>
-        <Link href="/aesthetic-lab" className={styles.organizationInviteBrand} aria-label="City/Sync home">
+        <Link href="/aesthetic-lab" className={styles.organizationInviteBrand} aria-label="MyCity home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/citysync-wordmark-dark.svg" alt="City/Sync" />
+          <img src="/brand/mycity-wordmark-dark.svg" alt="mycity" />
         </Link>
         <section className={styles.organizationInviteCard}>
           {!preview.ok ? (
@@ -36,7 +36,7 @@ export default async function AestheticOrganizationInvitePage({
               <p className={styles.eyebrow}>Organization invitation</p>
               <h1>This invitation is unavailable.</h1>
               <p>The link may have expired, been revoked, or already been used. Ask the organization owner to send a new one.</p>
-              <Link href="/aesthetic-lab" className={styles.organizationInviteSecondary}>Return to City/Sync</Link>
+              <Link href="/aesthetic-lab" className={styles.organizationInviteSecondary}>Return to MyCity</Link>
             </>
           ) : session ? (
             <>

@@ -111,12 +111,11 @@ export async function LabHeader({
   return (
     <header className={shell.header} style={headerPaletteStyle}>
       {isIssuer ? <IssuerPaletteRoot colors={issuerPalette.colors} /> : null}
-      <div className={shell.studio}><span>CITY/SYNC · COMMUNITY COORDINATION</span><span>{isIssuer ? 'Organization workspace' : 'Volunteer workspace'}{city ? ` · ${city.name}` : ''}</span></div>
+      <div className={shell.studio}><span>MYCITY · COMMUNITY COORDINATION</span><span>{isIssuer ? 'Organization workspace' : 'Volunteer workspace'}{city ? ` · ${city.name}` : ''}</span></div>
       <div className={shell.mainbar}>
-        <Link href={isIssuer ? "/aesthetic-lab/issuer" : "/aesthetic-lab"} className={shell.brand} aria-label="City/Sync home">
-          {/* The same official wordmark used by the City/Sync application. */}
+        <Link href={isIssuer ? "/aesthetic-lab/issuer" : "/aesthetic-lab"} className={shell.brand} aria-label="MyCity home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/citysync-wordmark-dark.svg" alt="City/Sync" />
+          <img src="/brand/mycity-wordmark-light.svg" alt="mycity" />
         </Link>
 
         <nav className={shell.navigation} aria-label={isIssuer ? 'Issuer Organization sections' : 'Civic Participant sections'}>

@@ -1,31 +1,28 @@
 import Link from 'next/link'
-import type { CSSProperties } from 'react'
+import { redirect } from 'next/navigation'
 import { and, asc, desc, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 import {
   ArrowUpRight,
-  CheckCircle2,
   ClipboardList,
-  UsersRound,
 } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { claims, organizationQueueAcknowledgements, orgs, shifts, tasks, users, programApplicants } from '@/lib/db/schema'
 import { acknowledgeOrganizationQueueAction } from '@/app/actions'
 import { requireRole } from '@/lib/auth/session'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { getOrganizationCalendarEntries } from '@/lib/services/organization-calendar'
 import { LabHeader } from '../LabHeader'
 import { LabNotice } from '../LabNotice'
-import { ActionQueueCard } from '../ActionQueueCard'
 import { getLabWorkspace } from '../lab-workspace'
 import { IssuerLabSidebar } from './IssuerLabSidebar'
 import { IssuerSchedulePanel } from './IssuerSchedulePanel'
-import { getProfile } from '@/lib/services/profile'
-import { ORGANIZATION_BANNER_PALETTES } from '@/lib/profile/organization-appearance'
 import { getRoster } from '@/lib/services/roster'
 import { listOrganizationDelegations } from '@/lib/services/identity-access'
 import { getOrganizationLocations } from '@/lib/services/organization-locations'
 import { getOrganizationDocuments, ORGANIZATION_DOCUMENT_CATEGORY_DETAILS } from '@/lib/services/organization-documents'
 import { getActiveWaivers } from '@/lib/services/waivers'
 import styles from '../prototype.module.css'
+import hub from './IssuerHomeHub.module.css'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,8 +36,9 @@ function scheduleBounds() {
   return { from: from.getTime(), to: to.getTime() }
 }
 
-export default async function IssuerAestheticLabPage({ searchParams }: { searchParams: { ok?: string; error?: string } }) {
+export default async function IssuerAestheticLabPage({ searchParams }: { searchParams: { view?: string; ok?: string; error?: string } }) {
   const session = await requireRole('issuer')
+  if (coordinationIntegratedEnabled() && searchParams.view !== 'connected' && !searchParams.ok && !searchParams.error) redirect('/mycity#/coordinator/home')
   const orgId = session.orgId!
   const { city, cities, contexts } = await getLabWorkspace(session)
   const now = Date.now()
@@ -52,7 +50,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     pendingShiftClaimRows,
     calendarEntries,
     acknowledgedQueueRows,
-    profile,
     roster,
     delegations,
     organizationLocations,
@@ -92,15 +89,12 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       : Promise.resolve([]),
     city ? getOrganizationCalendarEntries(orgId, city.id, schedule.from, schedule.to) : Promise.resolve([]),
     db.select({ actionKey: organizationQueueAcknowledgements.actionKey }).from(organizationQueueAcknowledgements).where(eq(organizationQueueAcknowledgements.orgId, orgId)),
-    getProfile(orgId),
     getRoster(orgId),
     listOrganizationDelegations(orgId),
     getOrganizationLocations(orgId),
     getOrganizationDocuments(orgId),
     getActiveWaivers(orgId),
   ])
-  const organizationPalette = ORGANIZATION_BANNER_PALETTES.find((option) => option.value === profile?.bannerPalette) ?? ORGANIZATION_BANNER_PALETTES[0]
-  const usesOriginalCitySyncAppearance = !profile || (profile.bannerStyle === 'original' && profile.bannerPalette === 'citysync')
   const organizationAddress = organizationLocations.find((location) => location.isDefault)?.address
     || organizationLocations[0]?.address
     || ''
@@ -124,12 +118,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     })),
     waivers: activeWaivers.map((waiver) => ({ id: waiver.id, title: waiver.title })),
   }
-  const issuerHeroStyle = {
-    '--issuer-hero-deep': usesOriginalCitySyncAppearance ? '#15151e' : organizationPalette.colors[0],
-    '--issuer-hero-mid': usesOriginalCitySyncAppearance ? '#29386f' : organizationPalette.colors[1],
-    '--issuer-hero-accent': organizationPalette.colors[2],
-    '--issuer-hero-accent-deep': organizationPalette.colors[3],
-  } as CSSProperties
   const activeByShift = new Map<string | null, number>()
   for (const { claim } of rosterClaimRows) activeByShift.set(claim.shiftId, (activeByShift.get(claim.shiftId) ?? 0) + 1)
   const pendingVerificationGroups = Array.from(
@@ -172,12 +160,11 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     .slice(0, 3)
   const candidates=await db.select({application:programApplicants,name:users.name}).from(programApplicants).innerJoin(users,eq(programApplicants.userId,users.id)).where(and(eq(programApplicants.orgId,orgId),eq(programApplicants.status,'submitted')))
   const queue = [
-    ...candidates.map(({application,name})=>({key:'candidate:'+application.id+':'+application.submittedAt,kind:'candidate' as const,title:'Review '+name+'’s volunteer welcome',detail:'Checklist submitted · Profile approval needed',href:'/aesthetic-lab/issuer/programs/'+application.scope+'?section=onboarding',action:'Review candidate'})),
+    ...candidates.map(({application,name})=>({key:'candidate:'+application.id+':'+application.submittedAt,kind:'candidate' as const,title:'Review '+name+'’s volunteer welcome',href:'/aesthetic-lab/issuer/programs/'+application.scope+'?section=onboarding',action:'Review candidate'})),
     ...pendingVerificationGroups.map(({ shift, task, participantCount }) => ({
       key: `verify:${shift.id}`,
       kind: 'verify' as const,
-      title: `Verify & close · review ${participantCount} reservation${participantCount === 1 ? '' : 's'}`,
-      detail: `${task.title} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Active shift'}`,
+      title: `Verify ${task.title} · ${participantCount} reservation${participantCount === 1 ? '' : 's'}`,
       href: `/aesthetic-lab/issuer/shifts/${shift.id}/verify`,
       action: 'Verify & Close',
     })),
@@ -185,7 +172,6 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
       key: `staffing:${shift.id}:${openSpots}`,
       kind: 'staffing' as const,
       title: `${openSpots} open spot${openSpots === 1 ? '' : 's'} · ${task.title}`,
-      detail: `${shift.visibility === 'private' ? 'Organization assignment' : 'Open signup'} · ${shift.startsAt ? new Date(shift.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Upcoming shift'}`,
       href: task.isOnboarding === 1
         ? `/aesthetic-lab/issuer/volunteers?event=${shift.id}#event-${shift.id}`
         : `/aesthetic-lab/issuer/programs/${task.programId ?? 'organization'}#${shift.visibility === 'private' ? 'program-staffing' : 'program-schedule'}`,
@@ -193,10 +179,9 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
     })),
   ].filter((item) => !acknowledgedQueueKeys.has(item.key)).slice(0, 6)
   const renderQueueItem = (item: typeof queue[number]) => (
-    <article key={item.key} data-queue-kind={item.kind}>
-      <span className={`${styles.issuerQueueIcon} ${styles[`issuerQueue${item.kind[0].toUpperCase()}${item.kind.slice(1)}`]}`}>{item.kind === 'verify' ? <CheckCircle2 size={17} /> : <UsersRound size={17} />}</span>
-      <div><b>{item.title}</b><small>{item.detail}</small></div>
-      <div className={styles.issuerQueueActions}>
+    <article key={item.key} className={hub.row} data-queue-kind={item.kind}>
+      <b>{item.title}</b>
+      <div className={hub.actions}>
         <form action={acknowledgeOrganizationQueueAction}>
           <input type="hidden" name="actionKey" value={item.key} />
           <button type="submit">Acknowledge</button>
@@ -214,24 +199,29 @@ export default async function IssuerAestheticLabPage({ searchParams }: { searchP
         <IssuerLabSidebar organizationId={org?.id} organizationName={org?.name} cityName={city?.name} scheduleShift={scheduleShiftOptions} />
 
         <section className={`${styles.issuerMain} ${styles.issuerHomeMain}`} id="overview" aria-label="Organization workspace">
-          <section className={styles.issuerHero} style={issuerHeroStyle}>
-            <div>
-              <p className={styles.eyebrow}>{org?.name ?? 'Your organization'}</p>
-              <h2>Keep today’s work moving.</h2>
-              <p>{scheduledShifts.length ? `${scheduledShifts.length} scheduled volunteer event${scheduledShifts.length === 1 ? '' : 's'} are ready for your organization.` : 'Start by creating an opportunity your community can join.'}</p>
+          <section className={hub.shell}>
+            <div className={hub.hero}>
+              <div>
+                <p className={hub.eyebrow}>{org?.name ?? 'Your organization'}</p>
+                <h2>Keep today’s work moving.</h2>
+                <p>{scheduledShifts.length ? `${scheduledShifts.length} scheduled volunteer event${scheduledShifts.length === 1 ? '' : 's'} are ready for your organization.` : 'Start by creating an opportunity your community can join.'}</p>
+              </div>
+              <div className={hub.heroActions}>
+                <Link href="/aesthetic-lab/issuer/catalog" className={hub.workspaceAction}><ClipboardList size={18} /> Open Workspace</Link>
+              </div>
             </div>
-            <div className={styles.issuerHeroActions}>
-              <Link href="/aesthetic-lab/issuer/catalog" className={styles.issuerHomeWorkspaceAction}><ClipboardList size={18} /> Open Workspace</Link>
-            </div>
+            {queue.length ? (
+              <section className={hub.drawer} aria-label="Action queue">
+                <div className={hub.drawerHeading}>
+                  <div><span>Action Queue</span><b>{queue.length} to review</b></div>
+                  <Link href="/aesthetic-lab/issuer/notification-history">History <ArrowUpRight size={13} /></Link>
+                </div>
+                <div className={hub.items}>{queue.map(renderQueueItem)}</div>
+              </section>
+            ) : null}
           </section>
 
           <LabNotice hidden ok={searchParams.ok} error={searchParams.error} />
-
-          <ActionQueueCard key={queue.length ? 'has-actions' : 'empty'} defaultCollapsed={queue.length === 0} historyHref="/aesthetic-lab/issuer/notification-history" historyLabel="Open notification history">
-            <div className={styles.issuerQueueList}>
-              {queue.length ? <section className={styles.issuerQueueGroup} data-queue-group="action"><div className={styles.issuerQueueGroupHeading}><b>Action Items ({queue.length})</b></div><div className={styles.issuerQueueGroupItems}>{queue.map(renderQueueItem)}</div></section> : <p className={styles.issuerQueueEmpty}><b>Nothing to Review!</b></p>}
-            </div>
-          </ActionQueueCard>
 
           <IssuerSchedulePanel
             entries={scheduleEntries}

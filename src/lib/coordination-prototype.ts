@@ -5,20 +5,26 @@ import { join } from 'node:path'
 export const COORDINATION_ASSETS = [
   'index.html',
   'styles.css', 'feed.css', 'passport.css', 'recruitment.css', 'program.css',
-  'profile.css', 'navigation.css', 'volunteer.css', 'planning.css', 'issuer-home.css',
+  'profile.css', 'navigation.css', 'volunteer.css', 'planning.css', 'issuer-home.css', 'documents.css',
   'app.js', 'model.js', 'navigation-view.js',
   'feed-model.js', 'feed-view.js', 'passport-model.js', 'passport-view.js', 'resume-view.js',
   'recruitment-model.js', 'recruitment-view.js', 'program-model.js', 'program-view.js',
+  'documents-model.js', 'documents-view.js', 'documents-files.js',
   'profile-model.js', 'profile-view.js', 'planning-model.js', 'planning-view.js',
   'planning-controller.js', 'issuer-home-model.js', 'issuer-home-view.js', 'issuer-home-controller.js',
   'assets/garden-story.svg', 'assets/together-story.svg',
+  'assets/mycity-wordmark-light.svg', 'assets/mycity-symbol-dark.svg',
 ] as const
 
 export function coordinationPrototypeEnabled() {
   return process.env.CITYSYNC_COORDINATION_UI === 'prototype' && !process.env.VERCEL
 }
 
-export async function coordinationAsset(path: string) {
+export function coordinationIntegratedEnabled() {
+  return process.env.CITYSYNC_COORDINATION_UI === 'integrated' && (!process.env.VERCEL || process.env.VERCEL_ENV === 'preview')
+}
+
+export async function coordinationAsset(path: string, mount = '/coordination') {
   // An explicit runtime-only manifest prevents serving documents, tests, or arbitrary files.
   if (!(COORDINATION_ASSETS as readonly string[]).includes(path)) return null
   let body = await readFile(join(process.cwd(), 'experiments/volunteer-coordination', path), 'utf8')
@@ -27,13 +33,13 @@ export async function coordinationAsset(path: string) {
   if (path.endsWith('.svg')) contentType = 'image/svg+xml; charset=utf-8'
   if (path === 'index.html') {
     contentType = 'text/html; charset=utf-8'
-    body = body.replaceAll('href="/', 'href="/coordination/').replaceAll('src="/', 'src="/coordination/')
+    body = body.replaceAll('href="/', `href="${mount}/`).replaceAll('src="/', `src="${mount}/`)
       .replace('<head>', '<head>\n    <meta name="citysync-data-mode" content="local-prototype-demo" />')
   }
-  if (path === 'feed-model.js') body = body.replaceAll("'/assets/", "'/coordination/assets/")
+  if (path === 'feed-model.js') body = body.replaceAll("'/assets/", `'${mount}/assets/`)
   if (path === 'app.js') {
     // Preserve copied feed, profile and invitation links under the mounted UI path.
-    body = body.replaceAll('location.origin', "(location.origin + '/coordination')")
+    body = body.replaceAll('location.origin', `(location.origin + '${mount}')`)
   }
   return { body, contentType }
 }

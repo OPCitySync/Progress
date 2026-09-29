@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, transition } from './model.js';
-import { ensurePrograms, transitionProgram, programHealth, blockersFor, occurrenceDates } from './program-model.js';
+import { isLiabilityWaiver, saveDocument } from './documents-model.js';
+import { ensurePrograms, transitionProgram, programHealth, blockersFor, occurrenceDates, workspaceProgramLeads } from './program-model.js';
 const initial = () => createInitialState();
 const garden = s => s.activities.find(a=>a.id==='garden');
 const apply = (s,a) => transitionProgram(s,{actor:'coordinator',programId:garden(s).programId,...a}).state;
@@ -66,7 +67,7 @@ test('tasks require program, deliverable, reviewer, and supported type',()=>{
  const s=initial();for(const change of [{workType:'standby'},{workType:'ongoing'},{workType:'project',programId:''},{workType:'project',acceptance:''},{workType:'project',reviewer:''}])assert.throws(()=>transition(s,{...creation(s),...change}));
 });
 test('handoff cannot bypass completion review',()=>{
- const s=initial();assert.throws(()=>transition(s,{type:'handoff',activityId:'website',progress:'Ready',next:'Done',owner:'Jules',projectStatus:'Complete'}),/work plan/);
+ const s=initial();assert.throws(()=>transition(s,{type:'handoff',activityId:'website',progress:'Ready',next:'Done',owner:'Jules',projectStatus:'Complete'}),/Program Activities/);
 });
 test('program completion requires all accepted work and an outcome review',()=>{
  let s=initial();assert.throws(()=>apply(s,{type:'programStatus',status:'complete',note:'Good'}),/Complete the work/);
@@ -76,19 +77,56 @@ test('program completion requires all accepted work and an outcome review',()=>{
  assert.equal(s.programWorkspace.programs.find(p=>p.id===garden(s).programId).status,'complete');
  assert.throws(()=>transition(s,creation(s)),/complete/);
 });
-test('draft program requires a complete brief, remains private, and cannot start work',()=>{
- let s=initial();const data={type:'saveProgram',actor:'coordinator',name:'Fall pilot',purpose:'Help neighbors',scope:'One neighborhood',excluded:'Other areas',success:'10 households receive food',lead:'Maya',start:'2026-09-23',end:'2026-10-31'};
- assert.throws(()=>transitionProgram(s,{...data,scope:''}),/Define/);
- const r=transitionProgram(s,data);s=r.state;const p=s.programWorkspace.programs.find(p=>p.id===r.id);assert.equal(p.status,'draft');
- s=transition(s,{...creation(s),workType:'event',programId:p.id}).state;
+test('a minimal draft requires a workspace member lead, remains private, and can schedule work later',()=>{
+ let s=initial();const leads=workspaceProgramLeads(s);
+ assert.ok(leads.length>0 && leads.every(lead=>!s.people.some(person=>person.name===lead.name)));
+ const data={type:'saveProgram',actor:'coordinator',name:'Fall pilot',purpose:'Help neighbors',leadMemberId:leads[0].id};
+ assert.throws(()=>transitionProgram(s,{...data,purpose:''}),/purpose and goals/);
+ assert.throws(()=>transitionProgram(s,{...data,leadMemberId:'sam'}),/organization member with workspace access/);
+ const r=transitionProgram(s,data);s=r.state;const p=s.programWorkspace.programs.find(p=>p.id===r.id);
+ assert.equal(p.status,'draft');assert.equal(p.lead,leads[0].name);assert.equal(p.start,'');assert.equal(p.end,'');
+ s=transition(s,{...creation(s),workType:'event',date:'2027-01-07',programId:p.id}).state;
  assert.throws(()=>apply(s,{...action(s.activities.at(-1).id,'In progress'),programId:p.id}),/Activate/);
  assert.throws(()=>transition(s,{type:'commit',activityId:s.activities.at(-1).id,roleId:s.activities.at(-1).roles[0].id,personId:'alex',status:'confirmed'}),/Activate/);
+ s=transitionProgram(s,{type:'programStatus',actor:'coordinator',programId:p.id,status:'active'}).state;
+ assert.equal(s.programWorkspace.programs.find(program=>program.id===p.id).status,'active');
+});
+test('activity changes appear only in their own program log',()=>{
+ const start=initial();const activity=start.activities.find(item=>item.id==='garden');
+ const state=transition(start,{type:'handoff',activityId:activity.id,progress:'Beds ready',next:'Plant',owner:'Sam'}).state;
+ assert.equal(state.programWorkspace.history[0].programId,activity.programId);
+ assert.match(state.programWorkspace.history[0].text,/Handoff updated/);
+ assert.equal(state.programWorkspace.history.filter(entry=>entry.programId!==activity.programId).length,0);
 });
 test('only coordinators change program scope, dependencies, and resources',()=>{
  const s=initial();for(const type of ['saveProgram','plan','resource','update','programStatus'])assert.throws(()=>apply(s,{type,actor:'alex',activityId:'garden'}),/coordinator/);
 });
 test('health is derived and completion is separate from outcome reporting',()=>{
  const s=initial(), p=s.programWorkspace.programs.find(p=>p.id===garden(s).programId),h=programHealth(s,p,'2026-09-26');assert.equal(h.blocked.length,1);assert.equal(h.overdue.length,1);assert.equal(h.complete,0);assert.equal(h.total,2);
+});
+
+test('program settings can archive a program while retaining its record',()=>{
+ const s=initial(), p=s.programWorkspace.programs.find(p=>p.id===garden(s).programId);
+ const result=transitionProgram(s,{type:'programStatus',actor:'coordinator',programId:p.id,status:'archived',note:'Program archived'});
+ assert.equal(result.state.programWorkspace.programs.find(program=>program.id===p.id).status,'archived');
+ assert.equal(result.notice,'Program archived');
+ assert.equal(result.state.programWorkspace.history[0].text,'Program archived');
+});
+
+test('program recurring activities use assignment modes and retain one dated program series entry',()=>{
+ const start=initial(), programId=garden(start).programId;
+ const base={type:'createActivity',programActivity:true,programId,workType:'shift',title:'Weekly pantry team',description:'Pack and distribute fresh food together.',date:'2026-10-03',interval:7,time:'09:00',duration:'2 hours',location:'North Berkeley',roleName:'Volunteer team',capacity:10,owner:'Program lead',reviewer:'Program lead',acceptance:'Activity completed and handoff recorded.',requires:[],assignmentMode:'manual',visibility:'members',enrollment:'managed'};
+ let result=transition(start,base), created=result.state.activities.slice(start.activities.length);
+ assert.equal(created.length,1);assert.equal(created[0].programId,programId);assert.equal(created[0].programActivity,true);assert.equal(created[0].assignmentMode,'manual');assert.equal(created[0].recurrence,'Every week · program activity');assert.equal(created[0].duration,'2 hours');
+ const publicStart=initial();const publicProgramId=garden(publicStart).programId;publicStart.documentLibrary={items:[{id:'waiver-1',title:'Liability waiver',category:'Forms',summary:'Current participation agreement'}]};
+ assert.throws(()=>transition(publicStart,{...base,programId:publicProgramId,assignmentMode:'public',visibility:'public',enrollment:'self',waiverDocumentId:''}),/liability waiver/);
+ result=transition(publicStart,{...base,programId:publicProgramId,assignmentMode:'public',visibility:'public',enrollment:'self',waiverDocumentId:'waiver-1',requires:['waiver']});
+ const publicActivity=result.state.activities.at(-1);assert.equal(publicActivity.visibility,'public');assert.equal(publicActivity.enrollment,'self');assert.deepEqual(publicActivity.roles[0].requires,['waiver']);
+ assert.throws(()=>saveDocument(initial(),{documentType:'liability-waiver',title:'Community participation form',summary:'Required before public activities'}),/Upload a PDF/);
+ const added=saveDocument(initial(),{documentType:'liability-waiver',title:'Community participation form',summary:'Required before public activities',content:'Review this agreement.',fileName:'participation.pdf',fileSize:1024,fileType:'application/pdf'});
+ const waiver=added.state.documentLibrary.items[0];assert.equal(waiver.category,'Forms');assert.equal(isLiabilityWaiver(waiver),true);
+ result=transition(added.state,{...base,programId:garden(added.state).programId,assignmentMode:'public',visibility:'public',enrollment:'self',waiverDocumentId:waiver.id,requires:['waiver']});
+ assert.equal(result.state.activities.at(-1).waiverDocumentId,waiver.id);
 });
 
 test('draft or retired activities cannot be shared into MyCity Feed',async()=>{

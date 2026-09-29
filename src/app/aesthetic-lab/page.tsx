@@ -15,6 +15,7 @@ import { claims, orgs, shifts, tasks, users } from '@/lib/db/schema'
 import { db } from '@/lib/db/client'
 import { markNotificationReadAction } from '@/app/actions'
 import { requireSession } from '@/lib/auth/session'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { getFeed } from '@/lib/services/feed'
 import { getCityImpact } from '@/lib/services/leaderboard'
@@ -62,10 +63,11 @@ function participantNotificationActionLabel(kind: string) {
 }
 
 /** The participant Home experience using the same session and records as the functional application. */
-export default async function AestheticLabPage() {
+export default async function AestheticLabPage({ searchParams }: { searchParams: { view?: string; ok?: string; error?: string } }) {
   const session = await requireSession('/aesthetic-lab')
   if (session.role === 'issuer') redirect('/aesthetic-lab/issuer')
   if (session.role !== 'participant') redirect('/participant')
+  if (coordinationIntegratedEnabled() && searchParams.view !== 'connected' && !searchParams.ok && !searchParams.error) redirect('/mycity#/volunteer/home')
 
   const { city, cities, contexts } = await getLabWorkspace(session)
   const [resume, joinedOrganizations, feed, impact, claimRows, cityEvents, notifications, participantAppearance] = await Promise.all([

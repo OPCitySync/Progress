@@ -21,6 +21,7 @@
     "setup": "npm run db:migrate && npm run db:seed",
     "preview:coordination:setup": "node scripts/coordination-preview.mjs setup",
     "preview:coordination": "node scripts/coordination-preview.mjs dev",
+    "preview:platform": "node scripts/coordination-preview.mjs dev-platform",
     "preview:coordination:build": "node scripts/coordination-preview.mjs build"
   },
   "dependencies": {

@@ -19,6 +19,7 @@ import {
 import { db } from '@/lib/db/client'
 import { cities as cityNetworks, claims, orgs, shifts, tasks, users, volunteerPrograms } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { getParticipantOrganizations } from '@/lib/services/participant-workspace'
 import { aggregateOpportunities, getPublicApplications, listPublicIssuers, type PublicOpportunity } from '@/lib/services/profile'
@@ -200,9 +201,10 @@ function OrganizationRosterOpportunities({ openRosterShifts, privateShifts }: { 
   </details>
 }
 
-export default async function OpportunitiesLabPage({ searchParams }: { searchParams: { saved?: string; tab?: string } }) {
+export default async function OpportunitiesLabPage({ searchParams }: { searchParams: { saved?: string; tab?: string; view?: string } }) {
   if (searchParams.tab === 'profile') redirect('/aesthetic-lab/passport')
   const session = await requireRole('participant')
+  if (coordinationIntegratedEnabled() && searchParams.view !== 'connected') redirect(`/mycity#/volunteer/${searchParams.tab === 'commitments' ? 'schedule' : searchParams.tab === 'organizations' ? 'discover' : 'work'}`)
   const { city, cities, contexts } = await getLabWorkspace(session)
   const savedOnly = searchParams.saved === '1'
   const activeTab = searchParams.tab === 'organizations'

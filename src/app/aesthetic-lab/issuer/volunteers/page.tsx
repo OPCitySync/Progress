@@ -1,9 +1,11 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Link2, Mail, MessageCircle, Search } from 'lucide-react'
 import { createVolunteerRosterInviteAction } from '@/app/actions'
 import { eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { db } from '@/lib/db/client'
 import { orgs } from '@/lib/db/schema'
 import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
@@ -30,6 +32,7 @@ type VolunteerHeaderPaletteVariables = CSSProperties & {
 
 export default async function IssuerVolunteersLabPage({ searchParams }: { searchParams: { q?: string; view?: string; ok?: string; error?: string; rosterInvite?: string; invite?: string; inviteRole?: string } }) {
   const session = await requireRole('issuer')
+  if (coordinationIntegratedEnabled() && !searchParams.view && !searchParams.q && !searchParams.ok && !searchParams.error && !searchParams.rosterInvite && !searchParams.invite) redirect('/mycity#/coordinator/people')
   const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
   const query = searchParams.q?.trim() ?? ''

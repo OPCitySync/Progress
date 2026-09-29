@@ -4,10 +4,10 @@ import { NavigationHistoryTracker } from './aesthetic-lab/NavigationHistoryTrack
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'City/Sync — Volunteer Management',
+  title: 'MyCity — Volunteer Coordination',
   description:
-    'Civic contribution, recognized. Verified volunteer work earns civic credits redeemable with local community partners.',
-  icons: { icon: '/favicon.ico', apple: '/apple-touch-icon.png' },
+    'Find local volunteer opportunities, coordinate with organizations, and carry your service history forward.',
+  icons: { icon: '/brand/mycity-symbol-dark.svg' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

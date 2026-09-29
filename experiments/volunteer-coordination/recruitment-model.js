@@ -62,23 +62,35 @@ export function transitionRecruitment(current, action, date = today()) {
     reviewOrg(action.orgId);
     let position = action.positionId && r.positions.find(p => p.id === action.positionId);
     if (position) { reviewOrg(position.orgId); assert(position.status === 'draft', 'Published roles keep their terms. Create a new role for material changes.'); }
+    const programRole = Boolean(action.programId);
     const requirements = [...new Set(action.requirements || [])];
     assert(requirements.every(k => ['welcome','waiver','food','driver'].includes(k)), 'Unknown onboarding step.');
-    assert(['application','conversation'].includes(action.pathway), 'Choose a short application or a conversation-first pathway.');
-    assert(['In person','Remote','Hybrid'].includes(action.mode), 'Choose a work mode.');
-    assert(clean(action.title,120) && clean(action.impact) && clean(action.tasks) && clean(action.commitment) && clean(action.experience) && clean(action.support), 'Describe the role, impact, time, experience and support before saving.');
-    assert(Number.isInteger(Number(action.capacity)) && Number(action.capacity)>0 && Number(action.capacity)<=100, 'Choose between 1 and 100 onboarding places.');
-    assert(Number.isInteger(Number(action.responseDays)) && Number(action.responseDays)>0 && Number(action.responseDays)<=30, 'Set an initial reply target between 1 and 30 calendar days.');
-    assert(!action.deadline || dateValid(action.deadline) && action.deadline>=date, 'Use a closing date today or later.');
+    const pathway = action.pathway || 'application';
+    const mode = action.mode || 'In person';
+    assert(['application','conversation'].includes(pathway), 'Choose a short application or a conversation-first pathway.');
+    assert(['In person','Remote','Hybrid'].includes(mode), 'Choose a work mode.');
+    if (programRole) {
+      assert(clean(action.title,120) && clean(action.tasks), 'Add a role title and description.');
+    } else {
+      assert(clean(action.title,120) && clean(action.impact) && clean(action.tasks) && clean(action.commitment) && clean(action.experience) && clean(action.support), 'Describe the role, impact, time, experience and support before saving.');
+      assert(Number.isInteger(Number(action.capacity)) && Number(action.capacity)>0 && Number(action.capacity)<=100, 'Choose between 1 and 100 onboarding places.');
+      assert(Number.isInteger(Number(action.responseDays)) && Number(action.responseDays)>0 && Number(action.responseDays)<=30, 'Set an initial reply target between 1 and 30 calendar days.');
+      assert(!action.deadline || dateValid(action.deadline) && action.deadline>=date, 'Use a closing date today or later.');
+    }
     if (action.activityId) assert(action.orgId === HOME_ORG && state.activities.some(a => a.id === action.activityId), 'Choose an activity belonging to this organization.');
-    const values = { title: clean(action.title,120), impact: clean(action.impact,500), tasks: clean(action.tasks), commitment: clean(action.commitment,300), experience: clean(action.experience,600), support: clean(action.support,600), mode: action.mode, pathway: action.pathway, capacity: Number(action.capacity), responseDays: Number(action.responseDays), deadline: action.deadline || '', question: clean(action.question,240), check: clean(action.check,200), requirements, activityId: action.activityId || '' };
+    const programId = action.programId || '';
+    if (programId) assert(action.orgId === HOME_ORG && state.programWorkspace?.programs.some(program => program.id === programId && program.status !== 'complete'), 'Choose an active or draft program in this organization.');
+    if (programId && action.activityId) assert(state.activities.some(activity => activity.id === action.activityId && activity.programId === programId), 'Choose an activity in this program.');
+    const values = { title: clean(action.title,120), impact: clean(action.impact || action.tasks,500), tasks: clean(action.tasks), commitment: clean(action.commitment || 'Program activity',300), experience: clean(action.experience || 'Open to learning',600), support: clean(action.support || 'A coordinator will share the next step.',600), mode, pathway, capacity: Number(action.capacity || 1), responseDays: Number(action.responseDays || 7), deadline: action.deadline || '', question: clean(action.question,240), check: clean(action.check,200), requirements, activityId: action.activityId || '', programId };
     if (position) Object.assign(position, values); else { position = { id: uid(), orgId: org.id, status: 'draft', version: 1, ...values }; r.positions.unshift(position); }
-    resultId = position.id; notice = 'Role draft saved. Preview it before publishing.';
+    if (programId) state.programWorkspace.history.unshift({ id: uid(), programId, activityId: '', text: `${position.title} role ${position.status === 'draft' ? 'saved as a draft' : 'updated'}`, detail: '', actor: 'Maya Thompson', date: new Date().toISOString() });
+    resultId = position.id; notice = programRole ? 'Program role created.' : 'Role draft saved. Preview it before publishing.';
   } else if (action.type === 'positionStatus') {
     const p = r.positions.find(p => p.id === action.positionId); assert(p,'Position not found.'); reviewOrg(p.orgId);
     assert(['open','paused','closed'].includes(action.status), 'Choose a valid publication state.');
     assert(action.status !== 'open' || !p.deadline || p.deadline>=date, 'The closing date has passed. Create a new recruitment round.');
     p.status = action.status; notice = action.status === 'open' ? 'Position published in organization discovery.' : 'New applications stopped. Existing applicants keep their next steps.';
+    if (p.programId && state.programWorkspace) state.programWorkspace.history.unshift({ id: uid(), programId: p.programId, activityId: '', text: `${p.title} role ${action.status === 'open' ? 'published' : action.status}`, detail: '', actor: 'Maya Thompson', date: new Date().toISOString() });
   } else if (action.type === 'saveOrganization') {
     reviewOrg(action.orgId); assert(clean(action.mission) && clean(action.support) && clean(action.welcome), 'Describe the mission, access/support and welcome.');
     org.mission=clean(action.mission,500); org.support=clean(action.support,800); org.welcome=clean(action.welcome,1000); notice='Organization profile and welcome updated.';

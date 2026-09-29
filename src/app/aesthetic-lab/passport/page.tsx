@@ -1,4 +1,6 @@
 import { requireRole } from '@/lib/auth/session'
+import { redirect } from 'next/navigation'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { getMyResume } from '@/lib/services/resume'
 import { getLabWorkspace } from '../lab-workspace'
 import { LabHeader } from '../LabHeader'
@@ -10,8 +12,9 @@ import styles from '../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-export default async function PassportPage({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function PassportPage({ searchParams }: { searchParams: { tab?: string; view?: string } }) {
   const session = await requireRole('participant')
+  if (coordinationIntegratedEnabled() && searchParams.view !== 'connected') redirect(`/mycity#/volunteer/${searchParams.tab === 'history' ? 'history' : searchParams.tab === 'resume' ? 'resume' : 'passport'}`)
   const [{ city, cities, contexts }, resume] = await Promise.all([getLabWorkspace(session), getMyResume(session.sub)])
   if (!resume) return null
   const active = searchParams.tab === 'resume' ? 'resume' : searchParams.tab === 'history' ? 'history' : 'profile'

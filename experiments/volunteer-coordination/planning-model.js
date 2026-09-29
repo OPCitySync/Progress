@@ -9,13 +9,10 @@ export function planningMonday(date = today()) {
 export function planningDate(date, days) {
   const d=new Date(date+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+days); return d.toISOString().slice(0,10);
 }
-export function planningActivities(state, {mode='programs',programId='',start=planningMonday(),weeks='2',sort='date'}={}) {
-  const end=weeks==='all'?null:planningDate(start,Number(weeks)*7);
-  const items=state.activities.filter(a=>!a.archived && ['event','shift','project'].includes(a.type)
-    && (mode==='programs'?(!programId || a.programId===programId):a.type===(mode==='events'?'event':'shift'))
-    && (!end || !a.date || (a.date>=start && a.date<end)));
-  const open=a=>a.roles.reduce((n,r)=>n+Math.max(0,r.capacity-confirmedCount(state,a.id,r.id)),0);
-  return items.sort((a,b)=>(sort==='title'?a.title.localeCompare(b.title):sort==='open'?open(b)-open(a):0) || (a.date||'9999').localeCompare(b.date||'9999') || a.title.localeCompare(b.title));
+export function planningActivities(state, {mode='programs',programId=''}={}) {
+  return state.activities.filter(a=>!a.archived && ['event','shift','project'].includes(a.type)
+    && (mode==='programs' ? Boolean(a.programId) && (!programId || a.programId===programId) : !a.programId && a.type===(mode==='events'?'event':'shift')))
+    .sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999') || a.title.localeCompare(b.title));
 }
 export function planningProblem(state, personId, activityId, date=today()) {
   const a=state.activities.find(a=>a.id===activityId),person=state.people.find(p=>p.id===personId);

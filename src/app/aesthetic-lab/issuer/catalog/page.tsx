@@ -1,8 +1,10 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { CalendarDays, Eye, EyeOff, FileText, Settings2 } from 'lucide-react'
 import { requireRole } from '@/lib/auth/session'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { db } from '@/lib/db/client'
 import { onboardingApplicationForms, onboardingIntakes, orgs, tasks } from '@/lib/db/schema'
 import { setOpportunityPublicationStatusAction } from '@/app/actions'
@@ -49,9 +51,12 @@ function eventWhen(timestamp: number | null) {
 export default async function IssuerCatalogLabPage({
   searchParams,
 }: {
-  searchParams: { workspace?: string; ok?: string; error?: string }
+  searchParams: { workspace?: string; view?: string; ok?: string; error?: string }
 }) {
   const session = await requireRole('issuer')
+  if (coordinationIntegratedEnabled() && searchParams.view !== 'connected' && searchParams.workspace !== 'documents' && !searchParams.ok && !searchParams.error) {
+    redirect(`/mycity#/coordinator/${searchParams.workspace === 'opportunities' ? 'work' : 'programs'}`)
+  }
   const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
   const [org, taskRows, volunteerPrograms, documents, waiverSetup, profile, publicationMap, waiverTaskIds, publishedApplicationForms, publicProfileIntakes] = await Promise.all([

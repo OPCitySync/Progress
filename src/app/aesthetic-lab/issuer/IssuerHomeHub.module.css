@@ -1,0 +1,72 @@
+.shell {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #294f40;
+  border-radius: 18px;
+  background: #f1f5ed;
+  box-shadow: 0 12px 28px -20px rgba(20, 49, 33, .43);
+}
+
+.hero {
+  display: flex;
+  min-height: 200px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 32px 36px;
+  color: #fff;
+  background: linear-gradient(112deg, #294f40 0%, #315843 62%, #466b4c 100%);
+}
+
+.hero > div:first-child { min-width: 0; }
+.eyebrow { margin: 0; color: #d7e5b9; font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+.hero h2 { margin: 10px 0 14px; color: #fff; font-size: clamp(26px, 3vw, 36px); font-weight: 600; letter-spacing: -.04em; line-height: 1.15; }
+.hero p:last-child { max-width: 550px; margin: 0; color: #d8e3d6; font-size: 13px; line-height: 1.7; }
+.heroActions { display: flex; flex: none; }
+.workspaceAction { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 10px; color: #294f40; background: #e2ecbd; box-shadow: 0 3px 8px rgba(15, 39, 25, .15); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.workspaceAction:hover { color: #203d32; background: #f1f7d4; }
+
+.drawer {
+  border-top: 1px solid rgba(255, 255, 255, .3);
+  background: linear-gradient(180deg, #e9f0e4 0%, #f8faf5 100%);
+  animation: drawerDrop .24s ease-out both;
+}
+.drawerHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 42px; padding: 9px 30px; border-bottom: 1px solid rgba(41, 79, 64, .12); }
+.drawerHeading > div { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.drawerHeading span { color: #294f40; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.drawerHeading b { padding: 3px 8px; border-radius: 99px; color: #3b6246; background: #d9e7d3; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.drawerHeading > a { display: inline-flex; align-items: center; gap: 4px; color: #52715a; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.drawerHeading > a:hover { color: #294f40; }
+.items { max-height: 330px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; min-height: 49px; padding: 7px 30px; border-top: 1px solid rgba(41, 79, 64, .1); }
+.row:first-child { border-top: 0; }
+.row > b { min-width: 0; overflow: hidden; color: #29463a; font-size: 12px; font-weight: 650; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.actions form { margin: 0; }
+.actions :is(button, a) { display: inline-flex; min-height: 31px; align-items: center; justify-content: center; gap: 5px; padding: 6px 10px; border: 1px solid #b7cbb6; border-radius: 7px; font: inherit; font-size: 10px; font-weight: 750; line-height: 1.2; white-space: nowrap; cursor: pointer; }
+.actions button { color: #496853; background: rgba(255, 255, 255, .64); }
+.actions button:hover { color: #294f40; background: #fff; }
+.actions a { border-color: #294f40; color: #fff; background: #294f40; }
+.actions a:hover { color: #fff; background: #1e3d31; }
+.shell .hero .workspaceAction,
+.shell .hero .workspaceAction:hover { color: #294f40; }
+.shell .drawer .actions :is(button, a) { font-size: 10px; }
+.shell .drawer .actions a,
+.shell .drawer .actions a:hover { color: #fff; }
+.shell :is(a, button):focus-visible { outline: 2px solid #dd9e33; outline-offset: 2px; }
+
+@keyframes drawerDrop { from { opacity: .65; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 760px) {
+  .hero { min-height: 0; align-items: flex-start; flex-direction: column; gap: 22px; padding: 25px; }
+  .heroActions { width: 100%; }
+  .workspaceAction { width: 100%; }
+  .drawerHeading { padding-inline: 20px; }
+  .row { padding-inline: 20px; }
+}
+@media (max-width: 560px) {
+  .row { grid-template-columns: 1fr; gap: 7px; padding-block: 10px; }
+  .row > b { white-space: normal; }
+  .actions { justify-content: flex-start; }
+  .actions :is(button, a) { min-height: 30px; }
+}
+@media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }

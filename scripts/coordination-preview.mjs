@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const data = resolve(root, '.integration-preview')
 const command = process.argv[2] ?? 'dev'
-if (!['setup', 'dev', 'build'].includes(command)) throw new Error('Use setup, dev, or build.')
+if (!['setup', 'dev', 'dev-platform', 'build'].includes(command)) throw new Error('Use setup, dev, dev-platform, or build.')
 if (process.env.VERCEL) throw new Error('The coordination preview is for local development only.')
 mkdirSync(data, { recursive: true })
 const env = {
@@ -20,6 +20,7 @@ const env = {
   REMINDER_EMAIL_MODE: 'stub', RESEND_API_KEY: '', ANCHOR_MODE: 'stub', STORAGE_MODE: 'local',
   APP_URL: 'http://127.0.0.1:4320', NEXT_TELEMETRY_DISABLED: '1',
 }
+if (command === 'dev-platform') env.CITYSYNC_COORDINATION_UI = 'integrated'
 function run(bin, args) {
   return new Promise((resolveRun, reject) => {
     const child = spawn(process.execPath, [bin, ...args], { cwd: root, env, stdio: 'inherit' })

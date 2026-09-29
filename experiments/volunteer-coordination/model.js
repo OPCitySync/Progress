@@ -1,6 +1,7 @@
 import { ensurePrograms, validateActivityPlan, occurrenceDates } from './program-model.js';
 import { ensurePassport, requirementReady, today } from './passport-model.js';
 import { createFeedState } from './feed-model.js';
+import { isLiabilityWaiver } from './documents-model.js';
 export const STORAGE_KEY = 'citysync-volunteer-studio-v1';
 export const REQUIREMENTS = {
   welcome: { title: 'Read our welcome', detail: 'How we work, who to ask, and what to expect.', self: true },
@@ -57,7 +58,11 @@ export const activeCommitment = (state, personId, activityId) => state.commitmen
 export function transition(current, action) {
   const state = ensurePrograms(structuredClone(current));
   let notice = 'Saved';
-  const log = text => state.activityLog.unshift({ text, time: 'Just now' });
+  const log = (text, activityId = '', actor = 'Berkeley Neighbors') => {
+    state.activityLog.unshift({ text, time: 'Just now' });
+    const activity = state.activities.find(item => item.id === activityId);
+    if (activity?.programId) state.programWorkspace.history.unshift({ id: id(), programId: activity.programId, activityId, text, detail: '', actor, date: new Date().toISOString() });
+  };
   const notify = (personId, text, activityId) => state.notifications.unshift({ id: id(), personId, text, activityId });
   const getPerson = key => { const p = state.people.find(p => p.id === key); if (!p) throw Error('Person not found.'); return p; };
   const getActivity = key => { const a = state.activities.find(a => a.id === key); if (!a) throw Error('Activity not found.'); return a; };
@@ -102,7 +107,7 @@ export function transition(current, action) {
     state.commitments.push({ id: id(), personId: p.id, activityId: a.id, roleId: role.id, status: action.status });
     if (p.relationship === 'interested' && action.status !== 'proposed') p.relationship = 'event-only';
     notice = action.status === 'proposed' ? 'Invitation proposed. It will count as coverage after acceptance.' : action.status === 'waitlisted' ? 'Added to the waitlist. A place will require confirmation.' : 'Your place is confirmed';
-    log(`${p.name}: ${action.status} · ${a.title}`);
+    log(`${p.name}: ${action.status} · ${a.title}`, a.id, action.actor === 'coordinator' ? 'Maya Thompson' : p.name);
     if (action.status === 'proposed') notify(p.id, `You’re invited: ${a.title}. Please accept or decline.`, a.id);
   } else if (action.type === 'respond') {
     const c = state.commitments.find(c => c.id === action.commitmentId);
@@ -116,14 +121,14 @@ export function transition(current, action) {
       if (confirmedCount(state, a.id, role.id) >= role.capacity) throw Error('This role has filled. Decline this invitation and join the waitlist.');
       c.status = 'confirmed'; notice = 'Accepted. Both calendars now show this commitment.';
     } else { c.status = 'declined'; notice = 'Invitation declined. Your coordinator can invite someone else.'; }
-    log(`${p.name} ${action.accept ? 'accepted' : 'declined'} · ${a.title}`);
+    log(`${p.name} ${action.accept ? 'accepted' : 'declined'} · ${a.title}`, a.id, p.name);
   } else if (action.type === 'cancel') {
     const c = state.commitments.find(c => c.id === action.commitmentId);
     if (!c || !['confirmed', 'proposed', 'waitlisted'].includes(c.status)) throw Error('This commitment is no longer active.');
     c.status = 'canceled'; c.cancellationNote = (action.note || '').trim();
     const p = getPerson(c.personId); const a = getActivity(c.activityId);
     notice = 'Cancellation recorded. Coverage and the coordinator’s action list are updated.';
-    log(`${p.name} canceled · ${a.title}${c.cancellationNote ? ' · ' + c.cancellationNote : ''}`);
+    log(`${p.name} canceled · ${a.title}${c.cancellationNote ? ' · ' + c.cancellationNote : ''}`, a.id, p.name);
     notify('coordinator', `${p.name} can’t attend ${a.title}. Review coverage and invite a replacement.`, a.id);
   } else if (action.type === 'offerWaitlist') {
     const c = state.commitments.find(c => c.id === action.commitmentId);
@@ -132,12 +137,14 @@ export function transition(current, action) {
     if (confirmedCount(state, a.id, role.id) >= role.capacity) throw Error('This role is still full.');
     c.status = 'proposed'; notify(c.personId, `A place opened in ${a.title}. Accept to confirm.`, a.id);
     notice = 'Place offered. It is pending until the volunteer accepts.';
-    log(`${getPerson(c.personId).name} was offered a place · ${a.title}`);
+    log(`${getPerson(c.personId).name} was offered a place · ${a.title}`, a.id, 'Maya Thompson');
   } else if (action.type === 'attendance') {
     const c = state.commitments.find(c => c.id === action.commitmentId);
     if (!c || c.status !== 'confirmed') throw Error('Only confirmed participants can be checked in.');
     c.attendance = action.attendance;
     notice = 'Attendance updated';
+    const activity = getActivity(c.activityId);
+    log(`${getPerson(c.personId).name}: attendance ${action.attendance} · ${activity.title}`, activity.id, 'Maya Thompson');
   } else if (action.type === 'message') {
     getActivity(action.activityId);
     if (!action.text.trim()) throw Error('Write a message first.');
@@ -146,16 +153,25 @@ export function transition(current, action) {
   } else if (action.type === 'handoff') {
     const a = getActivity(action.activityId);
     a.progress = action.progress.trim(); a.next = action.next.trim(); a.owner = action.owner.trim();
-    if (action.projectStatus && action.projectStatus !== a.projectStatus) throw Error('Use the program work plan to submit and review completion.');
-    notice = 'Handoff saved for the next person'; log(`Handoff updated · ${a.title}`);
+    if (action.projectStatus && action.projectStatus !== a.projectStatus) throw Error('Use Program Activities to submit and review completion.');
+    notice = 'Handoff saved for the next person'; log(`Handoff updated · ${a.title}`, a.id, 'Maya Thompson');
   } else if (action.type === 'createActivity') {
-    if (!action.title.trim() || !action.roleName.trim()) throw Error('Give the activity and its role a name.');
-    if (!Number.isInteger(Number(action.capacity)) || Number(action.capacity) < 1) throw Error('Capacity must be a positive whole number.');
+    const programActivity = Boolean(action.programActivity && action.programId);
+    const publicOffering = programActivity && action.assignmentMode === 'public';
+    if (!action.title?.trim() || (programActivity ? !action.description?.trim() : !action.roleName?.trim())) throw Error(programActivity ? 'Give the activity a title and description.' : 'Give the activity and its role a name.');
+    if (!programActivity && (!Number.isInteger(Number(action.capacity)) || Number(action.capacity) < 1)) throw Error('Capacity must be a positive whole number.');
+    const requirements = [...new Set(Array.isArray(action.requires) ? action.requires : [])];
+    if (publicOffering) {
+      const waiver = state.documentLibrary?.items?.find(document => document.id === action.waiverDocumentId && isLiabilityWaiver(document));
+      if (!waiver) throw Error('Choose a liability waiver from Organizational Resources.');
+      if (!requirements.includes('waiver')) throw Error('Liability waiver preparation is required for public activities.');
+    }
     const program = validateActivityPlan(state, action);
-    const dates = action.workType === 'shift' ? occurrenceDates(action.date, action.occurrences || 1, action.interval || 7) : [action.date];
-    if (program && dates.some(date => date > program.end)) throw Error('All occurrences must fit within the program dates.');
+    const dates = action.workType === 'shift' && !programActivity ? occurrenceDates(action.date, action.occurrences || 1, action.interval || 7) : [action.date];
+    if (program?.end && dates.some(date => date > program.end)) throw Error('All occurrences must fit within the program dates.');
     const seriesId = action.workType === 'shift' ? id() : '';
-    for (const date of dates) state.activities.push({ id: id(), title: action.title.trim(), type: action.workType, program: program?.name || 'Organization activities', programId: program?.id || '', date, time: action.time || 'Time to be agreed', location: action.location || 'Location to be agreed', description: action.description, visibility: action.visibility, enrollment: action.enrollment, roles: [{ id: id(), name: action.roleName.trim(), capacity: Number(action.capacity), requires: action.requires }], contact: 'Maya · Coordinator', bring: 'Your coordinator will share any preparation details here.', recurrence: action.workType === 'shift' ? `Every ${Number(action.interval || 7) === 7 ? 'week' : 'two weeks'} · ${dates.length} dated occurrences` : action.workType === 'project' ? 'Defined deliverable' : 'One-Time Activity', seriesId, next: action.next || 'Agree on the first step with the team.', owner: action.owner || '', progress: 'Ready to get started.', color: 'sage', workStatus: 'Not started', dependencies: action.dependencies || [], acceptance: action.acceptance || 'Activity delivered and handoff recorded.', reviewer: action.reviewer || program?.lead || 'Maya Thompson', milestone: action.milestone || 'Delivery', evidence: '', blocker: '' });
+    for (const date of dates) state.activities.push({ id: id(), title: action.title.trim(), type: action.workType, program: program?.name || 'Organization activities', programId: program?.id || '', programActivity, date, time: action.time || 'Time to be agreed', duration: action.duration || '', location: action.location || 'Location to be agreed', description: action.description?.trim() || '', visibility: action.visibility, enrollment: action.enrollment, assignmentMode: action.assignmentMode || '', waiverDocumentId: action.waiverDocumentId || '', roles: [{ id: id(), name: (action.roleName || 'Volunteer team').trim(), capacity: Number(action.capacity || 10), requires: requirements }], contact: 'Maya · Coordinator', bring: 'Your coordinator will share any preparation details here.', recurrence: action.workType === 'shift' ? `Every ${Number(action.interval || 7) === 7 ? 'week' : 'two weeks'}${programActivity ? ' · program activity' : ` · ${dates.length} dated occurrences`}` : action.workType === 'project' ? 'Defined deliverable' : 'One-Time Activity', seriesId, next: action.next || 'Agree on the first step with the team.', owner: action.owner || '', progress: 'Ready to get started.', color: 'sage', workStatus: 'Not started', dependencies: action.dependencies || [], acceptance: action.acceptance || 'Activity delivered and handoff recorded.', reviewer: action.reviewer || program?.lead || 'Maya Thompson', milestone: action.milestone || 'Delivery', evidence: '', blocker: '' });
+    if (program) state.programWorkspace.history.unshift({ id: id(), programId: program.id, activityId: state.activities.at(-1).id, text: `${action.title.trim()} ${dates.length > 1 ? `created with ${dates.length} dates` : 'activity created'}`, detail: '', actor: 'Maya Thompson', date: new Date().toISOString() });
     notice = dates.length > 1 ? `${dates.length} occurrences created. Volunteers choose each date separately.` : 'Activity created. Invite people or let eligible volunteers sign up.';
     log(`New activity · ${action.title.trim()}`);
   } else throw Error('Unknown action.');

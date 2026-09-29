@@ -28,9 +28,9 @@ export default function AestheticLabDemoPage() {
     <main className={styles.app}>
       <header className={styles.topbar}>
         <div className={styles.topbarInner}>
-          <Link href="/aesthetic-lab/demo" className={styles.brand} aria-label="City/Sync Aesthetics Lab demo">
+          <Link href="/aesthetic-lab/demo" className={styles.brand} aria-label="MyCity design preview">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/citysync-wordmark-dark.svg" alt="City/Sync" />
+            <img src="/brand/mycity-wordmark-dark.svg" alt="mycity" />
           </Link>
           <nav className={styles.sectionNav} aria-label="Aesthetics Lab preview sections">
             <span className={styles.activeSection}><span className={styles.sectionNavActive}><Home size={18} /></span><span className={styles.currentSectionName}>Home</span></span>

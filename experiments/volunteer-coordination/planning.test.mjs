@@ -4,16 +4,25 @@ import {createInitialState,confirmedCount,transition} from './model.js';
 import {planningActivities,planningMonday,planningDate,transitionPlanning} from './planning-model.js';
 const date='2026-09-24';
 const invite=(s,extra={})=>transitionPlanning(s,{actor:'coordinator',type:'invite',activityId:'garden',personId:'morgan',roleId:'garden',...extra},date).state;
-test('planning period uses calendar dates, and excludes the next period boundary',()=>{
- assert.equal(planningMonday('2026-09-26'),'2026-09-21');assert.equal(planningDate('2026-12-28',7),'2027-01-04');
- const s=createInitialState(),items=planningActivities(s,{mode:'events',start:'2026-09-20',weeks:'1'});assert(!items.some(a=>a.id==='garden'));
+test('planning shows all dates in chronological order',()=>{
+ assert.equal(planningMonday('2026-09-26'),'2026-09-21');
+ assert.equal(planningDate('2026-12-28',7),'2027-01-04');
+ const s=createInitialState(),items=planningActivities(s,{mode:'programs'});
+ assert(items.some(a=>a.id==='garden'));
+ assert(items.every((a,i)=>i===0 || (items[i-1].date||'9999').localeCompare(a.date||'9999')<=0));
 });
-test('category and program views share existing work without duplicates or archived records',()=>{
- const s=createInitialState(),garden=s.activities.find(a=>a.id==='garden');
- assert(planningActivities(s,{mode:'programs',programId:garden.programId,weeks:'all'}).some(a=>a.type==='project'));
- assert(planningActivities(s,{mode:'events',weeks:'all'}).every(a=>a.type==='event'&&!a.archived));
- assert(planningActivities(s,{mode:'recurring',weeks:'all'}).every(a=>a.type==='shift'&&!a.archived));
- const byTitle=planningActivities(s,{mode:'programs',weeks:'all',sort:'title'});assert.equal(byTitle.length,new Set(byTitle.map(a=>a.id)).size);assert.deepEqual(byTitle.map(a=>a.title),byTitle.map(a=>a.title).sort((a,b)=>a.localeCompare(b)));
+test('program activities stay under Programs while general categories show standalone work',()=>{
+ let s=createInitialState();const programId=s.activities.find(a=>a.id==='garden').programId;
+ const base={type:'createActivity',title:'Garden check',description:'Check the beds',roleName:'Garden team',capacity:2,date:'2026-09-28',requires:[],visibility:'members',enrollment:'both',owner:'Sam',reviewer:'Maya',acceptance:'Checked and handed off'};
+ for(const workType of ['event','shift'])for(const linked of [true,false])s=transition(s,{...base,workType,programId:linked?programId:'',occurrences:2,interval:7}).state;
+ const program=planningActivities(s,{mode:'programs',programId});
+ const oneTime=planningActivities(s,{mode:'events'}),recurring=planningActivities(s,{mode:'recurring'});
+ assert(program.some(activity=>activity.type==='project'));
+ assert(program.some(activity=>activity.title==='Garden check'&&activity.type==='event'));
+ assert(program.some(activity=>activity.title==='Garden check'&&activity.type==='shift'));
+ assert(oneTime.some(activity=>activity.title==='Garden check')&&oneTime.every(activity=>activity.type==='event'&&!activity.programId&&!activity.archived));
+ assert(recurring.some(activity=>activity.title==='Garden check')&&recurring.every(activity=>activity.type==='shift'&&!activity.programId&&!activity.archived));
+ const all=planningActivities(s,{mode:'programs'});assert.equal(all.length,new Set(all.map(activity=>activity.id)).size);
 });
 test('a planning invitation persists without increasing confirmed coverage',()=>{
  const s=createInitialState(),count=confirmedCount(s,'garden'),next=invite(s);assert.equal(confirmedCount(next,'garden'),count);

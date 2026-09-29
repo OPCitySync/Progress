@@ -4,6 +4,12 @@ export const ACTIVITY_TYPES = { event: 'One-Time Activity', shift: 'Recurring Ac
 export const WORK_STATES = ['Not started', 'In progress', 'Ready for review', 'Complete'];
 const clean = value => String(value ?? '').trim();
 const validDate = d => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) && new Date(d+'T12:00:00Z').toISOString().slice(0,10) === d;
+const SAMPLE_WORKSPACE_MEMBERS = [
+  { id: 'issuer-maya', name: 'Maya Thompson', role: 'Organization administrator', workspaceAccess: true, active: true },
+  { id: 'issuer-avery', name: 'Avery Morgan', role: 'Organization member', workspaceAccess: true, active: true },
+  { id: 'issuer-riley', name: 'Riley Chen', role: 'Organization member', workspaceAccess: true, active: true },
+];
+export const workspaceProgramLeads = state => (state.programWorkspace?.organizationMembers || []).filter(member => member.active && member.workspaceAccess);
 export function ensurePrograms(state) {
   if (!state.programWorkspace) {
     state.programWorkspace = { version: 1, programs: [], history: [] };
@@ -32,7 +38,12 @@ export function ensurePrograms(state) {
       state.activities.push(setup); garden.dependencies = [setup.id]; garden.milestone = 'Plant & hand over';
     }
   }
-  for (const position of state.recruitment?.positions || []) { if (position.id === 'delivery-team' && position.activityId === 'standby') position.activityId = 'pantry'; }
+  // Issuer workspace accounts are separate from the volunteer roster.
+  if (!Array.isArray(state.programWorkspace.organizationMembers)) state.programWorkspace.organizationMembers = structuredClone(SAMPLE_WORKSPACE_MEMBERS);
+  for (const position of state.recruitment?.positions || []) {
+    if (position.id === 'delivery-team' && position.activityId === 'standby') position.activityId = 'pantry';
+    if (['food-team','delivery-team','try-garden'].includes(position.id) && !position.programId && position.activityId) position.programId = state.activities.find(activity => activity.id === position.activityId)?.programId || '';
+  }
   return state;
 }
 export const programActivities = (state, programId) => state.activities.filter(a => !a.archived && a.programId === programId);
@@ -62,7 +73,7 @@ export function validateActivityPlan(state, action) {
   if (action.workType === 'project' && !p) throw Error('A Program Task must belong to a program.');
   if (p?.status === 'complete') throw Error('This program is complete. Create work in an active or draft program.');
   if (!validDate(action.date)) throw Error('Choose a valid activity date or due date.');
-  if (p && (action.date < p.start || action.date > p.end)) throw Error('The activity date must fall within the program dates.');
+  if (p && ((p.start && action.date < p.start) || (p.end && action.date > p.end))) throw Error('The activity date must fall within the program dates.');
   if (action.workType === 'project' && (!clean(action.acceptance) || !clean(action.reviewer))) throw Error('Define the deliverable acceptance criteria and reviewer.');
   validateDependencies(state, '', action.programId, action.dependencies || []);
   return p;
@@ -83,25 +94,38 @@ export function transitionProgram(current, action) {
   if (action.type === 'saveProgram') {
     requireCoordinator();
     if (action.programId && !p) throw Error('Program not found.');
-    const values = Object.fromEntries(['name','purpose','scope','excluded','success','lead','start','end'].map(k => [k,clean(action[k])]));
-    if (Object.values(values).some(v => !v)) throw Error('Define the purpose, boundaries, success criteria, accountable lead, and dates.');
-    if (!validDate(values.start) || !validDate(values.end) || values.end < values.start) throw Error('Choose a valid program period.');
-    if (ws.programs.some(other => other.id !== p?.id && other.name.toLowerCase() === values.name.toLowerCase())) throw Error('A program already uses this name.');
-    if (p && programActivities(state,p.id).some(a => a.date && (a.date < values.start || a.date > values.end))) throw Error('Existing activity dates must stay inside the program period.');
+    const name = clean(action.name), purpose = clean(action.purpose);
+    if (!name || !purpose) throw Error('Add a program name and its purpose and goals.');
+    if (name.length > 100 || purpose.length > 1500) throw Error('Keep the program name and purpose within the field limits.');
+    if (ws.programs.some(other => other.id !== p?.id && other.name.toLowerCase() === name.toLowerCase())) throw Error('A program already uses this name.');
     if (p?.status === 'complete') throw Error('Completed program briefs are retained as a record.');
-    if (p) Object.assign(p, values); else { p = { id: uid(), ...values, status: 'draft', resources: [], updates: [] }; ws.programs.push(p); }
+    if (p) {
+      const lead = workspaceProgramLeads(state).find(member => member.id === action.leadMemberId);
+      if (!lead) throw Error('Choose an organization member with workspace access as the program lead.');
+      Object.assign(p, { name, purpose, lead: lead.name, leadMemberId: lead.id });
+    } else {
+      const lead = workspaceProgramLeads(state).find(member => member.id === action.leadMemberId);
+      if (!lead) throw Error('Choose an organization member with workspace access as the program lead.');
+      p = { id: uid(), name, purpose, scope: '', excluded: '', success: '', lead: lead.name, leadMemberId: lead.id, start: '', end: '', status: 'draft', resources: [], updates: [] };
+      ws.programs.push(p);
+    }
     resultId = p.id;
     for (const a of programActivities(state,p.id)) a.program = p.name;
-    note = 'Program brief saved';
+    note = 'Program details saved';
   } else {
     if (!p) throw Error('Program not found.');
     const work = programActivities(state,p.id);
     if (action.type === 'programStatus') {
       requireCoordinator();
-      if (!['active','complete'].includes(action.status) || p.status === 'complete') throw Error('Choose a valid program transition.');
-      if (action.status === 'active' && ['purpose','scope','excluded','success','lead','start','end'].some(k => !p[k])) throw Error('Finish the program brief before activation.');
-      if (action.status === 'complete' && (p.status !== 'active' || !work.length || work.some(a => a.workStatus !== 'Complete') || !clean(action.note))) throw Error('Complete the work and record an outcome review before closing this program.');
-      p.status = action.status; p.outcomeReview = clean(action.note); note = `Program ${p.status === 'active' ? 'activated' : 'completed with an outcome review'}`;
+      if (!['active','complete','archived'].includes(action.status) || p.status === 'complete' || p.status === 'archived') throw Error('Choose a valid program transition.');
+      if (action.status === 'archived') {
+        p.status = 'archived'; p.archivedAt = new Date().toISOString(); p.outcomeReview = clean(action.note) || 'Program archived';
+        note = 'Program archived';
+      } else {
+        if (action.status === 'active' && (!clean(p.purpose) || !clean(p.lead))) throw Error('Add a purpose and program lead before activation.');
+        if (action.status === 'complete' && (p.status !== 'active' || !work.length || work.some(a => a.workStatus !== 'Complete') || !clean(action.note))) throw Error('Complete the work and record an outcome review before closing this program.');
+        p.status = action.status; p.outcomeReview = clean(action.note); note = `Program ${p.status === 'active' ? 'activated' : 'completed with an outcome review'}`;
+      }
     } else if (action.type === 'resource' || action.type === 'update') {
       requireCoordinator();
       if (p.status === 'complete') throw Error('This program is complete.');
@@ -122,9 +146,9 @@ export function transitionProgram(current, action) {
         validateDependencies(state,a.id,p.id,deps);
         if (a.workStatus !== 'Not started' && deps.some(id => state.activities.find(t => t.id === id).workStatus !== 'Complete')) throw Error('Started work cannot gain unfinished prerequisites.');
         if (!clean(action.owner) || !clean(action.acceptance) || !clean(action.reviewer) || !validDate(action.date)) throw Error('Set an owner, due date, acceptance criteria, and reviewer.');
-        if (action.date < p.start || action.date > p.end) throw Error('The activity date must fall within the program dates.');
+        if ((p.start && action.date < p.start) || (p.end && action.date > p.end)) throw Error('The activity date must fall within the program dates.');
         Object.assign(a, { owner: clean(action.owner), milestone: clean(action.milestone) || 'Delivery', acceptance: clean(action.acceptance), reviewer: clean(action.reviewer), date: action.date, dependencies: deps, blocker: clean(action.blocker), next: clean(action.next) });
-        note = 'Work plan updated; no volunteer was booked';
+        note = 'Activity plan updated; no volunteer was booked';
       } else if (action.type === 'workStatus') {
         const participant = state.commitments.some(c => c.activityId === a.id && c.personId === action.actor && c.status === 'confirmed');
         if (!coordinator && !participant) throw Error('Only a confirmed contributor can update this work.');

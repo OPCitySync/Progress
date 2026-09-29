@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { posix } from 'node:path'
-import { COORDINATION_ASSETS, coordinationAsset, coordinationPrototypeEnabled } from '../src/lib/coordination-prototype'
+import { COORDINATION_ASSETS, coordinationAsset, coordinationIntegratedEnabled, coordinationPrototypeEnabled } from '../src/lib/coordination-prototype'
 
 async function main() {
   for (const name of COORDINATION_ASSETS) {
@@ -29,21 +29,36 @@ async function main() {
   }
   const app = (await coordinationAsset('app.js'))!.body
   assert.ok(app.includes("(location.origin + '/coordination') + '/#join'"))
+  const myCityHtml = (await coordinationAsset('index.html', '/mycity'))!.body
+  assert.ok(myCityHtml.includes('href="/mycity/styles.css"'))
+  const myCityApp = (await coordinationAsset('app.js', '/mycity'))!.body
+  assert.ok(myCityApp.includes("(location.origin + '/mycity') + '/#join'"))
   const previousMode = process.env.CITYSYNC_COORDINATION_UI
   const previousVercel = process.env.VERCEL
+  const previousVercelEnv = process.env.VERCEL_ENV
   try {
     delete process.env.CITYSYNC_COORDINATION_UI
     assert.equal(coordinationPrototypeEnabled(), false)
+    assert.equal(coordinationIntegratedEnabled(), false)
     process.env.CITYSYNC_COORDINATION_UI = 'prototype'
     delete process.env.VERCEL
     assert.equal(coordinationPrototypeEnabled(), true)
+    assert.equal(coordinationIntegratedEnabled(), false)
+    process.env.CITYSYNC_COORDINATION_UI = 'integrated'
+    assert.equal(coordinationPrototypeEnabled(), false)
+    assert.equal(coordinationIntegratedEnabled(), true)
     process.env.VERCEL = '1'
     assert.equal(coordinationPrototypeEnabled(), false)
+    assert.equal(coordinationIntegratedEnabled(), false)
+    process.env.VERCEL_ENV = 'preview'
+    assert.equal(coordinationIntegratedEnabled(), true)
   } finally {
     if (previousMode === undefined) delete process.env.CITYSYNC_COORDINATION_UI
     else process.env.CITYSYNC_COORDINATION_UI = previousMode
     if (previousVercel === undefined) delete process.env.VERCEL
     else process.env.VERCEL = previousVercel
+    if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV
+    else process.env.VERCEL_ENV = previousVercelEnv
   }
   console.log('PASS: exact source assets, complete runtime imports, mounted links, asset allowlist, and explicit local-demo gate.')
 }

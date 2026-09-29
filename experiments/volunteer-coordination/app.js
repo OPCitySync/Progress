@@ -2,8 +2,10 @@ import { ensureIssuerHome } from './issuer-home-model.js';
 import { homeActionQueue, homeCalendar } from './issuer-home-view.js';
 import { bindIssuerHome } from './issuer-home-controller.js';
 import { renderPlanning } from './planning-view.js';
-import { planningMonday } from './planning-model.js';
 import { bindPlanning } from './planning-controller.js';
+import { ensureDocuments, isLiabilityWaiver, saveDocument } from './documents-model.js';
+import { loadDocumentFile, removeDocumentFile, saveDocumentFile } from './documents-files.js';
+import { renderDocuments, renderDocumentList, renderDocumentDetail, renderDocumentForm } from './documents-view.js';
 import { renderResume, resumeSheet } from './resume-view.js';
 import { issuerNavigation, volunteerNavigation } from './navigation-view.js';
 import { ensureProfiles, transitionProfile } from './profile-model.js';
@@ -18,19 +20,30 @@ import { ensureFeed, feedActor, transitionFeed } from './feed-model.js';
 import { renderFeed, renderFeedResults, renderFeedComposer } from './feed-view.js';
 import { STORAGE_KEY, REQUIREMENTS, createInitialState, transition, missingRequirements, confirmedCount, activeCommitment, parseCSV } from './model.js';
 
+// The branch preview and standalone prototype share an origin in local dev,
+// but must not reuse each other's browser-local sample records or asset paths.
+const storageKey = document.querySelector('meta[name="citysync-data-mode"]')?.content === 'integrated-preview-sample-data'
+  ? `${STORAGE_KEY}-mycity-branch` : STORAGE_KEY;
+
 let state;
-try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); state = saved?.version === 1 && Array.isArray(saved.people) && Array.isArray(saved.activities) && Array.isArray(saved.commitments) ? saved : createInitialState(); } catch { state = createInitialState(); }
-state = ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state)))));
-try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
-const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false}, planning: {mode:'programs',programId:'',start:planningMonday(),weeks:'2',sort:'date',query:'',personId:''}, recruitOrg: HOME_ORG, recruitFilter: 'all', discoveryQuery: '', discoveryCause: 'all', discoveryMode: 'all', discoverySaved: false, feedFilter: 'all', feedSaved: false, feedQuery: '', feedImage: null, mode: 'coordinator', page: 'home', person: 'alex', query: '', filter: 'all', workFilter: 'all', dialog: null, csv: [], activityType: 'event' };
-try { const savedPerson = sessionStorage.getItem(STORAGE_KEY + '-persona'); if (state.people.some(p => p.id === savedPerson)) ui.person = savedPerson; } catch {}
-try { const savedOrg = sessionStorage.getItem(STORAGE_KEY + '-recruit-org'); if (state.recruitment.organizations.some(o => o.id === savedOrg)) ui.recruitOrg = savedOrg; } catch {}
+try { const saved = JSON.parse(localStorage.getItem(storageKey)); state = saved?.version === 1 && Array.isArray(saved.people) && Array.isArray(saved.activities) && Array.isArray(saved.commitments) ? saved : createInitialState(); } catch { state = createInitialState(); }
+state = ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state))))));
+try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
+const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitFilter: 'all', discoveryQuery: '', discoveryCause: 'all', discoveryMode: 'all', discoverySaved: false, feedFilter: 'all', feedSaved: false, feedQuery: '', feedImage: null, mode: 'coordinator', page: 'home', person: 'alex', query: '', filter: 'all', workFilter: 'all', dialog: null, csv: [] };
+try { const savedPerson = sessionStorage.getItem(storageKey + '-persona'); if (state.people.some(p => p.id === savedPerson)) ui.person = savedPerson; } catch {}
+try { const savedOrg = sessionStorage.getItem(storageKey + '-recruit-org'); if (state.recruitment.organizations.some(o => o.id === savedOrg)) ui.recruitOrg = savedOrg; } catch {}
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#dialog');
 let toastTimer;
 let dialogTrigger;
 const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icons = {
+  switch: '<path d="M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4"/>',
+  reports: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 17v-3m4 3v-6m4 6v-4"/>',
+  settings: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5m0 3h.01"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m5 4 5 5-5 5M9 12h10"/>',
+  external: '<path d="M14 3h7v7m0-7L10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/>',
   feed: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 8h4v4H7zM15 8h2m-2 4h2M7 16h10"/>',
   heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
   bookmark: '<path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4Z"/>',
@@ -69,7 +82,7 @@ const titleForType = type => ACTIVITY_TYPES[type] || 'Archived activity';
 const canSee = a => !a.archived && (orgMode() || (state.programWorkspace.programs.find(p => p.id === a.programId)?.status !== 'draft' && (a.visibility === 'public' || currentPerson().relationship === 'member')) || activeCommitment(state, currentPerson().id, a.id));
 const commitmentsFor = a => state.commitments.filter(c => c.activityId === a.id && ['confirmed', 'proposed', 'waitlisted'].includes(c.status));
 function toast(message) { const t = document.querySelector('#toast'); t.textContent = message; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 4800); }
-function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { toast('Browser storage is unavailable. Changes will last for this visit only.'); } }
+function save() { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { toast('Browser storage is unavailable. Changes will last for this visit only.'); } }
 function act(action, options = {}) {
   try {
     const result = transition(state, action); state = result.state; save();
@@ -85,6 +98,10 @@ function readRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
   if (parts[0] === 'join') { ui.mode = 'volunteer'; ui.person = 'robin'; ui.page = 'organization'; ui.item = ''; }
   else { ui.mode = parts[0] === 'volunteer' ? 'volunteer' : 'coordinator'; ui.page = parts[1] || 'home'; ui.item = parts[2]; }
+  if (ui.mode === 'coordinator' && ['work', 'schedule'].includes(ui.page)) {
+    ui.page = 'planning'; ui.item = '';
+    history.replaceState(null, '', `${location.pathname}${location.search}#/coordinator/planning`);
+  }
   render(); window.scrollTo(0, 0);
 }
 function showDialog(title, content, wide = false) {
@@ -93,7 +110,8 @@ function showDialog(title, content, wide = false) {
   dialog.innerHTML = `<div class="dialog-head"><div><span class="eyebrow">${e(workspaceLabel().toUpperCase())}</span><h2 id="dialog-title">${e(title)}</h2></div>${button(icon('close'), 'close', 'aria-label="Close dialog"', 'icon-button')}</div>${content}`;
   if (!dialog.open) dialog.showModal();
 }
-function closeDialog() { if (ui.passportExportUrl) { const url = ui.passportExportUrl; setTimeout(() => URL.revokeObjectURL(url), 5000); ui.passportExportUrl = null; } if (dialog.open) { dialog.close(); if (dialogTrigger?.isConnected) dialogTrigger.focus(); } ui.dialog = null; }
+function releaseDocumentFileUrl() { if (ui.documentFileUrl) { URL.revokeObjectURL(ui.documentFileUrl); ui.documentFileUrl = ''; } }
+function closeDialog() { if (ui.passportExportUrl) { const url = ui.passportExportUrl; setTimeout(() => URL.revokeObjectURL(url), 5000); ui.passportExportUrl = null; } if (dialog.open) { dialog.close(); if (dialogTrigger?.isConnected) dialogTrigger.focus(); } releaseDocumentFileUrl(); ui.dialog = null; }
 const errorOutput = () => '<p class="form-error" role="alert" tabindex="-1"></p>';
 function recruitmentContextOrg() {
   if (!state.recruitment) return null;
@@ -108,8 +126,22 @@ function coverage(a) {
   return a.roles.map(r => { const count = confirmedCount(state, a.id, r.id); const pending = state.commitments.filter(c => c.activityId === a.id && c.roleId === r.id && c.status === 'proposed').length; return `<div class="coverage-role"><div><span>${e(r.name)}</span><strong>${count}<span> / ${r.capacity}</span></strong></div><div class="progress-track"><span style="width:${Math.min(100, count / r.capacity * 100)}%" class="${count >= r.capacity ? 'full' : ''}"></span></div><small>${count >= r.capacity ? 'Fully covered' : `${r.capacity - count} ${r.capacity - count === 1 ? 'place' : 'places'} to fill`}${pending ? ` · ${pending} invitation pending` : ''}</small></div>`; }).join('');
 }
 function illustration() { return `<svg class="hero-art" viewBox="0 0 260 170" aria-hidden="true"><circle cx="170" cy="65" r="52" fill="#d9e8ac"/><path d="M25 152c34-51 76-76 117-42 35-41 75-26 105 42" fill="#78947b"/><path d="M89 139c3-38 2-70-10-93m11 42c-30 0-44-18-35-30 24 0 36 18 35 30m0 24c30-1 49-20 39-33-25 0-37 20-39 33" fill="#dfeabc"/><path d="M178 144V76m0 27c-24 0-35-12-31-25 22 1 32 13 31 25m0 18c28-3 39-16 34-29-24 1-32 18-34 29" fill="#b8cfa0"/><path d="m24 32 5-13 5 13 13 5-13 5-5 13-5-13-13-5Z" fill="#b8cfa0"/><path d="m228 54 3-8 3 8 8 3-8 3-3 8-3-8-8-3Z" fill="#b8cfa0"/></svg>`; }
+let heroClockTimer;
+function updateHeroClock() {
+  clearTimeout(heroClockTimer);
+  const clock = app.querySelector('[data-home-clock]');
+  if (!clock) return;
+  const now = new Date();
+  const time = [now.getHours() % 12 || 12, now.getMinutes(), now.getSeconds()]
+    .map(part => String(part).padStart(2, '0')).join(':');
+  clock.textContent = time;
+  const date = app.querySelector('[data-home-date]');
+  if (date) date.textContent = dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  clock.parentElement.setAttribute('aria-label', `Current local time: ${time}`);
+  heroClockTimer = setTimeout(updateHeroClock, 1000 - now.getMilliseconds());
+}
 function dashboard() {
-  return `${pageHeader(e(dateLabel(today(),{weekday:'long',month:'long',day:'numeric'}).toUpperCase()), 'Good morning, Maya<span class="heading-dot">.</span>', 'A clear view of your people, your plans, and what needs a little care.', button(icon('plus') + 'Create activity', 'create', '', 'btn primary'))}<section class="welcome-card issuer-home-hero"><div><span class="eyebrow light">YOUR COMMUNITY, IN MOTION</span><h2>More time together.<br>Less time coordinating.</h2><p>Give every next step a little attention.<br>Make room for the work ahead.</p>${button('Open Planning ' + icon('arrow'), 'nav', 'data-page="planning"', 'btn light-btn')}</div>${illustration()}</section>${homeActionQueue(feedContext())}${homeCalendar(feedContext())}`;
+  return `<div class="issuer-home-hub"><section class="issuer-home-hero"><div class="issuer-home-hero-copy"><p class="eyebrow">${e(workspaceLabel())}</p><h1>Keep today’s work moving.</h1><p data-home-date>${e(dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</p></div><div class="issuer-home-hero-clock" role="timer" aria-live="off" aria-label="Current local time"><span data-home-clock></span></div><div class="issuer-home-hero-actions">${button(icon('work') + 'Open Workspace', 'nav', 'data-page="programs"', 'issuer-home-workspace-action')}</div></section>${homeActionQueue(feedContext())}</div>${homeCalendar(feedContext())}`;
 }
 
 function peopleRows() {
@@ -162,18 +194,19 @@ function messagesPage() {
   return `${pageHeader('CONTEXT MAKES COORDINATION EASIER', 'Conversations', 'Questions, changes, and updates stay with the work they’re about.')}<section class="panel messages-layout"><nav class="conversation-list" aria-label="Activity conversations">${available.map(a => `<button data-action="conversation" data-id="${e(a.id)}" class="conversation-link ${selected?.id === a.id ? 'active' : ''}">${icon('message')}<span><strong>${e(a.title)}</strong><small>${e(a.program)}</small></span></button>`).join('')}</nav><div class="conversation-main">${selected ? `<div class="section-heading"><h2>${e(selected.title)}</h2>${button('View activity ' + icon('arrow'), 'activity', `data-id="${e(selected.id)}"`, 'text-button')}</div>${conversation(selected.id)}` : '<div class="empty-state">Join an activity to start a conversation.</div>'}</div></section>`;
 }
 function render() {
-  try { sessionStorage.setItem(STORAGE_KEY + '-persona', ui.person); sessionStorage.setItem(STORAGE_KEY + '-recruit-org', ui.recruitOrg); } catch {}
-  state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(state))));
-  const allowed = orgMode() ? ['planning', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'passport', 'feed', 'people', 'work', 'schedule', 'messages', 'activity'] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'history', 'resume', 'feed', 'work', 'schedule', 'organization', 'messages', 'activity'];
+  try { sessionStorage.setItem(storageKey + '-persona', ui.person); sessionStorage.setItem(storageKey + '-recruit-org', ui.recruitOrg); } catch {}
+  state = ensureIssuerHome(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(state)))));
+  const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'passport', 'feed', 'people', 'messages', 'activity'] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'history', 'resume', 'feed', 'work', 'schedule', 'organization', 'messages', 'activity'];
   if (!allowed.includes(ui.page)) ui.page = 'home';
-  const content = ui.page === 'planning' ? renderPlanning(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ['passport','history'].includes(ui.page) ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'schedule' ? schedulePage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
+  const content = ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ['passport','history'].includes(ui.page) ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'schedule' ? schedulePage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
   const issues = ['home', 'schedule', 'activity'].includes(ui.page) ? readinessIssues(state).filter(c => (orgMode() || c.personId === ui.person) && (ui.page !== 'activity' || c.activityId === ui.item)) : [];
   const recruitmentCount = state.recruitment.applications.filter(a => orgMode() ? a.orgId === HOME_ORG && !!a.submittedAt && ['submitted','reviewing','needs-info','waitlisted','offered','onboarding'].includes(a.status) : a.personId === ui.person && !['declined','withdrawn','offer-declined'].includes(a.status)).length;
   const recruitmentSummary = ((orgMode() && ui.page === 'home') || (!orgMode() && ui.page === 'schedule')) && recruitmentCount ? `<div class="info-strip">${icon('people')}<span>${recruitmentCount} ${orgMode() ? 'applications and welcome plans at Berkeley Neighbors' : 'applications and volunteer roles'} to keep track of.</span>${button(orgMode() ? 'Open recruitment →' : 'My applications →', 'rcHome', '', 'text-button')}</div>` : '';
   const readinessAlert = issues.length ? `<div class="callout sand"><strong>Preparation needs another look</strong><p>These commitments are still confirmed, but required preparation is no longer valid through the activity date. Agree on the next step with ${orgMode() ? 'the volunteer' : 'your coordinator'}.</p>${issues.map(c => `<div class="button-row"><span>${orgMode() ? e(state.people.find(p => p.id === c.personId).name) + ' · ' : ''}${e(state.activities.find(a => a.id === c.activityId).title)}</span>${button('Review plan', 'activity', `data-id="${e(c.activityId)}"`, 'text-button')}</div>`).join('')}</div>` : '';
   app.classList.add('issuer-shell');
   app.classList.toggle('volunteer-shell',!orgMode());
-  app.innerHTML = `<div class="workspace-main">${orgMode()?issuerNavigation({...feedContext(),contextOrg:recruitmentContextOrg(),coordinatorName:coordinatorName()}):volunteerNavigation(feedContext())}<main id="main-content" tabindex="-1">${readinessAlert}${recruitmentSummary}${content}<footer class="page-footer"><span>Built around people. Made for showing up.</span><span>City/Sync · Coordination exploration</span></footer></main></div>`;
+  app.innerHTML = `<div class="workspace-main">${orgMode()?issuerNavigation({...feedContext(),contextOrg:recruitmentContextOrg(),coordinatorName:coordinatorName()}):volunteerNavigation(feedContext())}<main id="main-content" tabindex="-1">${readinessAlert}${recruitmentSummary}${content}<footer class="page-footer"><span>Built around people. Made for showing up.</span><span>MyCity · Coordination exploration</span></footer></main></div>`;
+  updateHeroClock();
 }
 
 function openProfileDialog(type, field) {
@@ -184,7 +217,7 @@ function openProfileDialog(type, field) {
 function profileAction(action) {
   try {
     const result=transitionProfile(state,{...action,actor:ui.mode,editorOrgId:ui.recruitOrg});
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(result.state));state=result.state;closeDialog();render();toast(result.notice);
+    localStorage.setItem(storageKey,JSON.stringify(result.state));state=result.state;closeDialog();render();toast(result.notice);
   } catch(error) { const out=dialog.querySelector('.form-error'); if(out){out.textContent=error.name==='QuotaExceededError'?'Browser storage is full. Try smaller images; your edits are still here.':error.message;out.focus();}else toast(error.message); }
 }
 function profileAppearancePreview() {
@@ -211,7 +244,7 @@ function openProgramDialog(type, data = {}) {
 function programAction(action, route) {
   try {
     const result = transitionProgram(state,{...action,actor:orgMode()?'coordinator':ui.person});
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(result.state));
+    localStorage.setItem(storageKey,JSON.stringify(result.state));
     state=result.state; closeDialog(); if(route) { ui.programTab='overview'; navigate('program',result.id); } else render(); toast(result.notice); return true;
   } catch(error) {
     const output=dialog.open&&dialog.querySelector('.form-error');
@@ -226,7 +259,7 @@ function openRecruitmentDialog(type, data = {}) {
 function recruitmentAction(action, route) {
   try {
     const result = transitionRecruitment(state, { orgId: ui.recruitOrg, ...action, actor: orgMode() ? 'coordinator' : ui.person });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(result.state));
+    localStorage.setItem(storageKey, JSON.stringify(result.state));
     state = result.state; closeDialog(); if (route) navigate(route, result.id); else render(); toast(result.notice); return true;
   } catch (error) {
     const output = dialog.open ? dialog.querySelector('.form-error') : document.querySelector('[data-form="rcMessage"] .form-error');
@@ -251,7 +284,7 @@ function updatePassportRecordForm() {
 function passportAction(action) {
   try {
     const result = transitionPassport(state, { personId: ui.person, ...action, actor: orgMode() ? 'coordinator' : ui.person });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(result.state));
+    localStorage.setItem(storageKey, JSON.stringify(result.state));
     state = result.state; closeDialog(); render(); toast(result.notice); return true;
   } catch (error) {
     const message = error.name === 'QuotaExceededError' ? 'Browser storage is full. Your change was not saved.' : error.message;
@@ -261,7 +294,7 @@ function passportAction(action) {
   }
 }
 function feedContext() {
-  return { state, ui, e, icon, avatar, button, badge, dateLabel, confirmedCount, currentPerson, errorOutput };
+  return { state, ui, e, icon, avatar, button, badge, dateLabel, confirmedCount, currentPerson, errorOutput, connectedPlatform: location.pathname.startsWith('/coordination') || location.pathname.startsWith('/mycity'), assetBase: location.pathname === '/' ? '' : location.pathname, integratedPlatform: document.querySelector('meta[name="citysync-data-mode"]')?.content === 'integrated-preview-sample-data' };
 }
 function feedComposer() {
   if (!orgMode()) return;
@@ -272,7 +305,7 @@ function feedAction(action) {
   try {
     const result = transitionFeed(state, { ...action, actor: feedActor(ui.mode, ui.person) });
     // Commit only after storage succeeds so a failed image save preserves the draft.
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(result.state));
+    localStorage.setItem(storageKey, JSON.stringify(result.state));
     state = result.state;
     if (action.type === 'publish') closeDialog();
     render(); toast(result.notice); return true;
@@ -344,19 +377,41 @@ function cancellationDialog(commitmentId) {
 }
 function handoffDialog(activityId) {
   const a = state.activities.find(a => a.id === activityId);
-  showDialog('Leave the next person a clear start', `<form data-form="handoff" data-id="${e(a.id)}"><div class="dialog-body"><p class="dialog-intro">${e(a.title)}<br>A few useful sentences are enough.</p><label>What is done so far?<textarea name="progress" required rows="3">${e(a.progress)}</textarea></label><label>What should happen next?<textarea name="next" required rows="3">${e(a.next)}</textarea></label><label>Who is carrying the next step?<input name="owner" value="${e(a.owner)}" required></label><p class="microcopy">Use the program work plan to submit results and record completion reviews.</p>${errorOutput()}</div><div class="dialog-footer">${button('Cancel', 'close', '', 'btn secondary')}<button class="btn primary" type="submit">Save handoff</button></div></form>`);
+  showDialog('Leave the next person a clear start', `<form data-form="handoff" data-id="${e(a.id)}"><div class="dialog-body"><p class="dialog-intro">${e(a.title)}<br>A few useful sentences are enough.</p><label>What is done so far?<textarea name="progress" required rows="3">${e(a.progress)}</textarea></label><label>What should happen next?<textarea name="next" required rows="3">${e(a.next)}</textarea></label><label>Who is carrying the next step?<input name="owner" value="${e(a.owner)}" required></label><p class="microcopy">Use the Program Activities card to submit results and record completion reviews.</p>${errorOutput()}</div><div class="dialog-footer">${button('Cancel', 'close', '', 'btn secondary')}<button class="btn primary" type="submit">Save handoff</button></div></form>`);
 }
 function preferencesDialog() {
   const p = currentPerson();
   showDialog('Make volunteering fit your life', `<form data-form="preferences"><div class="dialog-body"><p class="dialog-intro">These help your coordinator make better invitations. They do not book you into any work.</p><label>When are you usually available?<textarea name="availability" rows="2" required placeholder="Saturday mornings; unavailable Oct 3">${e(p.availability)}</textarea></label><label>What works well for you?<textarea name="preference" rows="3" placeholder="Interests, frequency, accessibility needs, or things to keep in mind">${e(p.preference)}</textarea></label>${errorOutput()}</div><div class="dialog-footer">${button('Cancel', 'close', '', 'btn secondary')}<button type="submit" class="btn primary">Share preferences</button></div></form>`);
 }
 const templates = [['event', 'leaf', 'One-Time Activity', 'One scheduled occasion, with its own team and handoff.'], ['shift', 'calendar', 'Recurring Activity', 'Repeat the activity on dated occasions people choose individually.'], ['project', 'book', 'Program Task', 'A scoped deliverable within a program, with dependencies and a reviewer.']];
-function createDialog(type) {
+const programTemplates = [['event', 'leaf', 'One-Time Program Activity', 'One scheduled occasion that belongs to this program.'], ['shift', 'calendar', 'Recurring Program Activity', 'Repeat on dated occasions within this program; volunteers choose each date.']];
+function createDialog(type, programId = '') {
   if (!orgMode()) return;
-  if (!type) return showDialog('What are you organizing?', `<div class="dialog-body"><p class="dialog-intro">Choose how this work happens. Any activity can be in person, remote, or hybrid.</p><div class="template-grid">${templates.map(([key, glyph, title, sub]) => `<button class="template-card" data-action="template" data-type="${key}"><span class="action-symbol sage">${icon(glyph)}</span><strong>${title}</strong><p>${sub}</p>${icon('arrow')}</button>`).join('')}</div></div>`, true);
-  ui.activityType = type;
-  const programs = state.programWorkspace.programs.filter(p=>p.status!=='complete');
-  showDialog(`Create ${titleForType(type)}`, `<form data-form="createActivity"><div class="dialog-body"><div class="form-grid"><label class="span-2">What are we doing?<input name="title" required placeholder="e.g. Test the garden irrigation" maxlength="120"></label><label class="span-2">A little context<textarea name="description" rows="2" required placeholder="What will people do, and what should they expect?"></textarea></label><label>${type === 'project' ? 'Due date' : type === 'shift' ? 'First date' : 'Activity date'}<input type="date" name="date" value="${e(ui.page==='home'&&ui.home.day?ui.home.day:'2026-09-28')}" required></label><label>Time or expected effort<input name="time" required placeholder="10am–12pm, or 2 flexible hours"></label>${type==='shift'?'<label>Repeat<select name="interval"><option value="7">Weekly</option><option value="14">Every two weeks</option></select></label><label>Number of occurrences<input name="occurrences" type="number" min="1" max="12" value="4" required></label>':''}<label>Location / work mode<input name="location" required placeholder="A place, Remote, or Hybrid"></label><label>Program ${type==='project'?'':'<span class="optional">optional</span>'}<select name="programId" ${type==='project'?'required':''}><option value="">${type==='project'?'Choose a program':'Organization activity'}</option>${programs.map(p=>`<option value="${e(p.id)}" ${ui.createProgram===p.id?'selected':''}>${e(p.name)}</option>`).join('')}</select></label><label>Work area / milestone<input name="milestone" placeholder="e.g. Prepare the site"></label><label>Next-step owner<input name="owner" required placeholder="Who coordinates this work?"></label><label>Reviewer<input name="reviewer" required placeholder="Who checks the result?"></label><label>Role or contribution<input name="roleName" required placeholder="e.g. Garden team"></label><label>Places<input type="number" min="1" max="500" step="1" name="capacity" value="6" required></label><label>Who can see it?<select name="visibility"><option value="public" ${type === 'event' ? 'selected' : ''}>Everyone, including newcomers</option><option value="members" ${type !== 'event' ? 'selected' : ''}>Organization members</option></select></label><label>How do people join?<select name="enrollment"><option value="both">Self-signup or coordinator invitation</option><option value="self">Self-signup</option><option value="managed">Coordinator invitation</option></select></label><label class="span-2">Done means · acceptance criteria<textarea name="acceptance" required rows="2" placeholder="What result should the reviewer be able to verify?"></textarea></label></div><fieldset><legend>Preparation required before confirmation</legend>${Object.entries(REQUIREMENTS).map(([key,r])=>`<label class="checkbox-label"><input type="checkbox" name="requires" value="${key}" ${['welcome','waiver'].includes(key)?'checked':''}>${e(r.title)}</label>`).join('')}</fieldset><p class="microcopy">${type==='shift'?'Each date gets its own roster. No volunteer is automatically booked into the series. ':''}After creation, open the program work plan to link prerequisites and record blockers.</p>${type==='project'&&!programs.length?'<div class="callout sand">Create a program brief first from Volunteer programs.</div>':''}${errorOutput()}</div><div class="dialog-footer">${button('Back to types','create','','btn secondary')}<button class="btn primary" type="submit">Create ${type==='shift'?'occurrences':'activity'}</button></div></form>`, true);
+  const program = programId ? state.programWorkspace.programs.find(p => p.id === programId && p.status !== 'complete') : null;
+  if (programId && !program) return toast('This program is not available for new activities.');
+  const scoped = Boolean(program);
+  if (!type) {
+    const choices = scoped ? programTemplates : templates;
+    return showDialog(scoped ? 'Choose a Program Activity' : 'What are you organizing?', `<div class="dialog-body"><p class="dialog-intro">${scoped ? `Activities created here stay in <strong>${e(program.name)}</strong>.` : 'Choose how this work happens. Any activity can be in person, remote, or hybrid.'}</p><div class="template-grid">${choices.map(([key, glyph, title, sub]) => `<button class="template-card" data-action="template" data-type="${key}" ${scoped ? `data-program="${e(program.id)}"` : ''}><span class="action-symbol sage">${icon(glyph)}</span><strong>${title}</strong><p>${sub}</p>${icon('arrow')}</button>`).join('')}</div></div>`, true);
+  }
+  if (scoped && !['event', 'shift'].includes(type)) return toast('Choose a one-time or recurring program activity.');
+  const programs = state.programWorkspace.programs.filter(p => p.status !== 'complete');
+  const title = scoped ? type === 'shift' ? 'Recurring Program Activity' : 'One-Time Program Activity' : titleForType(type);
+  if (scoped && ['event', 'shift'].includes(type)) {
+    const organization = state.recruitment?.organizations?.find(item => item.id === HOME_ORG);
+    const locationDefault = organization?.location || 'Organization location';
+    const waiverDocuments = (state.documentLibrary?.items || []).filter(isLiabilityWaiver);
+    const waiverOptions = waiverDocuments.length
+      ? waiverDocuments.map(document => `<option value="${e(document.id)}">${e(document.title)} · ${e(document.updatedAt || 'Current')}</option>`).join('')
+      : '<option value="" disabled>No liability waiver is available in Documents</option>';
+    const preparation = Object.entries(REQUIREMENTS).map(([key, r]) => `<label class="checkbox-label"><input type="checkbox" name="requires" value="${key}" ${['welcome', 'waiver'].includes(key) ? 'checked' : ''}>${e(r.title)}</label>`).join('');
+    showDialog(type === 'shift' ? 'Create Recurring Program Activity' : 'Create One-Time Program Activity', `<form data-form="createActivity" data-work-type="${type}" data-program="${e(program.id)}" data-program-activity="true"><div class="dialog-body"><div class="form-grid"><label class="span-2">Activity Title<input name="title" required placeholder="e.g. Saturday food distribution" maxlength="120"></label><label class="span-2">Activity Description<textarea name="description" rows="2" required placeholder="What will people do, and what should they expect?"></textarea></label><label>First Date<input type="date" name="date" value="${e(ui.page === 'home' && ui.home.day ? ui.home.day : today())}" required></label>${type === 'shift' ? "<label>Repeat<select name=\"interval\"><option value=\"7\">Weekly</option><option value=\"14\">Every two weeks</option></select></label>" : ''}<label>Activity Time<input type="time" name="activityTime" required></label><label>Duration<select name="duration" required><option value="30 minutes">30 minutes</option><option value="45 minutes">45 minutes</option><option value="1 hour">1 hour</option><option value="1.5 hours">1.5 hours</option><option value="2 hours">2 hours</option><option value="4 hours">4 hours</option></select></label><label class="span-2">Location<input name="location" value="${e(locationDefault)}" required placeholder="Organization location"></label><label class="span-2">Shift Assignment<select name="assignmentMode" id="assignment-mode" required><option value="manual">Assign Volunteers Manually</option><option value="roster">Open to Volunteer Roster</option><option value="public">Open to the Public</option></select></label></div><div id="public-shift-fields" hidden><div class="callout sage"><strong>Public opportunities need a current liability waiver.</strong><p>Select the version volunteers will review before confirming a place.</p></div><label>Liability Waiver from Organizational Resources<select name="waiverDocumentId" id="shift-waiver-document"><option value="">Choose a liability waiver</option>${waiverOptions}</select></label><fieldset><legend>Preparation required before confirmation</legend>${preparation}</fieldset></div>${errorOutput()}</div><div class="dialog-footer">${button('Cancel', 'close', '', 'btn secondary')}<button class="btn primary" type="submit">Create Program Activity</button></div></form>`, true);
+    return;
+  }
+  const programField = scoped ? `<p class="dialog-intro">Part of <strong>${e(program.name)}</strong>. This activity will stay with this program.</p>` : type === 'project' ? `<label>Program<select name="programId" required><option value="">Choose a program</option>${programs.map(p => `<option value="${e(p.id)}">${e(p.name)}</option>`).join('')}</select></label>` : '';
+  const repeatFields = type === 'shift' ? '<label>Repeat<select name="interval"><option value="7">Weekly</option><option value="14">Every two weeks</option></select></label><label>Number of occurrences<input name="occurrences" type="number" min="1" max="12" value="4" required></label>' : '';
+  const preparation = Object.entries(REQUIREMENTS).map(([key, r]) => `<label class="checkbox-label"><input type="checkbox" name="requires" value="${key}" ${['welcome', 'waiver'].includes(key) ? 'checked' : ''}>${e(r.title)}</label>`).join('');
+  showDialog(`Create ${title}`, `<form data-form="createActivity" data-work-type="${type}" ${scoped ? `data-program="${e(program.id)}"` : ''}><div class="dialog-body">${scoped ? programField : ''}<div class="form-grid"><label class="span-2">What are we doing?<input name="title" required placeholder="e.g. Test the garden irrigation" maxlength="120"></label><label class="span-2">A little context<textarea name="description" rows="2" required placeholder="What will people do, and what should they expect?"></textarea></label><label>${type === 'project' ? 'Due date' : type === 'shift' ? 'First date' : 'Activity date'}<input type="date" name="date" value="${e(ui.page === 'home' && ui.home.day ? ui.home.day : today())}" required></label><label>Time or expected effort<input name="time" required placeholder="10am–12pm, or 2 flexible hours"></label>${repeatFields}<label>Location / work mode<input name="location" required placeholder="A place, Remote, or Hybrid"></label>${scoped ? '' : programField}<label>Work area / milestone<input name="milestone" placeholder="e.g. Prepare the site"></label><label>Next-step owner<input name="owner" required placeholder="Who coordinates this work?"></label><label>Reviewer<input name="reviewer" required placeholder="Who checks the result?"></label><label>Role or contribution<input name="roleName" required placeholder="e.g. Garden team"></label><label>Places<input type="number" min="1" max="500" step="1" name="capacity" value="6" required></label><label>Who can see it?<select name="visibility"><option value="public" ${type === 'event' ? 'selected' : ''}>Everyone, including newcomers</option><option value="members" ${type !== 'event' ? 'selected' : ''}>Organization members</option></select></label><label>How do people join?<select name="enrollment"><option value="both">Self-signup or coordinator invitation</option><option value="self">Self-signup</option><option value="managed">Coordinator invitation</option></select></label><label class="span-2">Done means · acceptance criteria<textarea name="acceptance" required rows="2" placeholder="What result should the reviewer be able to verify?"></textarea></label></div><fieldset><legend>Preparation required before confirmation</legend>${preparation}</fieldset><p class="microcopy">${type === 'shift' ? 'Each date gets its own roster. No volunteer is automatically booked into the series. ' : ''}${scoped || type === 'project' ? 'After creation, use Edit plan in Program Activities to link prerequisites and record blockers.' : 'This standalone activity appears in general Planning.'}</p>${type === 'project' && !programs.length ? '<div class="callout sand">Create a program first from Volunteer programs.</div>' : ''}${errorOutput()}</div><div class="dialog-footer">${button('Back to types', scoped ? 'pgAddActivity' : 'create', scoped ? `data-id="${e(program.id)}"` : '', 'btn secondary')}<button class="btn primary" type="submit">Create ${scoped ? 'Program Activity' : type === 'shift' ? 'occurrences' : 'activity'}</button></div></form>`, true);
 }
 
 function guideDialog() {
@@ -406,13 +461,29 @@ document.addEventListener('click', async event => {
     case 'pgFilter': ui.programFilter=d.filter; render(); break;
     case 'pgNew': openProgramDialog('New'); break;
     case 'pgEdit': openProgramDialog('Edit',d); break;
+    case 'pgArchive': showDialog('Archive this program?', `<form data-form="pgArchive" data-id="${e(d.id)}"><div class="dialog-body"><p class="dialog-intro">The program will remain available as a record, but its workspace will become read-only.</p>${errorOutput()}</div><div class="dialog-footer">${button('Cancel','close','','btn secondary')}<button type="submit" class="btn danger-btn">Archive Program</button></div></form>`); break;
     case 'pgPlan': openProgramDialog('Plan',d); break;
     case 'pgWorkStatus': openProgramDialog('WorkStatus',d); break;
     case 'pgResource': openProgramDialog('Resource',d); break;
     case 'pgUpdate': openProgramDialog('Update',d); break;
-    case 'pgClose': openProgramDialog('Close',d); break;
     case 'pgStatus': programAction({type:'programStatus',programId:d.id,status:d.status}); break;
-    case 'pgAddActivity': ui.createProgram=d.id; createDialog(); break;
+    case 'pgAddActivity': createDialog(undefined,d.id); break;
+    case 'pgCreateRole': ui.recruitOrg=HOME_ORG; openRecruitmentDialog('Role',{program:d.id}); break;
+    case 'pgRole': ui.recruitOrg=HOME_ORG; navigate('position',d.id); break;
+    case 'docAdd': if(orgMode())showDialog('Add a document',renderDocumentForm(feedContext())); break;
+    case 'docWaiver': if(orgMode())showDialog('Add a liability waiver',renderDocumentForm(feedContext(),'liability-waiver')); break;
+    case 'docOpen': {
+      releaseDocumentFileUrl();
+      const documentItem=state.documentLibrary.items.find(item=>item.id===d.id);
+      if(documentItem?.fileName) {
+        try { const file=await loadDocumentFile(d.id); if(file)ui.documentFileUrl=URL.createObjectURL(file); }
+        catch { toast('The uploaded file could not be opened in this browser.'); }
+      }
+      const detail=renderDocumentDetail(feedContext(),d.id,ui.documentFileUrl);
+      if(detail)showDialog(detail.title,detail.content);
+      break;
+    }
+    case 'docFilter': ui.documentsCategory=d.category; render(); break;
     case 'rcHome': if (orgMode()) ui.recruitOrg = HOME_ORG; navigate(orgMode() ? 'recruitment' : 'applications'); break;
     case 'rcOrg': navigate('org-profile', d.id); break;
     case 'rcPosition': navigate('position', d.id); break;
@@ -489,8 +560,8 @@ document.addEventListener('click', async event => {
     case 'handoff': handoffDialog(d.id); break;
     case 'preferences': preferencesDialog(); break;
     case 'conversation': ui.messageActivity = d.id; render(); break;
-    case 'create': if(!['program','planning'].includes(ui.page)) ui.createProgram=''; createDialog(); break;
-    case 'template': createDialog(d.type); break;
+    case 'create': createDialog(); break;
+    case 'template': createDialog(d.type,d.program); break;
   }
 });
 document.addEventListener('change', async event => {
@@ -501,6 +572,13 @@ document.addEventListener('change', async event => {
   if (event.target.id === 'recruit-filter') { ui.recruitFilter = event.target.value; render(); }
   if (event.target.id === 'discovery-cause') { ui.discoveryCause = event.target.value; document.querySelector('#discovery-results').innerHTML = discoveryResults(feedContext()); }
   if (event.target.id === 'discovery-mode') { ui.discoveryMode = event.target.value; document.querySelector('#discovery-results').innerHTML = discoveryResults(feedContext()); }
+  if (event.target.id === 'assignment-mode') {
+    const publicFields = document.querySelector('#public-shift-fields');
+    const publicOffering = event.target.value === 'public';
+    if (publicFields) publicFields.hidden = !publicOffering;
+    const waiver = document.querySelector('#shift-waiver-document');
+    if (waiver) waiver.required = publicOffering;
+  }
   if (event.target.id === 'assisted-person') openRecruitmentDialog('Assist', { id: event.target.dataset.position, person: event.target.value });
   if (event.target.closest('[data-form="ppAdd"]')) updatePassportRecordForm();
   if (event.target.id === 'feed-image') await attachFeedImage(event.target);
@@ -513,16 +591,33 @@ document.addEventListener('change', async event => {
   }
 });
 document.addEventListener('input', event => {
+  if (event.target.id === 'documents-search') { ui.documentsQuery = event.target.value; document.querySelector('#documents-results').innerHTML = renderDocumentList(feedContext()); }
   if (event.target.id === 'discovery-search') { ui.discoveryQuery = event.target.value; document.querySelector('#discovery-results').innerHTML = discoveryResults(feedContext()); }
   if (event.target.id === 'feed-body') document.querySelector('#feed-char-count').textContent = `${event.target.value.length} / 1,000`;
   if (event.target.id === 'feed-search') { ui.feedQuery = event.target.value; const results = renderFeedResults(feedContext()); document.querySelector('#feed-posts').innerHTML = results.html; document.querySelector('#feed-result-count').textContent = `${results.count} ${results.count === 1 ? 'update' : 'updates'}${ui.feedSaved ? ' saved' : ''}`; }
   if (event.target.id === 'people-search') { ui.query = event.target.value; document.querySelector('#people-rows').innerHTML = peopleRows(); }
   if (event.target.id === 'csv-text') { ui.csv = []; document.querySelector('#import-submit').disabled = true; document.querySelector('#csv-preview').innerHTML = ''; }
 });
-document.addEventListener('submit', event => {
+document.addEventListener('submit', async event => {
   const form = event.target.closest('[data-form]'); if (!form) return; event.preventDefault();
   const fields = new FormData(form); const values = Object.fromEntries(fields); const d = form.dataset;
   switch (d.form) {
+    case 'docAdd': {
+      let storedFileId='';
+      try {
+        const file=values.documentType==='liability-waiver'?form.elements.waiverFile.files[0]:null;
+        const result=saveDocument(state,{...values,fileName:file?.name,fileSize:file?.size,fileType:file?.type});
+        if(file) { await saveDocumentFile(result.id,file); storedFileId=result.id; }
+        localStorage.setItem(storageKey,JSON.stringify(result.state));
+        state=result.state; closeDialog(); render(); toast(result.notice);
+      } catch(error) {
+        if(storedFileId) await removeDocumentFile(storedFileId).catch(()=>{});
+        const output=form.querySelector('.form-error');
+        output.textContent=error.name==='QuotaExceededError'?'Browser storage is full. Your document draft is still here.':error.message;
+        output.focus();
+      }
+      break;
+    }
     case 'pfField': profileAction({type:'field',orgId:d.org,field:d.field,value:values.value}); break;
     case 'pfLinks': profileAction({type:'links',orgId:d.org,...values}); break;
     case 'pfFeatured': profileAction({type:'featured',orgId:d.org,...values}); break;
@@ -532,10 +627,10 @@ document.addEventListener('submit', event => {
     case 'pgWorkStatus': programAction({type:'workStatus',programId:d.program,activityId:d.id,status:d.status,...values}); break;
     case 'pgResource': programAction({type:'resource',programId:d.id,...values}); break;
     case 'pgUpdate': programAction({type:'update',programId:d.id,...values}); break;
-    case 'pgClose': programAction({type:'programStatus',programId:d.id,status:'complete',...values}); break;
+    case 'pgArchive': programAction({type:'programStatus',programId:d.id,status:'archived',note:'Program archived'}); break;
     case 'rcSearch': break;
     case 'rcApply': case 'rcAssist': recruitmentAction({ type: 'saveApplication', positionId: d.position, personId: d.person, ...values, assisted: d.form === 'rcAssist', consent: fields.has('consent'), submit: event.submitter?.value !== 'draft' }, 'application'); break;
-    case 'rcRole': recruitmentAction({ type: 'savePosition', positionId: d.id || undefined, ...values, requirements: fields.getAll('requirements') }, 'position'); break;
+    case 'rcRole': recruitmentAction({ type: 'savePosition', positionId: d.id || undefined, ...values, requirements: fields.getAll('requirements') }, d.program ? null : 'position'); break;
     case 'rcOrg': recruitmentAction({ type: 'saveOrganization', ...values }); break;
     case 'rcDecision': recruitmentAction({ type: ['withdraw','declineOffer'].includes(d.decision) ? d.decision : 'review', applicationId: d.id, status: d.decision, ...values }); break;
     case 'rcStep': recruitmentAction({ type: 'completeStep', applicationId: d.id, key: d.key, ...values }); break;
@@ -563,15 +658,39 @@ document.addEventListener('submit', event => {
     case 'handoff': act({ type: 'handoff', activityId: d.id, ...values }); break;
     case 'preferences': act({ type: 'preferences', personId: ui.person, ...values }); break;
     case 'message': act({ type: 'message', activityId: d.activity, author: orgMode() ? 'Maya' : currentPerson().name.split(' ')[0], text: values.text }); break;
-    case 'createActivity': if (act({ type: 'createActivity', ...values, workType: ui.activityType, requires: fields.getAll('requires') })) { if(ui.activityType==='shift' && values.programId) { ui.programTab='team'; navigate('program',values.programId); } else navigate('activity',state.activities.at(-1).id); } break;
+    case 'createActivity': {
+      const programId=d.program||values.programId||'';
+      if(d.program&&!['event','shift'].includes(d.workType)) { toast('Choose a one-time or recurring program activity.'); break; }
+      const programActivity = d.programActivity === 'true';
+      const assignmentMode = values.assignmentMode || '';
+      const requirements = fields.getAll('requires');
+      const action = {
+        type: 'createActivity', ...values, programId, workType: d.workType,
+        programActivity, requires: requirements,
+        time: values.activityTime || values.time,
+        assignmentMode,
+        visibility: programActivity ? (assignmentMode === 'public' ? 'public' : 'members') : values.visibility,
+        enrollment: programActivity ? (assignmentMode === 'manual' ? 'managed' : 'self') : values.enrollment,
+        roleName: values.roleName || (programActivity ? 'Volunteer team' : ''),
+        capacity: values.capacity || (programActivity ? '10' : ''),
+        owner: values.owner || (programActivity ? 'Program lead' : ''),
+        reviewer: values.reviewer || (programActivity ? 'Program lead' : ''),
+        acceptance: values.acceptance || (programActivity ? 'Activity completed and handoff recorded.' : ''),
+      };
+      if(act(action)) {
+        if(programId) { ui.programTab='overview'; navigate('program',programId); }
+        else navigate('activity',state.activities.at(-1).id);
+      }
+      break;
+    }
   }
 });
 dialog.addEventListener('click', event => { if (event.target === dialog) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeDialog(); } });
-dialog.addEventListener('close', () => { if (!dialog.open) ui.dialog = null; });
+dialog.addEventListener('close', () => { if (!dialog.open) { releaseDocumentFileUrl(); ui.dialog = null; } });
 window.addEventListener('hashchange', readRoute);
-window.addEventListener('storage', event => { if (event.key === STORAGE_KEY && event.newValue) { try { const incoming = JSON.parse(event.newValue); if (incoming.version === 1) { state = ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(incoming))))); render(); } } catch {} } });
+window.addEventListener('storage', event => { if (event.key === storageKey && event.newValue) { try { const incoming = JSON.parse(event.newValue); if (incoming.version === 1) { state = ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(incoming)))))); render(); } } catch {} } });
 readRoute();
 
-bindPlanning({context:feedContext, render, commit:result=>{state=result.state;save();render();toast(result.notice);}, showDialog, closeDialog, toast, create:(type,programId)=>{ui.createProgram=programId;createDialog(type);}});
+bindPlanning({context:feedContext, render, commit:result=>{state=result.state;save();render();toast(result.notice);}, showDialog, closeDialog, toast, create:(type,programId)=>createDialog(type,programId)});
 
 bindIssuerHome({context:feedContext,render,commit:result=>{state=result.state;save();render();toast(result.notice);},showDialog,closeDialog,navigate,toast});

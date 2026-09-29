@@ -5,8 +5,10 @@ import {
   MapPin,
   UsersRound,
 } from 'lucide-react'
+import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { db } from '@/lib/db/client'
 import { orgs } from '@/lib/db/schema'
 import { getOpenOpportunities, getOrgImpact, getEditorProfile, getPublicApplications } from '@/lib/services/profile'
@@ -22,8 +24,9 @@ import styles from '../../prototype.module.css'
 
 export const dynamic = 'force-dynamic'
 
-export default async function IssuerProfileLabPage() {
+export default async function IssuerProfileLabPage({ searchParams }: { searchParams: { view?: string } }) {
   const session = await requireRole('issuer')
+  if (coordinationIntegratedEnabled() && searchParams.view !== 'connected') redirect('/mycity#/coordinator/profile')
   const { city, cities, contexts } = await getLabWorkspace(session)
   const orgId = session.orgId!
   const org = (await db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1))[0]
