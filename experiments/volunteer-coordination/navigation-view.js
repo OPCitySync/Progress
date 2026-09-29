@@ -1,4 +1,6 @@
-import { PALETTES, safeProfileImage } from './profile-model.js';
+import { safeProfileImage } from './profile-model.js';
+
+const ISSUER_HEADER_PALETTE = ['#234d40', '#456750', '#e2ecbd'];
 export const ISSUER_SECTIONS = [
   {id:'home',label:'Home',icon:'home',page:'home',tabs:[['home','Overview'],['feed','MyCity Feed'],['discover','Discover organizations']]},
   {id:'workspace',label:'Workspace',icon:'work',page:'programs',tabs:[['programs','Programs'],['documents','Documents'],['planning','Planning']]},
@@ -14,13 +16,13 @@ export function issuerSection(page) {
   return ISSUER_SECTIONS[0];
 }
 export function issuerNavigation(ctx) {
-  const {state,ui,e,icon,button}=ctx,section=issuerSection(ui.page);
+  const {state,ui,e,icon}=ctx,section=issuerSection(ui.page);
   const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors');
-  const colors=ctx.platformContext?.organization?.palette||PALETTES[org.profile.palette]||PALETTES.forest;
+  const colors=ISSUER_HEADER_PALETTE;
   const activeTab=({program:'programs',work:'planning',activity:'planning',schedule:'planning',position:'recruitment',application:'recruitment','org-profile':'discover'})[ui.page]||ui.page;
   const pending=state.recruitment.applications.filter(a=>a.orgId===org.id&&a.submittedAt&&['submitted','reviewing','needs-info','offered','onboarding'].includes(a.status)).length;
   const brandWordmark=`${ctx.assetBase}/assets/mycity-wordmark-light.svg`;
-  return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a><header class="issuer-header" style="--issuer-deep:${colors[0]};--issuer-mid:${colors[1]};--issuer-accent:${colors[2]}"><div class="issuer-studio"><span><i></i> MYCITY STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?(ui.page==='settings'?'Connected organization settings':'Branch preview · sample data'):'Local prototype · sample data'}</span></span><div>${ui.page==='settings'?'':button('Try a journey','guide','','issuer-utility')+button(icon('refresh')+'Reset demo','reset','','issuer-utility')}</div></div><div class="issuer-mainbar"><a href="#/coordinator/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a><nav aria-label="Issuer sections" class="issuer-section-nav">${ISSUER_SECTIONS.map(s=>`<a href="#/coordinator/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span>${s.id===section.id?'<i aria-hidden="true" ></i>':''}</a>`).join('')}</nav>${headerAccount(ctx)}</div></header>${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/coordinator/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='recruitment'&&pending?`<span class="issuer-count">${pending}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
+  return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a><header class="issuer-header" style="--issuer-deep:${colors[0]};--issuer-mid:${colors[1]};--issuer-accent:${colors[2]}"><div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?(ui.page==='settings'?'Connected organization settings':'Branch preview · sample data'):'Local prototype · sample data'}</span></span></div><div class="issuer-mainbar"><a href="#/coordinator/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a><nav aria-label="Issuer sections" class="issuer-section-nav">${ISSUER_SECTIONS.map(s=>`<a href="#/coordinator/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>${headerAccount(ctx)}</div></header>${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/coordinator/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='recruitment'&&pending?`<span class="issuer-count">${pending}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
 }
 
 export const VOLUNTEER_SECTIONS = [
@@ -29,16 +31,16 @@ export const VOLUNTEER_SECTIONS = [
   {id:'passport',label:'Passport',icon:'book',page:'passport',tabs:[['passport','Profile'],['history','History'],['resume','Résumé']]},
 ];
 export function volunteerNavigation(ctx) {
-  const {state,ui,e,icon,button,currentPerson,avatar}=ctx,p=currentPerson();
+  const {state,ui,e,icon,currentPerson}=ctx,p=currentPerson();
   const section=ui.page==='messages'?{id:'messages',label:'Conversations',icon:'message',tabs:[]}:VOLUNTEER_SECTIONS[['home','feed'].includes(ui.page)?0:['passport','history','resume'].includes(ui.page)?2:1];
   const activeTab=({activity:'work',program:'programs',position:'discover','org-profile':'discover',application:'applications'})[ui.page]||ui.page;
   const invitations=state.commitments.filter(c=>c.personId===p.id&&c.status==='proposed').length;
   const brandWordmark=`${ctx.assetBase}/assets/mycity-wordmark-light.svg`;
   return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a>
     <header class="issuer-header" style="--issuer-deep:#234d40;--issuer-mid:#456750;--issuer-accent:#e2ecbd">
-      <div class="issuer-studio"><span><i></i> MYCITY STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Branch preview · sample data':'Local prototype · sample data'}</span></span><div>${button('Try a journey','guide','','issuer-utility')}${button(icon('refresh')+'Reset demo','reset','','issuer-utility')}</div></div>
+      <div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Branch preview · sample data':'Local prototype · sample data'}</span></span></div>
       <div class="issuer-mainbar"><a href="#/volunteer/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a>
-      <nav aria-label="Volunteer sections" class="issuer-section-nav">${VOLUNTEER_SECTIONS.map(s=>`<a href="#/volunteer/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span>${s.id===section.id?'<i aria-hidden="true"></i>':''}</a>`).join('')}</nav>
+      <nav aria-label="Volunteer sections" class="issuer-section-nav">${VOLUNTEER_SECTIONS.map(s=>`<a href="#/volunteer/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>
       ${headerAccount(ctx)}</div>
     </header>
     ${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/volunteer/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='schedule'&&invitations?`<span class="issuer-count" aria-label="${invitations} invitations">${invitations}</span>`:''}</a>`).join('')}</nav></div>`:''}`;

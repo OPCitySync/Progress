@@ -109,7 +109,7 @@ export async function LabHeader({
   }
 
   return (
-    <header className={shell.header} style={headerPaletteStyle}>
+    <header className={shell.header} style={headerPaletteStyle} data-workspace={workspace}>
       {isIssuer ? <IssuerPaletteRoot colors={issuerPalette.colors} /> : null}
       <div className={shell.studio}><span>MYCITY · COMMUNITY COORDINATION</span><span>{isIssuer ? 'Organization workspace' : 'Volunteer workspace'}{city ? ` · ${city.name}` : ''}</span></div>
       <div className={shell.mainbar}>

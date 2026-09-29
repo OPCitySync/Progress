@@ -25,6 +25,7 @@ export function ensureRecruitment(state) {
       { id: 'creek-story', orgId: 'creek-friends', title: 'Community nature storyteller', impact: 'Help neighbors understand and take part in caring for the creek.', tasks: 'Turn team updates into a short accessible story or illustrated guide. Share a draft and leave a handoff.', commitment: 'Remote, around 2 hours a week for a 4-week project.', mode: 'Remote', pathway: 'conversation', experience: 'Writing, illustration or lived knowledge of the creek. Samples are optional; we can explore a first task together.', support: 'A clear brief, flexible deadlines and feedback from Leah.', requirements: ['welcome'], check: '', question: 'What would you enjoy making, and what support would help?', capacity: 2, responseDays: 7, deadline: '', status: 'open', activityId: '', version: 1 }
     ], applications: [], memberships: [], preparation: {}, saved: {}
   };
+  state.recruitment.invitations ||= [];
   return state;
 }
 export function positionOpen(position, date = today()) { return position.status === 'open' && (!position.deadline || position.deadline >= date); }
@@ -97,6 +98,15 @@ export function transitionRecruitment(current, action, date = today()) {
   } else if (action.type === 'bookmark') {
     person(action.actor); assert(!coordinator && org,'Choose an organization.');
     const saved=r.saved[action.actor] || []; r.saved[action.actor]=saved.includes(org.id) ? saved.filter(id=>id!==org.id) : [...saved,org.id]; notice='Your saved organizations updated.';
+  } else if (action.type === 'inviteToPosition') {
+    reviewOrg(action.orgId);
+    const p=person(action.personId);
+    const position=r.positions.find(p=>p.id===action.positionId);
+    assert(state.passports?.profiles?.[p.id]?.openForVolunteering,'This volunteer is no longer open to invitations.');
+    assert(position&&position.orgId===action.orgId&&positionOpen(position,date)&&position.pathway!=='event','Choose an open volunteer role from your organization.');
+    assert(!r.invitations.some(invitation=>invitation.personId===p.id&&invitation.positionId===position.id&&invitation.status==='pending'),'An invitation for this role is already waiting for this volunteer.');
+    r.invitations.unshift({id:uid(),personId:p.id,orgId:action.orgId,positionId:position.id,status:'pending',message:clean(action.message,500),createdAt:new Date().toISOString()});
+    notice=`Invitation sent to ${p.name} for ${position.title}.`;
   } else if (action.type === 'saveApplication') {
     const p=person(action.personId); const position=r.positions.find(p=>p.id===action.positionId);
     assert(position && positionOpen(position,date) && position.pathway!=='event', 'This position is not accepting applications.');
@@ -110,7 +120,7 @@ export function transitionRecruitment(current, action, date = today()) {
     if (action.submit) assert(action.consent===true, 'Confirm you want this organization to receive your application.');
     if (!application) { application={id:uid(),personId:p.id,orgId:position.orgId,positionId:position.id,status:'draft',answers:{},completed:{},history:[],messages:[],createdAt:new Date().toISOString()};r.applications.unshift(application); }
     application.answers=answers; application.position=structuredClone(position); application.contact=r.organizations.find(o=>o.id===position.orgId).contact;
-    if(action.submit) { application.status='submitted';application.submittedAt=date;application.replyBy=addDays(date,position.responseDays); application.history.push({status:'submitted',by:coordinator?application.contact:p.name,date,note:coordinator?'Application entered with the volunteer’s approval.':'Application received. No membership or shifts created.'}); application.assisted=coordinator; }
+    if(action.submit) { application.status='submitted';application.submittedAt=date;application.replyBy=addDays(date,position.responseDays); application.history.push({status:'submitted',by:coordinator?application.contact:p.name,date,note:coordinator?'Application entered with the volunteer’s approval.':'Application received. No membership or shifts created.'}); application.assisted=coordinator; const invitation=r.invitations.find(invitation=>invitation.personId===p.id&&invitation.positionId===position.id&&invitation.status==='pending');if(invitation)invitation.status='applied'; }
     resultId=application.id;notice=action.submit?'Application received. Your next step and reply target are on your application.':'Private draft saved. The organization cannot see it.';
   } else {
     const a=r.applications.find(a=>a.id===action.applicationId); assert(a,'Application not found.');

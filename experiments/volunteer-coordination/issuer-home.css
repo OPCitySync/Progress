@@ -68,16 +68,20 @@
 @media(max-width:700px){.issuer-home-hub .home-queue-actions .btn.primary .icon{display:none}}
 @media(max-width:380px){.issuer-home-hub .home-queue-row{grid-template-columns:minmax(0,1fr);gap:4px}.issuer-home-hub .home-queue-actions{justify-content:flex-end}.issuer-home-hub .home-queue-copy strong{-webkit-line-clamp:2}}
 
-.home-calendar{border:2px solid #b8cbb4}
+.home-calendar{position:relative;border:2px solid #b8cbb4}
 .home-calendar .home-panel-heading{align-items:center;gap:10px;padding:16px 22px;background:#eef3e8;border-bottom-color:#d9e4d2}
 .home-calendar .home-panel-heading>div:first-child{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px}
 .home-calendar .home-panel-heading h2{margin-top:0}
-.home-calendar .home-panel-heading p{margin:0;white-space:nowrap}
+.home-calendar .home-panel-heading p{display:none}
 .home-calendar .home-panel-heading .button-row{gap:8px;margin:0}
 .home-calendar .home-panel-heading .btn{min-height:32px;padding:7px 10px;font-size:10px}
+.home-calendar .home-calendar-nav{position:absolute;z-index:2;top:16px;left:50%;transform:translateX(-50%)}
+.home-calendar .home-calendar-period{min-width:126px;color:#35543c;background:#fff;border-color:#cadac5;font-size:11px;font-weight:700}
 .home-calendar-toolbar{min-height:65px;padding:12px 22px}
 .home-calendar-toolbar>.button-row{margin:0 0 0 auto}
-@media(max-width:700px){.home-calendar-toolbar{min-height:104px;padding:16px 22px}}
+@media(max-width:900px){.home-calendar .home-panel-heading{padding-bottom:65px}.home-calendar .home-calendar-nav{top:66px}}
+@media(max-width:700px){.home-calendar .home-panel-heading{min-height:142px;padding-bottom:63px}.home-calendar .home-calendar-nav{top:94px}.home-calendar-toolbar{min-height:65px;padding:12px 22px}}
+@media(max-width:420px){.home-calendar .home-panel-heading{min-height:184px}.home-calendar .home-calendar-nav{top:136px}.home-calendar .home-calendar-period{min-width:112px}}
 
 /* Calendar events use soft, complete outlines instead of the old left stripe. */
 .home-calendar .home-month-event,

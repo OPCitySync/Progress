@@ -32,11 +32,11 @@ export default async function SignupPage({
       : type === 'issuer'
         ? {
             title: 'Register your organization',
-            description: 'Create an organization account to publish and manage opportunities.',
+            description: 'Create your organization and become its first owner.',
           }
         : {
             title: 'Register your organization',
-            description: 'Create an organization account to accept civic credits.',
+            description: 'Create your organization and become its first owner.',
           }
 
   return (
@@ -113,12 +113,17 @@ export default async function SignupPage({
           </fieldset>
 
           <div>
-            <Label htmlFor="name">{isOrg ? 'Contact name' : 'Your name'}</Label>
+            <Label htmlFor="name">Your name</Label>
             <Input id="name" name="name" required />
           </div>
           <div>
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{isOrg ? 'Your sign-in email' : 'Email'}</Label>
             <Input id="email" name="email" type="email" required autoComplete="email" />
+            {isOrg ? (
+              <p className="mt-1.5 text-xs leading-relaxed text-ink-500">
+                Use an email address that belongs to you, not a shared inbox such as info@ or volunteers@. Your organization’s public contact email can be added separately.
+              </p>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="password">Password (8+ characters)</Label>
@@ -126,13 +131,16 @@ export default async function SignupPage({
           </div>
 
           {isOrg ? (
-            <p className="rounded-xl bg-ink-50 px-4 py-3 text-xs leading-relaxed text-ink-500">
-              Creating an organization also creates your Civic Participant Identity. You’ll initially operate as the organization’s owner, and can switch between the organizational account and your user account.
-            </p>
+            <div className="rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3">
+              <p className="text-sm font-semibold text-ink-800">One account for you and your organization access</p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-600">
+                This creates your personal MyCity account and assigns you as the organization’s first owner. After signing in, you can switch between your personal profile and the organization workspace.
+              </p>
+            </div>
           ) : null}
 
           <Button type="submit" className="w-full">
-            Create account
+            {isOrg ? 'Create organization' : 'Create account'}
           </Button>
         </form>
         <p className="mt-5 text-center text-sm text-ink-500">

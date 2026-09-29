@@ -13,17 +13,19 @@ export function ensurePassport(state) {
   if (!state.passports) state.passports = { version: 1, profiles: {}, records: [], grants: [], decisions: [], audit: [] };
   state.passports.resumes ||= {};
   for (const p of state.people) {
-    if (state.passports.profiles[p.id]) continue;
-    state.passports.profiles[p.id] = { city: '', languages: '', skills: '', bio: '' };
-    // Explicit sample records, never inferred from readiness flags or scheduled commitments.
-    if (p.id === 'elena') {
-      state.passports.profiles[p.id] = { city: 'Berkeley', languages: 'English, Spanish', skills: 'Food packing, welcoming newcomers', bio: 'I enjoy practical work with a regular neighborhood team.' };
-      state.passports.records.push({ id: 'elena-food', personId: p.id, kind: 'training', title: 'Community food packing foundations', organizationId: 'east-bay-learning', issuer: PASSPORT_ORGS['east-bay-learning'], standard: 'food-packing/1', date: '2026-08-20', expires: '2027-08-20', summary: 'Safe packing, hygiene and allergen awareness. Local arrival and equipment guidance still apply.', status: 'attested', attestation: { by: 'Rosa Martinez', organizationId: 'east-bay-learning', date: '2026-08-20', basis: 'Sample course completion register EB-1042' }, demo: true });
+    if (!state.passports.profiles[p.id]) {
+      state.passports.profiles[p.id] = { city: '', languages: '', skills: '', bio: '' };
+      // Explicit sample records, never inferred from readiness flags or scheduled commitments.
+      if (p.id === 'elena') {
+        state.passports.profiles[p.id] = { city: 'Berkeley', languages: 'English, Spanish', skills: 'Food packing, welcoming newcomers', bio: 'I enjoy practical work with a regular neighborhood team.' };
+        state.passports.records.push({ id: 'elena-food', personId: p.id, kind: 'training', title: 'Community food packing foundations', organizationId: 'east-bay-learning', issuer: PASSPORT_ORGS['east-bay-learning'], standard: 'food-packing/1', date: '2026-08-20', expires: '2027-08-20', summary: 'Safe packing, hygiene and allergen awareness. Local arrival and equipment guidance still apply.', status: 'attested', attestation: { by: 'Rosa Martinez', organizationId: 'east-bay-learning', date: '2026-08-20', basis: 'Sample course completion register EB-1042' }, demo: true });
+      }
+      if (p.id === 'alex') {
+        state.passports.profiles[p.id] = { city: 'Berkeley', languages: 'English', skills: 'Food packing, gardening', bio: 'Happiest doing something useful with my neighbors.' };
+        state.passports.records.push({ id: 'alex-service', personId: p.id, kind: 'service', title: 'Neighborhood pantry team', organizationId: PASSPORT_ORG, issuer: PASSPORT_ORGS[PASSPORT_ORG], standard: '', date: '2026-09-12', expires: '', hours: 2, summary: 'Packed produce bags and welcomed neighbors at the distribution table.', status: 'attested', attestation: { by: 'Maya Thompson', organizationId: PASSPORT_ORG, date: '2026-09-13', basis: 'Sample shift lead completion record' }, demo: true });
+      }
     }
-    if (p.id === 'alex') {
-      state.passports.profiles[p.id] = { city: 'Berkeley', languages: 'English', skills: 'Food packing, gardening', bio: 'Happiest doing something useful with my neighbors.' };
-      state.passports.records.push({ id: 'alex-service', personId: p.id, kind: 'service', title: 'Neighborhood pantry team', organizationId: PASSPORT_ORG, issuer: PASSPORT_ORGS[PASSPORT_ORG], standard: '', date: '2026-09-12', expires: '', hours: 2, summary: 'Packed produce bags and welcomed neighbors at the distribution table.', status: 'attested', attestation: { by: 'Maya Thompson', organizationId: PASSPORT_ORG, date: '2026-09-13', basis: 'Sample shift lead completion record' }, demo: true });
-    }
+    if (typeof state.passports.profiles[p.id].openForVolunteering !== 'boolean') state.passports.profiles[p.id].openForVolunteering = ['elena', 'jules', 'robin'].includes(p.id);
   }
   return state;
 }
@@ -45,6 +47,23 @@ export function sharedPassport(state, personId, orgId = PASSPORT_ORG, date = tod
     ...(grant.sections.includes('contact') ? { email: p.email } : {}),
     ...(grant.sections.includes('preferences') ? { availability: p.availability, preference: p.preference } : {}),
     records: state.passports.records.filter(r => r.personId === personId && grant.recordIds.includes(r.id)).map(r => structuredClone(r)) };
+}
+export function publicVolunteerPassport(state, personId) {
+  const person = state.people.find(p => p.id === personId);
+  const profile = state.passports?.profiles?.[personId];
+  if (!person || !profile?.openForVolunteering) return null;
+  return {
+    personId,
+    name: person.name,
+    color: person.color,
+    city: profile.city,
+    languages: profile.languages,
+    skills: profile.skills,
+    bio: profile.bio,
+    availability: person.availability,
+    preference: person.preference,
+    records: state.passports.records.filter(r => r.personId === personId && r.status !== 'withdrawn').sort((a,b) => b.date.localeCompare(a.date)).map(r => ({ id: r.id, kind: r.kind, title: r.title, issuer: r.issuer, date: r.date, expires: r.expires, summary: r.summary, status: recordStatus(r) }))
+  };
 }
 export function portableFoodEligible(record, date = today()) {
   return record?.kind === 'training' && record.standard === 'food-packing/1' && recordStatus(record, date) === 'attested'
@@ -98,8 +117,12 @@ export function transitionPassport(current, action, date = today()) {
   let notice = 'Passport saved';
   let detail = '';
   if (action.type === 'profile') {
-    own(); store.profiles[p.id] = { city: clean(action.city, 100), languages: clean(action.languages, 200), skills: clean(action.skills, 400), bio: clean(action.bio, 600) };
+    own(); store.profiles[p.id] = { ...store.profiles[p.id], city: clean(action.city, 100), languages: clean(action.languages, 200), skills: clean(action.skills, 400), bio: clean(action.bio, 600) };
     detail = 'Updated optional profile';
+  } else if (action.type === 'openness') {
+    own(); store.profiles[p.id].openForVolunteering = action.open === true || action.open === 'true';
+    detail = store.profiles[p.id].openForVolunteering ? 'Opened passport for volunteering in the City Network' : 'Closed passport to City Network discovery';
+    notice = store.profiles[p.id].openForVolunteering ? 'Your passport is now open for volunteering.' : 'Your passport is no longer listed in the volunteer directory.';
   } else if (action.type === 'resume') {
     own(); const sections = [...new Set(action.sections || [])], recordIds = [...new Set(action.recordIds || [])];
     assertion(sections.every(key => Object.hasOwn(RESUME_SECTIONS, key)), 'Unknown résumé section.');
