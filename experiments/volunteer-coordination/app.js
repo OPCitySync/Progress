@@ -6,7 +6,7 @@ import { bindPlanning } from './planning-controller.js';
 import { ensureDocuments, isLiabilityWaiver, saveDocument } from './documents-model.js';
 import { loadDocumentFile, removeDocumentFile, saveDocumentFile } from './documents-files.js';
 import { renderDocuments, renderDocumentList, renderDocumentDetail, renderDocumentForm } from './documents-view.js';
-import { loadMyCityContext, saveOrganizationSettings, renderConnectedSettings } from './connected-settings.js';
+import { loadMyCityContext, saveOrganizationSettings, switchMyCityIdentity, renderConnectedSettings } from './connected-settings.js';
 import { renderResume, resumeSheet } from './resume-view.js';
 import { issuerNavigation, volunteerNavigation } from './navigation-view.js';
 import { ensureProfiles, transitionProfile } from './profile-model.js';
@@ -448,6 +448,16 @@ document.addEventListener('click', async event => {
   if (profile && profile.contains(b)) { profile.open = false; profile.querySelector('summary').focus(); }
   const d = b.dataset;
   switch (d.action) {
+    case 'connectedIdentity': {
+      try {
+        await switchMyCityIdentity(d.identityId);
+        connectedContext = await loadMyCityContext();
+        connectedContextError = '';
+        ui.mode = connectedContext.role === 'issuer' ? 'coordinator' : 'volunteer';
+        navigate(ui.mode === 'coordinator' && ui.page === 'settings' ? 'settings' : 'home');
+      } catch (error) { toast(error.message); }
+      break;
+    }
     case 'issuerSkip': event.preventDefault(); document.querySelector('#main-content').focus(); document.querySelector('#main-content').scrollIntoView({block:'start'}); break;
     case 'pfField': openProfileDialog('Field',d.field); break;
     case 'pfAppearance': openProfileDialog('Appearance'); break;

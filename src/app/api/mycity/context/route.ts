@@ -6,7 +6,7 @@ import { db } from '@/lib/db/client'
 import { orgs } from '@/lib/db/schema'
 import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { getActiveCity } from '@/lib/services/city-networks'
-import { activeSessionIsOrganizationOwner, validateActiveSession } from '@/lib/services/identity-access'
+import { activeSessionIsOrganizationOwner, getActorContexts, validateActiveSession } from '@/lib/services/identity-access'
 import { getEditorProfile } from '@/lib/services/profile'
 
 export const dynamic = 'force-dynamic'
@@ -19,8 +19,16 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Sign in to continue.' }, { status: 401 })
 
   const city = await getActiveCity(session)
+  const identities = (await getActorContexts(session.sub))
+    .filter((identity) => identity.role === 'participant' || identity.role === 'issuer')
+    .map((identity) => ({
+      id: identity.identityId,
+      label: identity.kind === 'participant' ? session.name : identity.label,
+      role: identity.role,
+      active: identity.identityId === session.activeIdentityId,
+    }))
   if (session.role !== 'issuer' || !session.orgId) {
-    return NextResponse.json({ role: session.role, accountName: session.name, cityName: city?.name ?? '' }, {
+    return NextResponse.json({ role: session.role, accountName: session.name, cityName: city?.name ?? '', identities }, {
       headers: { 'Cache-Control': 'no-store' },
     })
   }
@@ -36,6 +44,7 @@ export async function GET() {
     role: session.role,
     accountName: session.name,
     cityName: city?.name ?? '',
+    identities,
     organization: {
       id: org.id,
       name: org.name,

@@ -51,8 +51,12 @@ function headerAccount(ctx) {
   const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors');
   const person=issuer?{name:ctx.coordinatorName,color:'peach'}:ctx.currentPerson();
   const connectedOrg=issuer&&ctx.integratedPlatform?ctx.platformContext?.organization:null;
-  const identity=issuer?{name:connectedOrg?.name||org.name,color:'sage'}:person;
+  const identity=issuer?{name:connectedOrg?.name||org.name,color:'sage'}:ctx.integratedPlatform?{name:ctx.platformContext?.accountName||person.name,color:'peach'}:person;
   const logo=connectedOrg?.logoUrl||org.profile.logo;
+  const otherIdentities=ctx.platformContext?.identities?.filter(target=>!target.active)||[];
+  const workspaceSwitch=ctx.integratedPlatform
+    ? otherIdentities.map(target=>button(icon('switch')+`<span><small>Switch to</small>${e(target.label)}<small>${target.role==='issuer'?'Issuer workspace':'Volunteer workspace'}</small></span>`,'connectedIdentity',`data-identity-id="${e(target.id)}"`,'header-profile-item')).join('') || '<span class="header-profile-empty">No other workspaces available</span>'
+    : button(icon('switch')+`<span><small>Switch to</small>${e(issuer?ctx.currentPerson().name:org.name)}<small>${issuer?'Volunteer workspace':'Issuer workspace'}</small></span>`,'mode',`data-mode="${issuer?'volunteer':'coordinator'}"`,'header-profile-item');
   const accountAvatar=()=>issuer&&safeProfileImage(logo)?`<span class="avatar small sage"><img src="${e(logo)}" alt=""></span>`:avatar(identity,'small');
   const platformItem=(label,glyph,path,description)=>ctx.connectedPlatform
     ? `<a href="${path}" target="_blank" rel="noopener noreferrer" class="header-profile-item">${icon(glyph)}<span>${label}<small>${description} · Connected platform ↗</small></span>${icon('external')}</a>`
@@ -62,8 +66,8 @@ function headerAccount(ctx) {
     <details class="header-profile"><summary aria-label="Profile menu for ${e(identity.name)}" title="Profile menu">${accountAvatar()}${icon('down')}</summary>
       <section class="header-profile-dropdown" aria-label="Account menu"><div class="header-profile-identity">${accountAvatar()}<div><strong>${e(identity.name)}</strong><span>${issuer?'Issuer Organization':'Volunteer'} · ${e(ctx.platformContext?.cityName||'Berkeley')}</span></div></div>
         <div class="header-profile-section"><p class="header-profile-label">Workspace</p>
-          ${button(icon('switch')+`<span><small>Switch to</small>${e(issuer?ctx.currentPerson().name:org.name)}<small>${issuer?'Volunteer workspace':'Issuer workspace'}</small></span>`,'mode',`data-mode="${issuer?'volunteer':'coordinator'}"`,'header-profile-item')}
-          ${!issuer?`<label class="header-profile-persona">Exploring as<select id="persona" aria-label="Explore as volunteer">${state.people.map(person=>`<option value="${e(person.id)}" ${person.id===ctx.currentPerson().id?'selected':''}>${e(person.name)}</option>`).join('')}</select></label>`:''}
+          ${workspaceSwitch}
+          ${!issuer&&!ctx.integratedPlatform?`<label class="header-profile-persona">Exploring as<select id="persona" aria-label="Explore as volunteer">${state.people.map(person=>`<option value="${e(person.id)}" ${person.id===ctx.currentPerson().id?'selected':''}>${e(person.name)}</option>`).join('')}</select></label>`:''}
         </div>
         <div class="header-profile-section"><p class="header-profile-label">${issuer?'Organization':'Account'}</p>
           <a href="#/${ui.mode}/${issuer?'profile':'passport'}" class="header-profile-item">${icon(issuer?'leaf':'book')}<span>${issuer?'Organization profile':'Volunteer Passport'}</span>${icon('chevron')}</a>

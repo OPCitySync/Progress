@@ -18,11 +18,26 @@ export async function saveOrganizationSettings(values) {
   return result.organization;
 }
 
+export async function switchMyCityIdentity(identityId) {
+  const response = await fetch('/api/mycity/identity', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identityId }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw Error(result.error || 'Could not switch workspaces.');
+  return result.role;
+}
+
 export function renderConnectedSettings(context, error, escape) {
   if (error) return `<section class="connected-settings-state panel"><h1>Organization Settings</h1><p role="alert">${escape(error)}</p><a class="btn secondary" href="/login">Sign in again</a></section>`;
   if (!context) return '<section class="connected-settings-state panel" role="status">Loading organization settings…</section>';
   const org = context.organization;
-  if (!org) return '<section class="connected-settings-state panel"><h1>Organization Settings</h1><p>Switch to an issuer organization to manage its settings.</p></section>';
+  if (!org) {
+    const issuer = context.identities?.find(identity => identity.role === 'issuer');
+    return `<section class="connected-settings-state panel"><h1>Organization Settings</h1><p>Switch to an issuer organization to manage its settings.</p>${issuer ? `<button class="btn primary" data-action="connectedIdentity" data-identity-id="${escape(issuer.id)}">Open ${escape(issuer.label)} workspace</button>` : ''}</section>`;
+  }
   const fields = [
     ['name', 'Organization name', org.name, 'text', 120],
     ['email', 'Organization email', org.email, 'email', 150],

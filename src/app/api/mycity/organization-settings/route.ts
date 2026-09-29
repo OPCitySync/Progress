@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
+import { browserRequestIsSameOrigin } from '@/lib/http/same-origin'
 import { db } from '@/lib/db/client'
 import { orgs } from '@/lib/db/schema'
 import { validateActiveSession, updateOrganizationIdentity } from '@/lib/services/identity-access'
@@ -15,15 +16,7 @@ function stringField(value: unknown) {
 
 export async function PATCH(request: Request) {
   if (!coordinationIntegratedEnabled()) return new Response('Not found', { status: 404 })
-  // Next's internal request URL can use localhost while the browser uses
-  // 127.0.0.1. Compare the browser Origin with the actual public Host instead.
-  let sameOrigin = false
-  try {
-    const origin = new URL(request.headers.get('origin') ?? '')
-    const protocol = request.headers.get('x-forwarded-proto') ?? new URL(request.url).protocol.slice(0, -1)
-    sameOrigin = origin.host === request.headers.get('host') && origin.protocol === `${protocol}:`
-  } catch { /* missing or invalid Origin */ }
-  if (!sameOrigin) {
+  if (!browserRequestIsSameOrigin(request)) {
     return NextResponse.json({ error: 'This request must come from MyCity.' }, { status: 403 })
   }
   if (!request.headers.get('content-type')?.startsWith('application/json')) {
