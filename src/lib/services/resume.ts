@@ -105,8 +105,7 @@ export async function getResumeByToken(token: string): Promise<ResumeData | null
 export async function setResumePublic(userId: string, isPublic: boolean): Promise<{ token: string | null }> {
   const u = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0]
   if (!u) return { token: null }
-  let token = u.resumeToken
-  if (isPublic && !token) token = randomUUID().replace(/-/g, '').slice(0, 16)
+  const token = isPublic ? (u.resumeToken ?? randomUUID().replace(/-/g, '')) : null
   await db.update(users).set({ resumePublic: isPublic ? 1 : 0, resumeToken: token }).where(eq(users.id, userId))
-  return { token: token ?? null }
+  return { token }
 }

@@ -115,7 +115,7 @@ export async function LabHeader({
       <div className={shell.mainbar}>
         <Link href={isIssuer ? "/aesthetic-lab/issuer" : "/aesthetic-lab"} className={shell.brand} aria-label="MyCity home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/mycity-wordmark-light.svg" alt="mycity" />
+          <img src="/brand/mycity-logo-gold-white-transparent.svg" alt="mycity" />
         </Link>
 
         <nav className={shell.navigation} aria-label={isIssuer ? 'Issuer Organization sections' : 'Civic Participant sections'}>

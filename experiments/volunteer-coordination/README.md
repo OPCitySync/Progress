@@ -32,6 +32,7 @@ Open **Home** as a volunteer or **Home → MyCity Feed** as an issuer, or go dir
 The feed adapts the platform’s `MyCityFeedContent`, `PostActions`, and organization composer to this prototype’s design. It includes:
 
 - Shared organization updates, optional images, and the All / News / Organizations / Trending filters.
+- Civic participants see a compact Action Queue attached to the feed toolbar for activity invitations, role invitations, applications, requested information, offers, and onboarding steps. Their right rail places City Pulse below Local Organizations.
 - Likes, per-person bookmarks, search, and links to individual posts.
 - Coordinator publishing under Berkeley Neighbors, with a 1,000-character limit.
 - Optional links to public activities, opening the existing coordination and signup flows. Member-only activities cannot be attached to city posts.
@@ -173,7 +174,7 @@ The volunteer experience now uses the same top-navigation design as the issuer w
 
 - **Home** (`#/volunteer/home`): MyCity Feed, with organization stories, likes, bookmarks, search, upcoming plans, and local organization links. The desktop layout includes a private personal shortcut card; on mobile it becomes a single stream. Existing `#/volunteer/feed/<post-id>` links still open individual posts.
 - **Opportunities** (`#/volunteer/work`): Explore activities, Local organizations, Applications, Commitments, Programs, and My organization. Existing application, onboarding, invitation, booking, and task workflows retain their routes and state.
-- **Passport**: Profile (`#/volunteer/passport`), History (`#/volunteer/history`), and Résumé (`#/volunteer/resume`). Profile contains optional personal details and sharing controls; History contains completed contributions, learning, provenance, and review decisions.
+- **Passport**: MyPassport (`#/volunteer/passport`) and Résumé (`#/volunteer/resume`). MyPassport contains optional personal details, sharing controls, and a compact history of completed contributions and learning. In the connected platform, Résumé creates an optional tokenized external page from the volunteer's organization-verified contributions.
 
 The résumé builder starts with only a name. Select profile sections and individual completed records, save the selection, then preview and use **Print / Save PDF** through the browser’s print dialog. Selections persist separately for each sample volunteer. Scheduled activities never become completed experience, status changes remain visible, and the builder creates no sharing permission. Changing a selection disables printing until it is saved. Full passport JSON exports include the private résumé selection.
 
@@ -182,6 +183,6 @@ All changes remain in this standalone prototype. No backend authentication, exte
 
 ### Header conversations and account menu
 
-Both views place **Conversations** in the top right of the header, immediately left of the avatar dropdown. It opens the existing activity conversations page and is no longer a Workspace or Opportunities subtab. At smaller widths, its message icon retains an accessible label and tooltip.
+Both views place **Messages** in the top right of the header, immediately left of the avatar dropdown. It opens the consolidated messaging and activity-chat page and is no longer a Workspace or Opportunities subtab. At smaller widths, its message icon retains an accessible label and tooltip.
 
 The avatar menu contains the current person’s name and role, a profile link, and the Issuer / Volunteer view switch. Volunteers also have an availability and preferences shortcut. Existing initials are used as the avatar fallback. The menu supports keyboard activation, Escape, outside-click dismissal, and closing when focus leaves. Desktop and 320px phone layouts were checked; the 85 existing tests continue to pass.

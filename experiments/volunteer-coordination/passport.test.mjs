@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, transition, missingRequirements } from './model.js';
 import { volunteerResume, ensurePassport, transitionPassport, sharedPassport, requirementReady, acceptedEvidence, passportExport, recordStatus, portableFoodEligible, readinessIssues } from './passport-model.js';
+import { renderPassport } from './passport-view.js';
+import { VOLUNTEER_SECTIONS } from './navigation-view.js';
 
 const date = '2026-09-23';
 const act = (state, action) => transitionPassport(state, { personId: 'elena', actor: 'elena', ...action }, date).state;
@@ -133,7 +135,7 @@ test('invalid share dates, empty selections, and invalid sections are rejected w
 test('new roster entries receive an empty passport immediately', () => {
   const state = transition(createInitialState(), { type: 'addPerson', name: 'New Volunteer', email: 'new@example.org', method: 'existing' }).state;
   const person = state.people.at(-1);
-  assert.deepEqual(state.passports.profiles[person.id], { city: '', languages: '', skills: '', bio: '' });
+  assert.deepEqual(state.passports.profiles[person.id], { city: '', languages: '', skills: '', bio: '', openForVolunteering: false });
   assert.equal(state.passports.records.some(r => r.personId === person.id), false);
 });
 test('readiness alerts survive follow-up and cover future dates without flagging completed past work', () => {
@@ -176,4 +178,44 @@ test('résumé reflects changed evidence status and keeps its projection indepen
   assert.equal(view.records[0].correction, 'Completion date needs correcting');
   view.records[0].title = 'Changed copy';
   assert.notEqual(state.passports.records.find(r => r.id==='elena-food').title, 'Changed copy');
+});
+
+test('passport keeps experience on MyPassport and removes the standalone History tab', () => {
+  const state = ensurePassport(createInitialState());
+  const output = renderPassport({
+    state,
+    ui: { mode: 'volunteer', page: 'passport', person: 'alex' },
+    currentPerson: () => state.people.find(person => person.id === 'alex'),
+    e: value => String(value ?? ''),
+    button: (label, action, attrs = '', classes = 'btn') => `<button class="${classes}" data-action="${action}" ${attrs}>${label}</button>`,
+    badge: (label, tone = '') => `<span class="badge ${tone}">${label}</span>`,
+    avatar: () => '<span class="avatar"></span>',
+    icon: name => `<span class="icon">${name}</span>`,
+  });
+
+  assert.deepEqual(VOLUNTEER_SECTIONS.find(section => section.id === 'passport').tabs, [['passport', 'MyPassport'], ['resume', 'Résumé']]);
+  assert.match(output, /<span class="eyebrow">VOLUNTEER PASSPORT<\/span>/);
+  assert.match(output, /<h2>My Experience<\/h2>/);
+  assert.match(output, /<h2>Volunteer Experience<\/h2>/);
+  assert.match(output, /Neighborhood pantry team/);
+  assert.match(output, /Contribution · Berkeley Neighbors · 2026-09-12/);
+  assert.match(output, /Share MyPassport with City Network/);
+  assert.ok(output.indexOf('+ Add a record') < output.indexOf('>Edit<'));
+  assert.ok(output.indexOf('Choose what to share') < output.indexOf('Share MyPassport with City Network'));
+  assert.doesNotMatch(output, /Share my passport|Make Passport Open/);
+  assert.doesNotMatch(output, /YOUR EXPERIENCE GOES WITH YOU|Keep a record of what you bring|MYCITY · VOLUNTEER PASSPORT|What I bring|Edit profile|Update availability & preferences|Self-reported and organization-confirmed records/);
+  assert.doesNotMatch(output, /Explore my history|data-page="history"|My volunteer history/);
+
+  state.passports.profiles.alex.openForVolunteering = true;
+  const visibleOutput = renderPassport({
+    state,
+    ui: { mode: 'volunteer', page: 'passport', person: 'alex' },
+    currentPerson: () => state.people.find(person => person.id === 'alex'),
+    e: value => String(value ?? ''),
+    button: (label, action, attrs = '', classes = 'btn') => `<button class="${classes}" data-action="${action}" ${attrs}>${label}</button>`,
+    badge: (label, tone = '') => `<span class="badge ${tone}">${label}</span>`,
+    avatar: () => '<span class="avatar"></span>',
+    icon: name => `<span class="icon">${name}</span>`,
+  });
+  assert.match(visibleOutput, /Remove from City Network/);
 });

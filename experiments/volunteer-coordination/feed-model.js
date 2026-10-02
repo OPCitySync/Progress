@@ -3,6 +3,7 @@ const ORG_ID = 'berkeley-neighbors';
 export const feedActor = (mode, personId) => mode === 'coordinator' ? 'coordinator' : personId;
 export function createFeedState() {
   return {
+    queueAcknowledgements: {},
     posts: [
       { id: 'garden-invitation', orgId: ORG_ID, organization: 'Berkeley Neighbors', organizationType: 'issuer', color: 'sage', createdAt: '2026-09-23T09:00:00-07:00', body: 'A small invitation for your Sunday: come spend a morning in the garden. We’re getting the beds ready for fall, and there’s room for people who have never planted a thing.\n\nBring your curiosity. We’ll bring the gloves, a friendly face, and a place to start.', imageUrl: '/assets/garden-story.svg', imageAlt: 'Illustration of raised garden beds and growing plants', activityId: 'garden', baseHearts: 24, likedBy: [], savedBy: [] },
       { id: 'tools-together', orgId: 'tool-library', organization: 'Berkeley Tool Library', organizationType: 'issuer', color: 'sand', createdAt: '2026-09-22T15:30:00-07:00', body: 'A repaired handle, a sharpened blade, a tool ready for its next neighbor. Our volunteer repair team gave 18 donated tools a second life this week.\n\nThank you to everyone who shared a little time and a lot of know-how.', imageUrl: null, imageAlt: '', activityId: null, baseHearts: 38, likedBy: [], savedBy: [] },
@@ -12,9 +13,35 @@ export function createFeedState() {
   };
 }
 export function ensureFeed(state) {
-  return state.feed?.posts ? state : { ...state, feed: createFeedState() };
+  if (!state.feed?.posts) return { ...state, feed: createFeedState() };
+  state.feed.queueAcknowledgements ||= {};
+  return state;
 }
 export const heartCount = post => post.baseHearts + post.likedBy.length;
+export function participantQueueItems(state, personId, includeAcknowledged = false) {
+  const items = [];
+  const add = (key, kind, title, action, attrs, label) => items.push({ key, kind, title, action, attrs, label });
+  for (const commitment of state.commitments.filter(item => item.personId === personId && item.status === 'proposed')) {
+    const activity = state.activities.find(item => item.id === commitment.activityId);
+    if (activity && !activity.archived) add(`commitment:${commitment.id}:${commitment.status}`, 'Activity invitation', activity.title, 'activity', { id: activity.id }, 'Review invitation');
+  }
+  for (const invitation of (state.recruitment?.invitations || []).filter(item => item.personId === personId && item.status === 'pending')) {
+    const role = state.recruitment.positions.find(item => item.id === invitation.positionId);
+    if (role) add(`role-invitation:${invitation.id}:${invitation.status}`, 'Role invitation', role.title, 'rcPosition', { id: role.id }, 'View role');
+  }
+  const applicationLabels = {
+    draft: ['Application draft', 'Finish your application', 'Continue'],
+    'needs-info': ['Reply requested', 'An organization needs more information', 'Reply'],
+    offered: ['Volunteer offer', 'An organization is waiting for your decision', 'Review offer'],
+    onboarding: ['Onboarding', 'Continue your volunteer requirements', 'Continue'],
+  };
+  for (const application of (state.recruitment?.applications || []).filter(item => item.personId === personId && applicationLabels[item.status])) {
+    const [kind, fallback, label] = applicationLabels[application.status];
+    add(`application:${application.id}:${application.status}:${application.updatedAt || application.submittedAt || application.createdAt || ''}`, kind, application.position?.title || fallback, 'rcApplication', { id: application.id }, label);
+  }
+  const acknowledged = new Set((state.feed?.queueAcknowledgements?.[personId] || []).map(item => item.key));
+  return items.filter(item => includeAcknowledged || !acknowledged.has(item.key));
+}
 export function selectFeedPosts(state, { filter = 'all', saved = false, actor = 'coordinator', query = '' } = {}) {
   let posts = ensureFeed(state).feed.posts.slice();
   if (saved) posts = posts.filter(p => p.savedBy.includes(actor));
@@ -28,6 +55,21 @@ export function transitionFeed(current, action) {
   const state = structuredClone(ensureFeed(current));
   const actor = action.actor;
   if (actor !== 'coordinator' && !state.people.some(p => p.id === actor)) throw Error('Choose a sample person first.');
+  if (action.type === 'acknowledgeQueue') {
+    if (actor === 'coordinator') throw Error('Choose a civic participant first.');
+    const item = participantQueueItems(state, actor).find(item => item.key === action.key);
+    if (!item) throw Error('This item has already changed or been acknowledged.');
+    const history = state.feed.queueAcknowledgements[actor] ||= [];
+    history.unshift({ ...item, at: new Date().toISOString() });
+    return { state, notice: 'Acknowledged. The underlying item is unchanged and can be restored from History.' };
+  }
+  if (action.type === 'restoreQueue') {
+    if (actor === 'coordinator') throw Error('Choose a civic participant first.');
+    const history = state.feed.queueAcknowledgements[actor] ||= [];
+    if (!history.some(item => item.key === action.key)) throw Error('This item is no longer in history.');
+    state.feed.queueAcknowledgements[actor] = history.filter(item => item.key !== action.key);
+    return { state, notice: 'Acknowledgement removed. If it still needs attention, the item is back in your queue.' };
+  }
   if (action.type === 'publish') {
     if (actor !== 'coordinator') throw Error('Organization coordinators publish city updates.');
     const body = String(action.body || '').trim();

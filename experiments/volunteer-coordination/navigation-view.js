@@ -1,14 +1,14 @@
 import { safeProfileImage } from './profile-model.js';
 
-const ISSUER_HEADER_PALETTE = ['#234d40', '#456750', '#e2ecbd'];
+const ISSUER_HEADER_PALETTE = ['#15151e', '#34343f', '#fbf0dc'];
 export const ISSUER_SECTIONS = [
-  {id:'home',label:'Home',icon:'home',page:'home',tabs:[['home','Overview'],['feed','MyCity Feed'],['discover','Discover organizations']]},
+  {id:'home',label:'Home',icon:'home',page:'home',tabs:[['home','Overview'],['feed','MyCity Feed'],['discover','City Network']]},
   {id:'workspace',label:'Workspace',icon:'work',page:'programs',tabs:[['programs','Programs'],['documents','Documents'],['planning','Planning']]},
   {id:'volunteers',label:'Volunteers',icon:'people',page:'people',tabs:[['people','Roster'],['recruitment','Recruitment & onboarding'],['passport','Passports']]},
   {id:'profile',label:'Public Profile',icon:'leaf',page:'profile',tabs:[]},
 ];
 export function issuerSection(page) {
-  if(page==='messages')return {id:'messages',label:'Conversations',icon:'message',tabs:[]};
+  if(page==='messages')return {id:'messages',label:'Messages',icon:'message',tabs:[]};
   if(page==='settings')return {id:'settings',label:'Organization Settings',icon:'settings',tabs:[]};
   if(['programs','program','documents','work','activity','schedule','planning'].includes(page))return ISSUER_SECTIONS[1];
   if(['people','recruitment','position','application','passport'].includes(page))return ISSUER_SECTIONS[2];
@@ -21,33 +21,33 @@ export function issuerNavigation(ctx) {
   const colors=ISSUER_HEADER_PALETTE;
   const activeTab=({program:'programs',work:'planning',activity:'planning',schedule:'planning',position:'recruitment',application:'recruitment','org-profile':'discover'})[ui.page]||ui.page;
   const pending=state.recruitment.applications.filter(a=>a.orgId===org.id&&a.submittedAt&&['submitted','reviewing','needs-info','offered','onboarding'].includes(a.status)).length;
-  const brandWordmark=`${ctx.assetBase}/assets/mycity-wordmark-light.svg`;
+  const brandWordmark=`${ctx.assetBase}/assets/mycity-logo-gold-blue-on-white.svg`;
   return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a><header class="issuer-header" style="--issuer-deep:${colors[0]};--issuer-mid:${colors[1]};--issuer-accent:${colors[2]}"><div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?(ui.page==='settings'?'Connected organization settings':'Branch preview · sample data'):'Local prototype · sample data'}</span></span></div><div class="issuer-mainbar"><a href="#/coordinator/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a><nav aria-label="Issuer sections" class="issuer-section-nav">${ISSUER_SECTIONS.map(s=>`<a href="#/coordinator/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>${headerAccount(ctx)}</div></header>${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/coordinator/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='recruitment'&&pending?`<span class="issuer-count">${pending}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
 }
 
 export const VOLUNTEER_SECTIONS = [
   {id:'home',label:'Home',icon:'home',page:'home',tabs:[]},
-  {id:'opportunities',label:'Opportunities',icon:'work',page:'work',tabs:[['work','Explore activities'],['discover','Local organizations'],['applications','Applications'],['schedule','Commitments'],['programs','Programs'],['organization','My organization']]},
-  {id:'passport',label:'Passport',icon:'book',page:'passport',tabs:[['passport','Profile'],['history','History'],['resume','Résumé']]},
+  {id:'opportunities',label:'Opportunities',icon:'work',page:'work',tabs:[['work','Opportunities'],['discover','Discover Organizations'],['applications','My Volunteering']]},
+  {id:'passport',label:'Passport',icon:'book',page:'passport',tabs:[['passport','MyPassport'],['resume','Résumé']]},
 ];
 export function volunteerNavigation(ctx) {
   const {state,ui,e,icon,currentPerson}=ctx,p=currentPerson();
-  const section=ui.page==='messages'?{id:'messages',label:'Conversations',icon:'message',tabs:[]}:VOLUNTEER_SECTIONS[['home','feed'].includes(ui.page)?0:['passport','history','resume'].includes(ui.page)?2:1];
-  const activeTab=({activity:'work',program:'programs',position:'discover','org-profile':'discover',application:'applications'})[ui.page]||ui.page;
-  const invitations=state.commitments.filter(c=>c.personId===p.id&&c.status==='proposed').length;
-  const brandWordmark=`${ctx.assetBase}/assets/mycity-wordmark-light.svg`;
+  const section=ui.page==='messages'?{id:'messages',label:'Messages',icon:'message',tabs:[]}:VOLUNTEER_SECTIONS[['home','feed'].includes(ui.page)?0:['passport','resume'].includes(ui.page)?2:1];
+  const activeTab=({activity:'work',position:'discover','org-profile':'discover',application:'applications',schedule:'applications'})[ui.page]||ui.page;
+  const invitations=state.commitments.filter(c=>c.personId===p.id&&c.status==='proposed').length+(state.recruitment.invitations||[]).filter(invitation=>invitation.personId===p.id&&invitation.status==='pending').length;
+  const brandWordmark=`${ctx.assetBase}/assets/mycity-logo-gold-blue-on-white.svg`;
   return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a>
-    <header class="issuer-header" style="--issuer-deep:#234d40;--issuer-mid:#456750;--issuer-accent:#e2ecbd">
+    <header class="issuer-header" style="--issuer-deep:#15151e;--issuer-mid:#34343f;--issuer-accent:#fbf0dc">
       <div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Branch preview · sample data':'Local prototype · sample data'}</span></span></div>
       <div class="issuer-mainbar"><a href="#/volunteer/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a>
       <nav aria-label="Volunteer sections" class="issuer-section-nav">${VOLUNTEER_SECTIONS.map(s=>`<a href="#/volunteer/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>
       ${headerAccount(ctx)}</div>
     </header>
-    ${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/volunteer/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='schedule'&&invitations?`<span class="issuer-count" aria-label="${invitations} invitations">${invitations}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
+    ${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/volunteer/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='applications'&&invitations?`<span class="issuer-count" aria-label="${invitations} invitations">${invitations}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
 }
 
 
-// Shared header utilities keep conversations one click away from every workspace.
+// Shared header utilities keep messages one click away from every workspace.
 function headerAccount(ctx) {
   const {state,ui,e,icon,button,avatar}=ctx,issuer=ui.mode==='coordinator';
   const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors');
@@ -64,7 +64,7 @@ function headerAccount(ctx) {
     ? `<a href="${path}" target="_blank" rel="noopener noreferrer" class="header-profile-item">${icon(glyph)}<span>${label}<small>${description} · Connected platform ↗</small></span>${icon('external')}</a>`
     : `<button class="header-profile-item" disabled>${icon(glyph)}<span>${label}<small>Available in the connected platform</small></span></button>`;
   return `<div class="issuer-account header-account">
-    <a href="#/${ui.mode}/messages" class="header-conversations ${ui.page==='messages'?'is-active':''}" ${ui.page==='messages'?'aria-current="page"':''} aria-label="Conversations" title="Conversations">${icon('message')}<span>Conversations</span></a>
+    <a href="#/${ui.mode}/messages" class="header-conversations ${ui.page==='messages'?'is-active':''}" ${ui.page==='messages'?'aria-current="page"':''} aria-label="Messages" title="Messages">${icon('message')}<span>Messages</span></a>
     <details class="header-profile"><summary aria-label="Profile menu for ${e(identity.name)}" title="Profile menu">${accountAvatar()}${icon('down')}</summary>
       <section class="header-profile-dropdown" aria-label="Account menu"><div class="header-profile-identity">${accountAvatar()}<div><strong>${e(identity.name)}</strong><span>${issuer?'Issuer Organization':'Volunteer'} · ${e(ctx.platformContext?.cityName||'Berkeley')}</span></div></div>
         <div class="header-profile-section"><p class="header-profile-label">Workspace</p>

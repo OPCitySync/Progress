@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, transition } from './model.js';
 import { ensurePrograms } from './program-model.js';
-import { ensureRecruitment, transitionRecruitment, visibleApplications, onboardingSteps, occupiedPlaces, myApplication, positionOpen } from './recruitment-model.js';
+import { ensureDocuments } from './documents-model.js';
+import { ensureRecruitment, transitionRecruitment, visibleApplications, onboardingSteps, occupiedPlaces, myApplication, positionOpen, volunteerRequirements } from './recruitment-model.js';
 import { transitionPassport } from './passport-model.js';
-import { recruitmentDialog } from './recruitment-view.js';
+import { recruitmentDialog, renderRecruitment } from './recruitment-view.js';
 
 const day='2026-09-23';
 const initial=()=>ensureRecruitment(createInitialState());
@@ -132,6 +133,84 @@ test('role draft, publication and scoped organization editing are functional',()
   assert.throws(()=>act(state,{...payload,positionId:id}),/Published roles/);
   assert.throws(()=>act(state,{type:'saveOrganization',actor:'robin',mission:'Overwrite'}),/workspace/);
 });
+test('organizations define reusable role requirements while submitted applications keep their original checklist',()=>{
+  const start=initial();
+  assert.ok(volunteerRequirements(start,'berkeley-neighbors').some(requirement=>requirement.title==='Role Introduction'));
+  assert.throws(()=>act(start,{type:'saveRequirement',title:'Safeguarding briefing',detail:'Review reporting and support.',owner:'coordinator',positionIds:['food-team']}),/workspace/);
+  let result=act(start,{type:'saveRequirement',actor:'coordinator',title:'Safeguarding briefing',detail:'Review reporting and support.',owner:'coordinator',positionIds:['food-team']});
+  const requirement=volunteerRequirements(result.state,'berkeley-neighbors').find(item=>item.title==='Safeguarding briefing');
+  assert.ok(requirement);assert.ok(result.state.recruitment.positions.find(position=>position.id==='food-team').requirements.includes(requirement.id));
+  const submitted=apply(result.state);const application=submitted.state.recruitment.applications.find(item=>item.id===submitted.id);
+  assert.equal(application.position.requirementDefinitions.find(item=>item.id===requirement.id).detail,'Review reporting and support.');
+  result=act(submitted.state,{type:'saveRequirement',actor:'coordinator',requirementId:requirement.id,title:'Safeguarding & support',detail:'Updated instructions for future applicants.',owner:'volunteer',positionIds:[]});
+  assert.equal(result.state.recruitment.positions.find(position=>position.id==='food-team').requirements.includes(requirement.id),false);
+  assert.equal(result.state.recruitment.applications.find(item=>item.id===submitted.id).position.requirementDefinitions.find(item=>item.id===requirement.id).title,'Safeguarding briefing');
+});
+test('every organization gets a permanent welcome requirement and a general volunteer role',()=>{
+  const start=initial();
+  for(const organization of start.recruitment.organizations) {
+    const welcome=volunteerRequirements(start,organization.id).find(requirement=>requirement.id==='welcome');
+    const general=start.recruitment.positions.find(position=>position.orgId===organization.id&&position.title==='General Volunteer');
+    assert.ok(welcome);assert.equal(welcome.completionType,'welcome');assert.ok(general);assert.ok(general.requirements.includes('welcome'));
+  }
+  assert.ok(start.recruitment.positions.every(position=>position.requirements.includes('welcome')));
+  assert.equal(start.recruitment.organizations.find(organization=>organization.id==='berkeley-neighbors').welcomeMessageCreated,false);
+  const result=act(start,{type:'saveWelcome',actor:'coordinator',welcome:'Welcome. Here is how to get help and what to expect.'});
+  const organization=result.state.recruitment.organizations.find(item=>item.id==='berkeley-neighbors');
+  assert.equal(organization.welcomeMessageCreated,true);assert.match(organization.welcome,/how to get help/);
+  assert.throws(()=>act(result.state,{type:'saveRequirement',actor:'coordinator',requirementId:'welcome',title:'Changed',detail:'Changed',completionType:'read',positionIds:[]}),/permanent requirement/);
+});
+test('requirements can use organization documents for reading, signature, provision, or review',()=>{
+  const start=ensureDocuments(initial());
+  const document=start.documentLibrary.items.find(item=>item.id==='sample-liability-waiver');
+  let result=act(start,{type:'saveRequirement',actor:'coordinator',title:'Consent and waiver',detail:'Read and sign before your first activity.',completionType:'sign',documentId:document.id,positionIds:['general-volunteer']});
+  const requirement=volunteerRequirements(result.state,'berkeley-neighbors').find(item=>item.title==='Consent and waiver');
+  assert.equal(requirement.owner,'volunteer');assert.equal(requirement.documentId,document.id);assert.equal(requirement.completionType,'sign');
+  assert.ok(result.state.recruitment.positions.find(position=>position.id==='general-volunteer').requirements.includes(requirement.id));
+  assert.throws(()=>act(start,{type:'saveRequirement',actor:'coordinator',title:'Unsigned form',detail:'Please sign.',completionType:'sign',positionIds:[]}),/Choose the document/);
+  result=act(result.state,{type:'saveRequirement',actor:'coordinator',requirementId:requirement.id,title:'Coordinator review',detail:'A coordinator confirms the conversation.',completionType:'organization',documentId:'',positionIds:[]});
+  assert.equal(volunteerRequirements(result.state,'berkeley-neighbors').find(item=>item.id===requirement.id).owner,'coordinator');
+  const ctx={state:start,ui:{recruitOrg:'berkeley-neighbors'},e:value=>String(value??''),button:text=>text,errorOutput:()=>'',currentPerson:()=>start.people.find(person=>person.id==='robin')};
+  const dialog=recruitmentDialog(ctx,'Requirement');
+  for(const text of ['Read or view information','Acknowledge or sign a document','Provide information or a file','Organization confirms completion','Volunteer liability waiver'])assert.ok(dialog.content.includes(text));
+});
+test('application management separates Passport, public, and invite-link pathways',()=>{
+  let start=initial();start.passports.profiles.robin.openForVolunteering=true;
+  start=act(start,{type:'inviteToPosition',actor:'coordinator',personId:'robin',positionId:'food-team',message:'Your experience may fit this role.'}).state;
+  let result=apply(start);
+  const passportApplication=result.state.recruitment.applications.find(application=>application.id===result.id);
+  assert.equal(passportApplication.source,'passport-invite');assert.equal(result.state.recruitment.invitations[0].status,'applied');
+  result=act(result.state,{type:'startInviteLink',actor:'elena',personId:'elena'});
+  const linkApplication=result.state.recruitment.applications.find(application=>application.id===result.id);
+  assert.equal(linkApplication.source,'invite-link');assert.equal(linkApplication.position.title,'General Volunteer');assert.equal(linkApplication.status,'submitted');
+  assert.equal(result.state.people.find(person=>person.id==='elena').relationship,'joining');
+  const reviewed=act(result.state,{type:'review',actor:'coordinator',applicationId:linkApplication.id,status:'reviewing',note:'Let us discuss the best role.'}).state;
+  assert.equal(reviewed.recruitment.applications.find(application=>application.id===linkApplication.id).status,'reviewing');
+  const ctx={state:reviewed,ui:{page:'recruitment',mode:'coordinator',recruitOrg:'berkeley-neighbors',recruitmentTab:'applications'},e:value=>String(value??''),button:text=>text,badge:text=>text,icon:()=>''};
+  const page=renderRecruitment(ctx);
+  for(const title of ['Passport Invitations & Interest','Public Applications & Interest','Volunteer Invite Links'])assert.ok(page.includes(title));
+  assert.equal(page.includes('recruitment-stage-flow'),false);
+});
+test('volunteer applications and commitments share one My Volunteering page',()=>{
+  const state=initial();
+  const ctx={state,ui:{page:'applications',mode:'volunteer',person:'alex',recruitOrg:'berkeley-neighbors'},e:value=>String(value??''),button:(text,action)=>`<button data-action="${action}">${text}</button>`,badge:text=>text,dateLabel:value=>value,icon:()=>''};
+  const page=renderRecruitment(ctx);
+  for(const title of ['My Volunteering','Keep applications, invitations, and the plans you have accepted in one place.','Commitments','Applications &amp; Role Invitations'])assert.ok(page.includes(title));
+  assert.match(page,/<section class="recruit-hero volunteer-opportunities-hero">/);
+  assert.equal(page.includes('recruit-hero-orbit'),false);
+  assert.equal(page.includes('Share Availability'),false);
+  assert.equal(page.includes('Discover Organizations'),false);
+  assert.ok(page.includes('Saturday food distribution'));
+});
+test('participant discovery opens with a city-specific impact pathway and no extra page heading',()=>{
+  const state=initial();
+  const ctx={state,ui:{page:'discover',mode:'volunteer',person:'alex',discoveryQuery:'',discoveryCause:'all',discoverySaved:false},platformContext:{cityName:'Berkeley'},e:value=>String(value??''),button:(text,action,attrs='',className='btn')=>`<button class="${className}" data-action="${action}" ${attrs}>${text}</button>`,icon:()=>''};
+  const page=renderRecruitment(ctx);
+  for(const text of ['DISCOVER ORGANIZATIONS IN BERKELEY','Help Local Organizations make an Impact.','01 · Discover Local Organizations','02 · View Local Impact','03 · Signal Interest','04 · Apply','05 · Contribute'])assert.ok(page.includes(text));
+  for(const removed of ['Find your people','My Volunteering','You don’t need to arrive','Meet an organization. Try an open event.'])assert.equal(page.includes(removed),false);
+  assert.match(page,/<section class="recruit-hero recruit-hero-participant">[\s\S]*<h1>Help Local Organizations make an Impact\.<\/h1>/);
+  assert.equal(page.includes('recruit-hero-orbit'),false);
+});
 test('program role creation uses the short role form and supplies recruitment defaults',()=>{
   const state=initial();const program=state.programWorkspace.programs.find(p=>p.name==='Neighborhood food access');
   const ctx={state,ui:{recruitOrg:'berkeley-neighbors'},e:v=>String(v??''),button:(text)=>text,errorOutput:()=>'',currentPerson:()=>state.people.find(p=>p.id==='robin')};
@@ -140,7 +219,7 @@ test('program role creation uses the short role form and supplies recruitment de
   for(const text of ['The difference this role makes','Time, duration and flexibility','Experience needed / what can be learned','Support, equipment and access options','Application pathway','New volunteer places','Initial reply target','Preparation after an accepted offer','Suggested first activity']) assert.equal(dialog.content.includes(text),false);
   const result=act(state,{type:'savePosition',actor:'coordinator',orgId:'berkeley-neighbors',programId:program.id,title:'Garden welcome role',tasks:'Welcome volunteers to the garden.',mode:'Remote'});
   const role=result.state.recruitment.positions.find(position=>position.id===result.id);
-  assert.equal(role.programId,program.id);assert.equal(role.capacity,1);assert.equal(role.pathway,'application');assert.equal(role.requirements.length,0);
+  assert.equal(role.programId,program.id);assert.equal(role.capacity,1);assert.equal(role.pathway,'application');assert.deepEqual(role.requirements,['welcome']);
 });
 test('program roles are saved in the volunteer recruitment workspace and linked to one program',()=>{
   const start=ensurePrograms(initial());

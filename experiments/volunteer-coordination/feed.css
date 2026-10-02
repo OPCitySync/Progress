@@ -17,5 +17,50 @@
 .city-toolbar-issuer .city-tools .btn.secondary{background:#ffffff16;border-color:#ffffff55;color:#fff}
 .city-toolbar-issuer .city-tools .btn.primary{background:#f0f5e9;border-color:#f0f5e9;color:#294637}
 .city-toolbar-issuer .city-tools .btn:hover{background:#fff;color:#294637}
+.city-toolbar-search{width:clamp(150px,16vw,220px);padding:7px 10px;border:1px solid #ffffff66;border-radius:8px;background:#fff;gap:7px}
+.city-toolbar-search .icon{flex:none;color:#70707c}
+.city-toolbar-search input{min-width:0;width:100%;padding:0;border:0;border-radius:0;background:transparent;color:#15151e}
+.city-toolbar-search input::placeholder{color:#888894}
+
+/* Participant actions grow directly from the feed's trending toolbar. */
+.city-feed-control-stack{margin-bottom:20px}
+.city-feed-control-stack.has-action-queue .city-toolbar{border-radius:13px 13px 0 0;border-bottom-color:#4a4a55}
+.city-feed-action-queue{overflow:hidden;border:1px solid #dfd3bd;border-top:3px solid #dd9e33;border-radius:0 0 13px 13px;background:#fff}
+.city-feed-action-queue>header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 14px;background:#fbf7ef;border-bottom:1px solid #eee3d1}
+.city-feed-action-queue>header h2{display:flex;align-items:center;gap:9px;font-size:14px;letter-spacing:-.02em}
+.city-feed-action-queue>header h2 span{display:grid;place-items:center;min-width:20px;height:20px;padding-inline:5px;border-radius:999px;background:#f1dfbd;color:#755115;font-size:9px;letter-spacing:0}
+.city-feed-action-queue>header .icon-button{width:27px;height:27px;border:1px solid #ddceb3;background:#fff;color:#6d5833}
+.city-feed-action-queue>header .icon-button:hover{background:#f7edda;border-color:#c9b384}
+.city-feed-action-queue>header .icon-button .icon{width:13px;height:13px;transition:transform .16s ease}
+.city-feed-action-queue>header .icon-button[aria-expanded="true"] .icon{transform:rotate(180deg)}
+.city-feed-action-queue article{display:flex;align-items:center;gap:14px;min-height:49px;padding:7px 14px;border-bottom:1px solid #eee9df;background:#fff}
+.city-feed-action-queue article:last-child{border-bottom:0}
+.city-feed-action-queue article>div{flex:1;min-width:0}
+.city-feed-action-queue article small{display:block;margin-bottom:3px;color:#9b762f;font-size:8px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+.city-feed-action-queue article strong{display:block;overflow:hidden;color:#31313a;font-size:11px;font-weight:620;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.city-feed-action-queue article .btn{flex:none;min-height:28px;padding:5px 8px;font-size:9px;white-space:nowrap}
+.city-feed-action-queue article .btn .icon{width:12px;height:12px;margin-left:4px}
+.participant-queue-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex:none}
+.participant-queue-empty{margin:0;padding:13px 14px;color:#766a59;font-size:10px;text-align:center}
+.city-feed-action-queue>footer{padding:9px 14px;border-top:1px solid #eee3d1;background:#fbfaf7;color:#887657;font-size:9px;text-align:center}
 
 @media (max-height:820px) and (min-width:761px){.sidebar-note{display:none}.sidebar{overflow-y:auto}}
+
+/* Issuers use the same social feed frame as civic participants. */
+.city-layout.city-layout-issuer{grid-template-columns:220px minmax(0,1fr) 270px;gap:24px}
+.city-personal-issuer .city-person-identity p{min-height:66px}
+.city-personal-issuer .city-community-note .text-button{font-size:10px;line-height:1.7;text-align:left}
+@media(min-width:1500px){.city-layout.city-layout-issuer{grid-template-columns:240px minmax(0,1fr) 290px;gap:28px}}
+@media(max-width:1200px){.city-layout.city-layout-issuer{grid-template-columns:190px minmax(0,1fr) 240px;gap:18px}}
+@media(max-width:1100px){.city-layout.city-layout-issuer{grid-template-columns:minmax(0,1fr) 280px}.city-layout-issuer .city-personal{display:none}}
+@media(max-width:850px){.city-layout.city-layout-issuer{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-rail{grid-template-columns:1fr 1fr;gap:16px}.city-layout-issuer .city-rail-note{grid-column:1/-1}}
+@media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}}
+
+@media(max-width:760px){.volunteer-shell .city-toolbar.city-toolbar-issuer{flex-wrap:wrap}.volunteer-shell .city-toolbar .city-tools{width:100%;flex:1 1 100%}.volunteer-shell .city-toolbar-search{flex:1 1 150px;width:auto}}
+@media(max-width:560px){.city-feed-action-queue>header{align-items:center;flex-direction:row;gap:10px}.city-feed-action-queue article{align-items:flex-start;flex-wrap:wrap}.city-feed-action-queue article>div:first-child{flex-basis:100%}.participant-queue-actions{width:100%;justify-content:flex-end}.city-feed-action-queue article strong{white-space:normal}}
+
+/* Side rails scroll normally until their final card reaches the app header. */
+@media(min-width:1001px){
+  .city-layout .city-personal,.city-layout .city-rail{align-self:stretch;align-content:start;grid-auto-rows:max-content}
+  .city-layout .city-personal>.city-rail-lock,.city-layout .city-rail>.city-rail-lock{position:sticky;top:142px;z-index:1;align-self:start}
+}

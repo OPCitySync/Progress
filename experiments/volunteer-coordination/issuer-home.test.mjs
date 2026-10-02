@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createInitialState, transition } from './model.js';
 import { ensureRecruitment, HOME_ORG } from './recruitment-model.js';
 import { ensureIssuerHome, homeQueue, calendarRange, moveCalendar, calendarEntries, entriesOnDay, transitionIssuerHome } from './issuer-home-model.js';
+import { homeActionQueue } from './issuer-home-view.js';
 const initial=()=>ensureIssuerHome(ensureRecruitment(createInitialState()));
 const apply=(state,action)=>transitionIssuerHome(state,{actor:'coordinator',...action},'2026-09-26').state;
 
@@ -19,6 +20,13 @@ test('action acknowledgement is reversible, persisted, and never completes under
   const reloaded=JSON.parse(JSON.stringify(next));assert.ok(!homeQueue(reloaded,'2026-09-26').some(x=>x.key===item.key));
   assert.ok(homeQueue(apply(reloaded,{type:'restore',key:item.key}),'2026-09-26').some(x=>x.key===item.key));
   assert.throws(()=>apply(next,{type:'acknowledge',key:item.key}),/changed|acknowledged/);
+});
+test('issuer action history uses the shared history icon beside collapse',()=>{
+  const state=initial();
+  const html=homeActionQueue({state,ui:{home:{queueAll:false,queueCollapsed:false}},e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`});
+  assert.match(html,/data-home-action="history"/);
+  assert.match(html,/data-icon="history"/);
+  assert.doesNotMatch(html,/data-icon="book"/);
 });
 test('staffing need resurfaces when confirmed coverage changes; invitations alone do not fill places',()=>{
   const s=initial(),item=homeQueue(s,'2026-09-26').find(x=>x.key.startsWith('staffing:garden:'));

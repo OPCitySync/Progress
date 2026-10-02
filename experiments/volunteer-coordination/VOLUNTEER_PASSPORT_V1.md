@@ -66,7 +66,7 @@ All of this runs in the standalone prototype. It does not change the main platfo
 Open `http://127.0.0.1:4318/#/coordinator/passport` and choose **Explore Elena's sample passport** when the inbox is empty. Alternatively, choose Volunteer → Elena Brooks → My passport.
 
 1. Elena starts with a clearly labeled fictional course confirmation and no shares.
-2. Choose **Share my passport**, select only her training record, enter a purpose, and save.
+2. Choose **Choose what to share**, select only her training record, enter a purpose, and save.
 3. Preview the shared view. Email, skills and availability should be absent unless selected.
 4. Switch to Coordinator. Review the issuer, dates and standard, choose **Accept for food packing**, and record why.
 5. Open People → Elena. Food preparation reads **Passport accepted**, but membership remains **Joining**.

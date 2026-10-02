@@ -8,6 +8,17 @@ const assert = (condition, message) => { if (!condition) throw Error(message); }
 const clean = (value, max = 1200) => String(value || '').trim().slice(0, max);
 const dateValid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 export const addDays = (date, days) => { const d = new Date(date + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0,10); };
+export const REQUIREMENT_COMPLETION_TYPES = ['read','sign','provide','organization'];
+const BASE_VOLUNTEER_REQUIREMENTS = [
+  { id: 'welcome', title: 'Read our Welcome', detail: 'Review how the organization works, who to contact, where to arrive, and how to ask for help.', owner: 'volunteer', completionType: 'welcome', documentId: '' },
+  { id: 'waiver', title: 'Participation Agreement', detail: 'Review the expectations, support, expenses, and how either side can raise a concern.', owner: 'volunteer', completionType: 'sign', documentId: 'sample-liability-waiver' },
+  { id: 'role-introduction', title: 'Role Introduction', detail: 'Meet with the organization to review the role, its boundaries, and the support available.', owner: 'coordinator', completionType: 'organization', documentId: '' },
+  { id: 'liability-waiver', title: 'Liability Waiver', detail: 'Review and acknowledge the current waiver attached to this volunteer role.', owner: 'volunteer', completionType: 'sign', documentId: 'sample-liability-waiver' },
+  { id: 'food', title: 'Food Packing Introduction', detail: 'Review hygiene, safe packing, and allergen handling with the team.', owner: 'volunteer', completionType: 'read', documentId: 'sample-distribution-plan' },
+  { id: 'driver', title: 'Driving Qualification Review', detail: 'The organization reviews the role-specific driving qualification before assigning delivery work.', owner: 'coordinator', completionType: 'organization', documentId: '' },
+];
+export const volunteerRequirements = (state, orgId = HOME_ORG) => state.recruitment?.requirementLibrary?.[orgId] || [];
+export const volunteerRequirement = (state, orgId, requirementId) => volunteerRequirements(state, orgId).find(requirement => requirement.id === requirementId);
 
 export function ensureRecruitment(state) {
   if (!state.recruitment) state.recruitment = {
@@ -26,6 +37,41 @@ export function ensureRecruitment(state) {
     ], applications: [], memberships: [], preparation: {}, saved: {}
   };
   state.recruitment.invitations ||= [];
+  state.recruitment.requirementLibrary ||= {};
+  for (const organization of state.recruitment.organizations) {
+    organization.welcomeMessageCreated = Boolean(organization.welcomeMessageCreated);
+    const library = state.recruitment.requirementLibrary[organization.id] ||= [];
+    for (const requirement of BASE_VOLUNTEER_REQUIREMENTS) {
+      if (!library.some(item => item.id === requirement.id)) library.push(structuredClone(requirement));
+    }
+    for (const requirement of library) {
+      const base = BASE_VOLUNTEER_REQUIREMENTS.find(item => item.id === requirement.id);
+      requirement.completionType ||= base?.completionType || (requirement.owner === 'coordinator' ? 'organization' : 'read');
+      requirement.documentId ??= base?.documentId || '';
+      requirement.owner = requirement.completionType === 'organization' ? 'coordinator' : 'volunteer';
+    }
+    const defaultRoleId = organization.id === HOME_ORG ? 'general-volunteer' : `general-volunteer-${organization.id}`;
+    if (!state.recruitment.positions.some(position => position.id === defaultRoleId)) {
+      state.recruitment.positions.push({
+        id: defaultRoleId, orgId: organization.id, title: 'General Volunteer',
+        impact: `Support ${organization.name} wherever an extra pair of hands can help.`,
+        tasks: 'Choose from available activities with the organization and agree each commitment separately.',
+        commitment: 'Flexible; agree activities individually.', mode: 'In person', pathway: 'application',
+        experience: 'No previous experience required.', support: 'A coordinator will help identify a suitable first step.',
+        requirements: ['welcome'], check: '', question: '', capacity: 25, responseDays: 7,
+        deadline: '', status: 'open', activityId: '', programId: '', version: 1, systemDefault: true,
+      });
+    }
+  }
+  for (const position of state.recruitment.positions) {
+    if (position.programId && position.status === 'draft') position.status = 'open';
+    position.requirements ||= [];
+    if (!position.requirements.includes('welcome')) position.requirements.unshift('welcome');
+  }
+  for (const application of state.recruitment.applications) {
+    application.source ||= 'public';
+    application.position.requirementDefinitions ||= application.position.requirements.map(requirementId => structuredClone(volunteerRequirement(state, application.orgId, requirementId) || { id: requirementId, title: requirementId, detail: 'Complete this role requirement with the organization.', owner: 'coordinator' }));
+  }
   return state;
 }
 export function positionOpen(position, date = today()) { return position.status === 'open' && (!position.deadline || position.deadline >= date); }
@@ -37,13 +83,11 @@ export function visibleApplications(state, actor, orgId) {
 export function onboardingSteps(state, application) {
   const p = state.people.find(p => p.id === application.personId);
   const local = state.recruitment.preparation[application.orgId]?.[p.id] || {};
-  const details = {
-    welcome: ['Meet the organization', 'volunteer', 'Read the welcome below and note who to contact, where to arrive, and how to ask for help.'],
-    waiver: ['Review the participation agreement', 'volunteer', 'Discuss the role, support, expenses and how either side can raise concerns. This is a demo preparation acknowledgment; no legal agreement is signed.'],
-    food: ['Food packing introduction', 'volunteer', 'Review hygiene, safe packing and allergen handling with the team, or share relevant passport training for review.'],
-    driver: ['Driving qualification review', 'coordinator', 'Review the role-specific driving qualification through the organization’s normal process. Record a short completion note, not document numbers or check reports.']
-  };
-  const steps = application.position.requirements.map(key => ({ key, title: details[key][0], owner: details[key][1], detail: details[key][2], done: application.orgId === HOME_ORG ? requirementReady(state,p,key) : !!local[key], portable: application.orgId === HOME_ORG && !p.requirements[key] && requirementReady(state,p,key) }));
+  const snapshots = application.position.requirementDefinitions || [];
+  const steps = application.position.requirements.map(key => {
+    const requirement = snapshots.find(item => item.id === key) || volunteerRequirement(state, application.orgId, key) || { id: key, title: key, detail: 'Complete this role requirement with the organization.', owner: 'coordinator' };
+    return { key, title: requirement.title, owner: requirement.owner, detail: requirement.detail, done: application.orgId === HOME_ORG ? requirementReady(state,p,key) : !!local[key], portable: key === 'food' && application.orgId === HOME_ORG && !p.requirements[key] && requirementReady(state,p,key) };
+  });
   if (application.position.check) steps.push({ key: 'role-check', title: application.position.check, owner: 'coordinator', detail: 'Explain the process to the volunteer and record completion of this role-specific check. Do not enter sensitive reports.', done: !!application.completed['role-check'] });
   steps.push({ key: 'orientation', title: 'Meet your buddy & agree the first step', owner: 'coordinator', detail: 'Introduce the volunteer to their buddy, confirm practical access and support, explain expenses and concerns, and agree a first activity or project handoff.', done: !!application.completed.orientation });
   return steps;
@@ -62,12 +106,12 @@ export function transitionRecruitment(current, action, date = today()) {
   if (action.type === 'savePosition') {
     reviewOrg(action.orgId);
     let position = action.positionId && r.positions.find(p => p.id === action.positionId);
-    if (position) { reviewOrg(position.orgId); assert(position.status === 'draft', 'Published roles keep their terms. Create a new role for material changes.'); }
+    if (position) { reviewOrg(position.orgId); assert(position.status === 'draft' || Boolean(position.programId), 'Published roles keep their terms. Create a new role for material changes.'); }
     const programRole = Boolean(action.programId);
-    const requirements = [...new Set(action.requirements || [])];
-    assert(requirements.every(k => ['welcome','waiver','food','driver'].includes(k)), 'Unknown onboarding step.');
-    const pathway = action.pathway || 'application';
-    const mode = action.mode || 'In person';
+    const requirements = [...new Set(['welcome', ...(action.requirements || (programRole&&position?position.requirements:[]))])];
+    assert(requirements.every(key => volunteerRequirement(state, action.orgId, key)), 'Unknown onboarding step.');
+    const pathway = action.pathway || position?.pathway || 'application';
+    const mode = action.mode || position?.mode || 'In person';
     assert(['application','conversation'].includes(pathway), 'Choose a short application or a conversation-first pathway.');
     assert(['In person','Remote','Hybrid'].includes(mode), 'Choose a work mode.');
     if (programRole) {
@@ -82,22 +126,60 @@ export function transitionRecruitment(current, action, date = today()) {
     const programId = action.programId || '';
     if (programId) assert(action.orgId === HOME_ORG && state.programWorkspace?.programs.some(program => program.id === programId && program.status !== 'complete'), 'Choose an active or draft program in this organization.');
     if (programId && action.activityId) assert(state.activities.some(activity => activity.id === action.activityId && activity.programId === programId), 'Choose an activity in this program.');
-    const values = { title: clean(action.title,120), impact: clean(action.impact || action.tasks,500), tasks: clean(action.tasks), commitment: clean(action.commitment || 'Program activity',300), experience: clean(action.experience || 'Open to learning',600), support: clean(action.support || 'A coordinator will share the next step.',600), mode, pathway, capacity: Number(action.capacity || 1), responseDays: Number(action.responseDays || 7), deadline: action.deadline || '', question: clean(action.question,240), check: clean(action.check,200), requirements, activityId: action.activityId || '', programId };
-    if (position) Object.assign(position, values); else { position = { id: uid(), orgId: org.id, status: 'draft', version: 1, ...values }; r.positions.unshift(position); }
-    if (programId) state.programWorkspace.history.unshift({ id: uid(), programId, activityId: '', text: `${position.title} role ${position.status === 'draft' ? 'saved as a draft' : 'updated'}`, detail: '', actor: 'Maya Thompson', date: new Date().toISOString() });
-    resultId = position.id; notice = programRole ? 'Program role created.' : 'Role draft saved. Preview it before publishing.';
+    const values = { title: clean(action.title,120), impact: clean(action.impact || position?.impact || action.tasks,500), tasks: clean(action.tasks), commitment: clean(action.commitment || position?.commitment || 'Program activity',300), experience: clean(action.experience || position?.experience || 'Open to learning',600), support: clean(action.support || position?.support || 'A coordinator will share the next step.',600), mode, pathway, capacity: Number(action.capacity || position?.capacity || 1), responseDays: Number(action.responseDays || position?.responseDays || 7), deadline: action.deadline || position?.deadline || '', question: clean(action.question || position?.question,240), check: clean(action.check || position?.check,200), requirements, activityId: action.activityId || position?.activityId || '', programId };
+    if (position) Object.assign(position, values, programRole ? { status: 'open' } : {}); else { position = { id: uid(), orgId: org.id, status: programRole ? 'open' : 'draft', version: 1, ...values }; r.positions.unshift(position); }
+    if (programId) state.programWorkspace.history.unshift({ id: uid(), programId, activityId: '', text: `${position.title} role ${action.positionId ? 'updated' : 'created'}`, detail: '', actor: 'Maya Thompson', date: new Date().toISOString() });
+    resultId = position.id; notice = programRole ? `Program role ${action.positionId ? 'updated' : 'created'}.` : 'Role draft saved. Preview it before publishing.';
+  } else if (action.type === 'deletePosition') {
+    const position = r.positions.find(position => position.id === action.positionId); assert(position,'Position not found.'); reviewOrg(position.orgId);
+    assert(position.programId,'Only roles created within a program can be deleted here.');
+    assert(!r.applications.some(application => application.positionId === position.id && !TERMINAL.includes(application.status)),'This role has an active application and cannot be deleted.');
+    r.positions = r.positions.filter(item => item.id !== position.id);
+    r.invitations = r.invitations.filter(invitation => invitation.positionId !== position.id);
+    if (state.programWorkspace) state.programWorkspace.history.unshift({ id: uid(), programId: position.programId, activityId: '', text: `${position.title} role deleted`, detail: '', actor: 'Maya Thompson', date: new Date().toISOString() });
+    notice = 'Program role deleted.';
   } else if (action.type === 'positionStatus') {
     const p = r.positions.find(p => p.id === action.positionId); assert(p,'Position not found.'); reviewOrg(p.orgId);
     assert(['open','paused','closed'].includes(action.status), 'Choose a valid publication state.');
     assert(action.status !== 'open' || !p.deadline || p.deadline>=date, 'The closing date has passed. Create a new recruitment round.');
     p.status = action.status; notice = action.status === 'open' ? 'Position published in organization discovery.' : 'New applications stopped. Existing applicants keep their next steps.';
     if (p.programId && state.programWorkspace) state.programWorkspace.history.unshift({ id: uid(), programId: p.programId, activityId: '', text: `${p.title} role ${action.status === 'open' ? 'published' : action.status}`, detail: '', actor: 'Maya Thompson', date: new Date().toISOString() });
+  } else if (action.type === 'saveRequirement') {
+    reviewOrg(action.orgId);
+    const title=clean(action.title,120),detail=clean(action.detail,800);
+    assert(title&&detail,'Add a requirement name and clear instructions.');
+    const library=volunteerRequirements(state,action.orgId);
+    let requirement=action.requirementId&&library.find(item=>item.id===action.requirementId);
+    assert(!action.requirementId||requirement,'Volunteer requirement not found.');
+    assert(requirement?.id!=='welcome','The welcome message is managed from its permanent requirement.');
+    const completionType=action.completionType||requirement?.completionType||(action.owner==='coordinator'?'organization':'read');
+    const documentId=clean(action.documentId||'',200);
+    assert(REQUIREMENT_COMPLETION_TYPES.includes(completionType),'Choose how this requirement is completed.');
+    const document=documentId&&state.documentLibrary?.items?.find(item=>item.id===documentId);
+    assert(!documentId||document,'Choose a document from this organization’s library.');
+    assert(completionType!=='sign'||document,'Choose the document the volunteer needs to acknowledge or sign.');
+    const owner=completionType==='organization'?'coordinator':'volunteer';
+    assert(!library.some(item=>item.id!==action.requirementId&&item.title.toLowerCase()===title.toLowerCase()),'A requirement with this name already exists.');
+    if(requirement)Object.assign(requirement,{title,detail,owner,completionType,documentId});
+    else {requirement={id:`custom-${uid()}`,title,detail,owner,completionType,documentId};library.push(requirement);}
+    const selected=new Set(Array.isArray(action.positionIds)?action.positionIds:action.positionIds?[action.positionIds]:[]);
+    assert([...selected].every(positionId=>r.positions.some(position=>position.id===positionId&&position.orgId===action.orgId)),'Choose roles from this organization.');
+    for(const position of r.positions.filter(position=>position.orgId===action.orgId)) {
+      position.requirements ||= [];
+      position.requirements=selected.has(position.id)?[...new Set([...position.requirements,requirement.id])]:position.requirements.filter(requirementId=>requirementId!==requirement.id);
+    }
+    resultId=requirement.id;notice=`${requirement.title} saved and assigned to ${selected.size} ${selected.size===1?'role':'roles'}.`;
+  } else if (action.type === 'saveWelcome') {
+    reviewOrg(action.orgId);
+    const welcome=clean(action.welcome,1600);
+    assert(welcome,'Write a welcome message for prospective volunteers.');
+    org.welcome=welcome;org.welcomeMessageCreated=true;notice='Volunteer welcome message saved.';
   } else if (action.type === 'saveOrganization') {
     reviewOrg(action.orgId); assert(clean(action.mission) && clean(action.support) && clean(action.welcome), 'Describe the mission, access/support and welcome.');
     org.mission=clean(action.mission,500); org.support=clean(action.support,800); org.welcome=clean(action.welcome,1000); notice='Organization profile and welcome updated.';
   } else if (action.type === 'bookmark') {
-    person(action.actor); assert(!coordinator && org,'Choose an organization.');
-    const saved=r.saved[action.actor] || []; r.saved[action.actor]=saved.includes(org.id) ? saved.filter(id=>id!==org.id) : [...saved,org.id]; notice='Your saved organizations updated.';
+    if (!coordinator) person(action.actor); assert(org,'Choose an organization.');
+    const saved=r.saved[action.actor] || []; r.saved[action.actor]=saved.includes(org.id) ? saved.filter(id=>id!==org.id) : [...saved,org.id]; notice='Watchlist updated.';
   } else if (action.type === 'inviteToPosition') {
     reviewOrg(action.orgId);
     const p=person(action.personId);
@@ -107,6 +189,22 @@ export function transitionRecruitment(current, action, date = today()) {
     assert(!r.invitations.some(invitation=>invitation.personId===p.id&&invitation.positionId===position.id&&invitation.status==='pending'),'An invitation for this role is already waiting for this volunteer.');
     r.invitations.unshift({id:uid(),personId:p.id,orgId:action.orgId,positionId:position.id,status:'pending',message:clean(action.message,500),createdAt:new Date().toISOString()});
     notice=`Invitation sent to ${p.name} for ${position.title}.`;
+  } else if (action.type === 'startInviteLink') {
+    const p=person(action.personId);assert(action.actor===p.id,'Only the invited volunteer can begin this pathway.');
+    const position=r.positions.find(position=>position.orgId===action.orgId&&position.systemDefault&&position.title==='General Volunteer');
+    assert(position&&positionOpen(position,date),'This organization’s general volunteer pathway is not open.');
+    let application=myApplication(state,p.id,position.id);
+    if(!application) {
+      application={
+        id:uid(),personId:p.id,orgId:position.orgId,positionId:position.id,status:'submitted',source:'invite-link',
+        answers:{motivation:'Responded through the organization’s volunteer invite link.',availability:p.availability||'To be discussed',experience:'',answer:'',email:p.email},
+        completed:{},history:[{status:'submitted',by:p.name,date,note:'Volunteer responded through the organization’s invite link.'}],messages:[],
+        createdAt:new Date().toISOString(),submittedAt:date,replyBy:addDays(date,position.responseDays),position:structuredClone(position),contact:org.contact,
+      };
+      application.position.requirementDefinitions=position.requirements.map(requirementId=>structuredClone(volunteerRequirement(state,position.orgId,requirementId)));
+      r.applications.unshift(application);
+    }
+    p.relationship='joining';p.reviewPending=true;resultId=application.id;notice='Your response was shared with the organization. They have the next step.';
   } else if (action.type === 'saveApplication') {
     const p=person(action.personId); const position=r.positions.find(p=>p.id===action.positionId);
     assert(position && positionOpen(position,date) && position.pathway!=='event', 'This position is not accepting applications.');
@@ -118,9 +216,10 @@ export function transitionRecruitment(current, action, date = today()) {
     const answers={ motivation:clean(action.motivation), availability:clean(action.availability,300), experience:clean(action.experience), answer:clean(action.answer), email:clean(action.email,200) };
     if (action.submit) assert(answers.motivation && answers.availability && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email) && (!position.question || answers.answer), 'Add your interest, availability, valid email and the role question before submitting.');
     if (action.submit) assert(action.consent===true, 'Confirm you want this organization to receive your application.');
-    if (!application) { application={id:uid(),personId:p.id,orgId:position.orgId,positionId:position.id,status:'draft',answers:{},completed:{},history:[],messages:[],createdAt:new Date().toISOString()};r.applications.unshift(application); }
-    application.answers=answers; application.position=structuredClone(position); application.contact=r.organizations.find(o=>o.id===position.orgId).contact;
-    if(action.submit) { application.status='submitted';application.submittedAt=date;application.replyBy=addDays(date,position.responseDays); application.history.push({status:'submitted',by:coordinator?application.contact:p.name,date,note:coordinator?'Application entered with the volunteer’s approval.':'Application received. No membership or shifts created.'}); application.assisted=coordinator; const invitation=r.invitations.find(invitation=>invitation.personId===p.id&&invitation.positionId===position.id&&invitation.status==='pending');if(invitation)invitation.status='applied'; }
+    const invitation=r.invitations.find(invitation=>invitation.personId===p.id&&invitation.positionId===position.id&&invitation.status==='pending');
+    if (!application) { application={id:uid(),personId:p.id,orgId:position.orgId,positionId:position.id,status:'draft',source:invitation?'passport-invite':'public',answers:{},completed:{},history:[],messages:[],createdAt:new Date().toISOString()};r.applications.unshift(application); }
+    application.answers=answers; application.position=structuredClone(position); application.position.requirementDefinitions=position.requirements.map(requirementId=>structuredClone(volunteerRequirement(state,position.orgId,requirementId))); application.contact=r.organizations.find(o=>o.id===position.orgId).contact;
+    if(action.submit) { application.status='submitted';application.submittedAt=date;application.replyBy=addDays(date,position.responseDays); application.history.push({status:'submitted',by:coordinator?application.contact:p.name,date,note:coordinator?'Application entered with the volunteer’s approval.':'Application received. No membership or shifts created.'}); application.assisted=coordinator; if(invitation)invitation.status='applied'; }
     resultId=application.id;notice=action.submit?'Application received. Your next step and reply target are on your application.':'Private draft saved. The organization cannot see it.';
   } else {
     const a=r.applications.find(a=>a.id===action.applicationId); assert(a,'Application not found.');
@@ -154,7 +253,7 @@ export function transitionRecruitment(current, action, date = today()) {
       if(step.owner==='coordinator')review();else own();
       assert(reply,'Record what was completed or discussed.');
       if(action.key==='orientation') { assert(clean(action.buddy,120)&&clean(action.firstStep,300),'Name a buddy and agree a practical first step.');a.buddy=clean(action.buddy,120);a.firstStep=clean(action.firstStep,300); }
-      if(['welcome','waiver','food','driver'].includes(action.key)) { if(a.orgId===HOME_ORG)p.requirements[action.key]=true;else {r.preparation[a.orgId]??={};r.preparation[a.orgId][p.id]??={};r.preparation[a.orgId][p.id][action.key]=true;} }
+      if(!['orientation','role-check'].includes(action.key)) { if(a.orgId===HOME_ORG)p.requirements[action.key]=true;else {r.preparation[a.orgId]??={};r.preparation[a.orgId][p.id]??={};r.preparation[a.orgId][p.id][action.key]=true;} }
       a.completed[action.key]={by:coordinator?a.contact:p.name,date,note:reply};a.history.push({status:a.status,by:coordinator?a.contact:p.name,date,note:`${step.title}: ${reply}`});notice='Onboarding step recorded.';
     } else if(action.type==='activate') {
       review();assert(a.status==='onboarding'&&a.acceptedAt,'The volunteer must accept the role offer first.');

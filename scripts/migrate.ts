@@ -865,6 +865,7 @@ const indexes = [
   `CREATE INDEX IF NOT EXISTS volunteer_reflections_org_shift ON volunteer_reflections (org_id, shift_id, submitted_at)`,
   `CREATE INDEX IF NOT EXISTS volunteer_reflections_user ON volunteer_reflections (user_id, submitted_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS users_resume_token ON users (resume_token)`,
+  `CREATE INDEX IF NOT EXISTS claims_user_status_updated ON claims (user_id, status, updated_at)`,
   `CREATE INDEX IF NOT EXISTS catalog_entries_org ON catalog_entries (org_id)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS cities_slug ON cities (slug)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS cities_join_code ON cities (join_code)`,

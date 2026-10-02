@@ -36,6 +36,7 @@ export const users = sqliteTable(
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
+    resumeTokenUniq: uniqueIndex('users_resume_token').on(t.resumeToken),
     usernameUniq: uniqueIndex('users_username').on(t.username),
   }),
 )
@@ -808,6 +809,7 @@ export const claims = sqliteTable(
   },
   (t) => ({
     uniq: uniqueIndex('claims_shift_user').on(t.shiftId, t.userId),
+    byUserStatus: index('claims_user_status_updated').on(t.userId, t.status, t.updatedAt),
   }),
 )
 

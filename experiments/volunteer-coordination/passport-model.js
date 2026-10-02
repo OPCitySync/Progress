@@ -121,8 +121,8 @@ export function transitionPassport(current, action, date = today()) {
     detail = 'Updated optional profile';
   } else if (action.type === 'openness') {
     own(); store.profiles[p.id].openForVolunteering = action.open === true || action.open === 'true';
-    detail = store.profiles[p.id].openForVolunteering ? 'Opened passport for volunteering in the City Network' : 'Closed passport to City Network discovery';
-    notice = store.profiles[p.id].openForVolunteering ? 'Your passport is now open for volunteering.' : 'Your passport is no longer listed in the volunteer directory.';
+    detail = store.profiles[p.id].openForVolunteering ? 'Shared public passport with volunteer organizations in the City Network' : 'Removed public passport from City Network discovery';
+    notice = store.profiles[p.id].openForVolunteering ? 'Your Passport is now visible to volunteer organizations in your City Network.' : 'Your Passport is no longer visible in the City Network directory.';
   } else if (action.type === 'resume') {
     own(); const sections = [...new Set(action.sections || [])], recordIds = [...new Set(action.recordIds || [])];
     assertion(sections.every(key => Object.hasOwn(RESUME_SECTIONS, key)), 'Unknown résumé section.');

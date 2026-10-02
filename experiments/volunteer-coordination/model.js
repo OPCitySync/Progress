@@ -75,11 +75,12 @@ export function transition(current, action) {
     log(`${name} ${action.method === 'existing' ? 'was added as an existing member' : 'was invited to join'}`);
   } else if (action.type === 'requirement') {
     const p = getPerson(action.personId);
-    if (!REQUIREMENTS[action.key]) throw Error('Unknown preparation step.');
-    if (!REQUIREMENTS[action.key].self && action.actor !== 'coordinator') throw Error('A coordinator needs to review this step.');
+    const requirement = REQUIREMENTS[action.key] || Object.values(state.recruitment?.requirementLibrary || {}).flat().find(item => item.id === action.key);
+    if (!requirement) throw Error('Unknown preparation step.');
+    if ((requirement.owner === 'coordinator' || requirement.self === false) && action.actor !== 'coordinator') throw Error('A coordinator needs to review this step.');
     p.requirements[action.key] = true;
-    notice = `${REQUIREMENTS[action.key].title} completed`;
-    log(`${p.name} completed ${REQUIREMENTS[action.key].title.toLowerCase()}`);
+    notice = `${requirement.title} completed`;
+    log(`${p.name} completed ${requirement.title.toLowerCase()}`);
   } else if (action.type === 'membership') {
     const p = getPerson(action.personId);
     if (!['joining', 'member', 'paused', 'former'].includes(action.relationship)) throw Error('Unknown membership state.');
@@ -155,6 +156,35 @@ export function transition(current, action) {
     a.progress = action.progress.trim(); a.next = action.next.trim(); a.owner = action.owner.trim();
     if (action.projectStatus && action.projectStatus !== a.projectStatus) throw Error('Use Program Activities to submit and review completion.');
     notice = 'Handoff saved for the next person'; log(`Handoff updated · ${a.title}`, a.id, 'Maya Thompson');
+  } else if (action.type === 'updateProgramActivity') {
+    const activity = getActivity(action.activityId);
+    const program = state.programWorkspace.programs.find(program => program.id === activity.programId);
+    if (action.actor !== 'coordinator' || !['event','shift'].includes(activity.type) || !program) throw Error('Only an organization coordinator can edit this program activity.');
+    if (['complete','archived'].includes(program.status) || activity.workStatus === 'Complete') throw Error('Completed or archived program activities are read-only.');
+    const title = action.title?.trim();
+    const description = action.description?.trim();
+    const assignmentMode = action.assignmentMode;
+    const durations = ['30 minutes','45 minutes','1 hour','1.5 hours','2 hours','4 hours'];
+    if (!title || !description || !action.time || !action.location?.trim()) throw Error('Add the activity title, description, date, time, duration, and location.');
+    if (!['manual','roster','public'].includes(assignmentMode)) throw Error('Choose how volunteers are assigned.');
+    if (!durations.includes(action.duration)) throw Error('Choose one of the available activity durations.');
+    validateActivityPlan(state,{...action,workType:activity.type,programId:program.id,owner:activity.owner,reviewer:activity.reviewer,acceptance:activity.acceptance});
+    const requirements = [...new Set(Array.isArray(action.requires) ? action.requires : [])];
+    const publicOffering = assignmentMode === 'public';
+    if (publicOffering) {
+      const waiver = state.documentLibrary?.items?.find(document => document.id === action.waiverDocumentId && isLiabilityWaiver(document));
+      if (!waiver) throw Error('Choose a liability waiver from Organizational Resources.');
+      if (!requirements.includes('waiver')) throw Error('Liability waiver preparation is required for public activities.');
+    }
+    Object.assign(activity,{
+      title,description,date:action.date,time:action.time,duration:action.duration,location:action.location.trim(),assignmentMode,
+      visibility:publicOffering?'public':'members',enrollment:assignmentMode==='manual'?'managed':'self',
+      waiverDocumentId:publicOffering?action.waiverDocumentId:'',
+      recurrence:activity.type==='shift'?`Every ${Number(action.interval||7)===14?'two weeks':'week'} · program activity`:'One-Time Activity'
+    });
+    if (activity.roles[0]) activity.roles[0].requires = requirements;
+    notice = 'Program activity updated.';
+    log(`Activity updated · ${activity.title}`,activity.id,'Maya Thompson');
   } else if (action.type === 'createActivity') {
     const programActivity = Boolean(action.programActivity && action.programId);
     const coordinatedActivity = ['event','shift'].includes(action.workType) && Boolean(action.assignmentMode);
