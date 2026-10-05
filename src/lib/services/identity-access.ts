@@ -4,18 +4,27 @@ import { db } from '@/lib/db/client'
 import {
   cities,
   cityMemberships,
+  claims,
   identities,
   organizationDelegations,
   organizationInvites,
   organizationRoles,
   orgProfiles,
   orgs,
+  plannedRecurringAssignments,
+  tasks,
   users,
+  volunteerGroupMembers,
+  volunteerGroups,
+  volunteerRosterMembers,
+  volunteerTaskEligibilityGrants,
 } from '@/lib/db/schema'
 import type { Session } from '@/lib/auth/session'
 import { appendEvent, type DbOrTx } from '@/lib/ledger/ledger'
 import { EventTypes } from '@/lib/ledger/events'
 import { participantDisplayName } from '@/lib/participant-name'
+import { updateOrganizationAppearanceStorage } from '@/lib/profile/organization-appearance'
+import { normalizeOrganizationLocation, rememberOrganizationLocation } from '@/lib/services/organization-locations'
 
 export type AuthorityRole = 'owner' | 'manager' | 'member'
 
@@ -26,6 +35,7 @@ export const ORGANIZATION_PERMISSION_OPTIONS = [
   { key: 'participants.manage', label: 'Volunteers', description: 'View rosters, check in participants, verify completions, and manage credentials.' },
   { key: 'profile.manage', label: 'Public profile', description: 'Edit the organization’s public profile and organization picture.' },
   { key: 'waiver.manage', label: 'Liability waiver', description: 'Create and publish waiver versions.' },
+  { key: 'documents.manage', label: 'Volunteer documents', description: 'Create and manage volunteer guides, safety plans, and operational templates.' },
   { key: 'reports.view', label: 'Reports', description: 'View and export organization contribution reports.' },
   { key: 'feed.manage', label: 'MyCity feed', description: 'Publish organization updates to the city feed.' },
   { key: 'offerings.manage', label: 'Redemptions', description: 'Manage partner offerings and finalize redemptions.' },
@@ -39,6 +49,7 @@ const DEFAULT_TIER_PERMISSIONS: OrganizationPermission[] = [
   'participants.manage',
   'profile.manage',
   'waiver.manage',
+  'documents.manage',
   'reports.view',
   'feed.manage',
   'offerings.manage',
@@ -139,6 +150,87 @@ export async function ensureOrganizationRoles(tx: DbOrTx, orgId: string) {
 }
 
 /**
+ * Active organization authority takes precedence over a volunteer role in the
+ * same organization. Current-state roster links are removed, future volunteer
+ * plans are released, and active claims are retained as unclaimed records so
+ * the append-only history still explains what happened.
+ */
+async function giveStaffPriorityOverVolunteerRole(
+  tx: DbOrTx,
+  input: { orgId: string; userId: string; actorId: string | null },
+) {
+  const now = Date.now()
+  const activeClaims = await tx
+    .select({ claimId: claims.id, taskId: claims.taskId, shiftId: claims.shiftId, cityId: tasks.cityId })
+    .from(claims)
+    .innerJoin(tasks, eq(claims.taskId, tasks.id))
+    .where(and(
+      eq(tasks.orgId, input.orgId),
+      eq(claims.userId, input.userId),
+      eq(claims.status, 'claimed'),
+    ))
+
+  for (const claim of activeClaims) {
+    await tx.update(claims).set({ status: 'unclaimed', updatedAt: now }).where(eq(claims.id, claim.claimId))
+    await appendEvent(
+      tx,
+      EventTypes.CLAIM_UNCLAIMED,
+      {
+        claimId: claim.claimId,
+        taskId: claim.taskId,
+        shiftId: claim.shiftId,
+        cityId: claim.cityId,
+        reason: 'organization_staff_access_granted',
+      },
+      input.actorId,
+    )
+  }
+
+  await tx
+    .delete(volunteerRosterMembers)
+    .where(and(
+      eq(volunteerRosterMembers.orgId, input.orgId),
+      eq(volunteerRosterMembers.userId, input.userId),
+    ))
+
+  const organizationGroups = await tx
+    .select({ id: volunteerGroups.id })
+    .from(volunteerGroups)
+    .where(eq(volunteerGroups.orgId, input.orgId))
+  if (organizationGroups.length) {
+    await tx
+      .delete(volunteerGroupMembers)
+      .where(and(
+        eq(volunteerGroupMembers.userId, input.userId),
+        inArray(volunteerGroupMembers.groupId, organizationGroups.map(({ id }) => id)),
+      ))
+  }
+
+  await tx
+    .update(plannedRecurringAssignments)
+    .set({ status: 'removed', updatedAt: now })
+    .where(and(
+      eq(plannedRecurringAssignments.orgId, input.orgId),
+      eq(plannedRecurringAssignments.userId, input.userId),
+      eq(plannedRecurringAssignments.status, 'planned'),
+    ))
+
+  await tx
+    .update(volunteerTaskEligibilityGrants)
+    .set({
+      status: 'revoked',
+      revokedByUserId: input.actorId ?? input.userId,
+      revokedAt: now,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(volunteerTaskEligibilityGrants.orgId, input.orgId),
+      eq(volunteerTaskEligibilityGrants.userId, input.userId),
+      eq(volunteerTaskEligibilityGrants.status, 'active'),
+    ))
+}
+
+/**
  * Grant or restore one authority identity per person × organization pair.
  * Reinviting a former employee reactivates their existing authority address,
  * preserving the audit trail instead of creating a shared account.
@@ -169,6 +261,11 @@ export async function grantOrganizationAuthority(
 
   const capabilities = JSON.stringify(input.capabilities?.length ? input.capabilities : DEFAULT_TIER_PERMISSIONS)
   const cityIds = JSON.stringify(input.cityIds ?? [])
+  await giveStaffPriorityOverVolunteerRole(tx, {
+    orgId: input.orgId,
+    userId: input.userId,
+    actorId: input.grantedByUserId ?? input.userId,
+  })
   if (existing) {
     await tx
       .update(identities)
@@ -394,6 +491,22 @@ export async function isOrganizationOwner(userId: string, delegationId: string, 
   return Boolean(delegation)
 }
 
+/** Organization-scoped role check used anywhere volunteer authority changes. */
+export async function isActiveOrganizationStaff(orgId: string, userId: string) {
+  const delegation = (
+    await db
+      .select({ id: organizationDelegations.id })
+      .from(organizationDelegations)
+      .where(and(
+        eq(organizationDelegations.orgId, orgId),
+        eq(organizationDelegations.userId, userId),
+        eq(organizationDelegations.status, 'active'),
+      ))
+      .limit(1)
+  )[0]
+  return Boolean(delegation)
+}
+
 export async function listOrganizationCities(orgId: string) {
   return db
     .select({ id: cities.id, name: cities.name })
@@ -540,13 +653,20 @@ export async function updateOrganizationIdentity(input: {
   name: string
   logoUrl: string
   contactEmail: string
-}): Promise<Result<{ name: string; logoUrl: string; contactEmail: string }>> {
+  phone?: string
+  location?: string
+  bannerStyle?: string
+  bannerPalette?: string
+}): Promise<Result<{ name: string; logoUrl: string; contactEmail: string; phone: string; location: string }>> {
   if (!(await isOrganizationOwner(input.userId, input.authorityId, input.orgId))) {
     return { ok: false, error: 'Only an organization owner can update organization settings.' }
   }
   const name = input.name.trim()
   const logoUrl = input.logoUrl.trim()
   const contactEmail = input.contactEmail.trim().toLowerCase()
+  const existing = (await db.select().from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1))[0]
+  const phone = input.phone === undefined ? existing?.phone ?? '' : input.phone.trim()
+  const location = input.location === undefined ? existing?.location ?? '' : normalizeOrganizationLocation(input.location)
   if (!name || name.length > 120) return { ok: false, error: 'Enter an organization name of up to 120 characters.' }
   if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
     return { ok: false, error: 'Enter a valid organizational email address.' }
@@ -554,12 +674,18 @@ export async function updateOrganizationIdentity(input: {
   if (logoUrl && !logoUrl.startsWith('/uploads/') && !/^https:\/\//.test(logoUrl)) {
     return { ok: false, error: 'Organization pictures must be uploaded through City/Sync.' }
   }
-  const existing = (await db.select().from(orgProfiles).where(eq(orgProfiles.orgId, input.orgId)).limit(1))[0]
+  if (phone.length > 50) return { ok: false, error: 'Phone numbers are limited to 50 characters.' }
+  if (location.length > 240) return { ok: false, error: 'Locations are limited to 240 characters.' }
   const now = Date.now()
+  const appearanceStorage = updateOrganizationAppearanceStorage(
+    existing?.socials ?? '{}',
+    input.bannerStyle,
+    input.bannerPalette,
+  )
   await db.transaction(async (tx) => {
     await tx.update(orgs).set({ name }).where(eq(orgs.id, input.orgId))
     if (existing) {
-      await tx.update(orgProfiles).set({ logoUrl, contactEmail, updatedAt: now }).where(eq(orgProfiles.orgId, input.orgId))
+      await tx.update(orgProfiles).set({ logoUrl, contactEmail, phone, location, socials: appearanceStorage, updatedAt: now }).where(eq(orgProfiles.orgId, input.orgId))
     } else {
       await tx.insert(orgProfiles).values({
         orgId: input.orgId,
@@ -569,18 +695,19 @@ export async function updateOrganizationIdentity(input: {
         coverUrl: '',
         website: '',
         contactEmail,
-        phone: '',
-        location: '',
-        socials: '{}',
+        phone,
+        location,
+        socials: appearanceStorage,
         causes: '[]',
         onboardingTaskId: null,
         published: 0,
         updatedAt: now,
       })
     }
+    await rememberOrganizationLocation(tx, { orgId: input.orgId, address: location, makeDefault: true })
     await appendEvent(tx, EventTypes.ORG_PROFILE_UPDATED, { orgId: input.orgId, organizationName: name, contactEmail }, input.authorityId)
   })
-  return { ok: true, name, logoUrl, contactEmail }
+  return { ok: true, name, logoUrl, contactEmail, phone, location }
 }
 
 export async function listOrganizationDelegations(orgId: string) {
@@ -601,6 +728,7 @@ export async function createOrganizationInvite(input: {
   roleId: string
   cityId: string
   expiresInDays: number
+  ownerRoleConfirmed?: boolean
 }): Promise<Result<{ code: string; expiresAt: number }>> {
   if (!(await isOrganizationOwner(input.userId, input.authorityId, input.orgId))) {
     return { ok: false, error: 'Only an organization owner can issue an access invite.' }
@@ -621,6 +749,9 @@ export async function createOrganizationInvite(input: {
       .limit(1)
   )[0]
   if (!role) return { ok: false, error: 'Choose an organization role for this invite.' }
+  if (role.isOwnerRole && !input.ownerRoleConfirmed) {
+    return { ok: false, error: 'Confirm that this invitation grants full organization-owner access before generating the link.' }
+  }
   const expiresInDays = Math.min(Math.max(Math.floor(input.expiresInDays), 1), 30)
   const now = Date.now()
   const expiresAt = now + expiresInDays * 24 * 60 * 60 * 1000
@@ -652,6 +783,47 @@ export async function createOrganizationInvite(input: {
   return { ok: true, code, expiresAt }
 }
 
+/**
+ * The public-facing, non-sensitive facts needed to explain an organization
+ * invite before its recipient has an account. The bearer code itself is never
+ * stored—only its hash—so this deliberately exposes no authority metadata
+ * beyond the organization, assigned role, and expiry.
+ */
+export async function getOrganizationInvitePreview(codeInput: string): Promise<Result<{
+  organizationName: string
+  organizationType: 'issuer' | 'redeemer'
+  roleName: string
+  expiresAt: number
+}>> {
+  const code = codeInput.trim()
+  if (!code) return { ok: false, error: 'This invitation is missing its code.' }
+
+  const row = (
+    await db
+      .select({ invite: organizationInvites, organization: orgs, role: organizationRoles })
+      .from(organizationInvites)
+      .innerJoin(orgs, eq(organizationInvites.orgId, orgs.id))
+      .leftJoin(organizationRoles, eq(organizationInvites.roleId, organizationRoles.id))
+      .where(eq(organizationInvites.codeHash, hashInviteCode(code)))
+      .limit(1)
+  )[0]
+
+  if (!row || row.invite.revokedAt || row.invite.expiresAt <= Date.now() || row.invite.uses >= row.invite.maxUses) {
+    return { ok: false, error: 'This invitation is invalid, expired, or has already been used.' }
+  }
+  if (!row.role || row.role.orgId !== row.organization.id) {
+    return { ok: false, error: 'The role attached to this invitation is no longer available.' }
+  }
+
+  return {
+    ok: true,
+    organizationName: row.organization.name,
+    organizationType: row.organization.type,
+    roleName: row.role.name,
+    expiresAt: row.invite.expiresAt,
+  }
+}
+
 export async function acceptOrganizationInvite(input: {
   userId: string
   code: string
@@ -676,6 +848,13 @@ export async function acceptOrganizationInvite(input: {
       .limit(1)
   )[0]
   if (existing?.delegation.status === 'active') {
+    await db.transaction(async (tx) => {
+      await giveStaffPriorityOverVolunteerRole(tx, {
+        orgId: invite.orgId,
+        userId: input.userId,
+        actorId: existing.identity.id,
+      })
+    })
     return {
       ok: true,
       identityId: existing.identity.id,

@@ -4,14 +4,16 @@ import type { Metadata } from 'next'
 import { PublicHeader } from '@/components/profile/PublicHeader'
 import { OrgProfileBody, type ProfileDisplay } from '@/components/profile/OrgProfileBody'
 import { getSession } from '@/lib/auth/session'
-import { Card, Badge, Flash } from '@/components/ui'
+import { Badge, Flash } from '@/components/ui'
 import {
   getPublicProfileBySlug,
   getOpenOpportunities,
+  getPublicApplications,
   getOpportunityCard,
   getViewerClaims,
   getOrgImpact,
   type PublicOpportunity,
+  type PublicApplication,
 } from '@/lib/services/profile'
 
 export const dynamic = 'force-dynamic'
@@ -19,9 +21,9 @@ export const dynamic = 'force-dynamic'
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const data = await getPublicProfileBySlug(params.slug)
   if (!data) return { title: 'Organization not found · City/Sync' }
-  const { org, profile, published } = data
-  const description = (published && profile?.tagline) || org.description || `${org.name} on City/Sync.`
-  const image = published ? profile?.coverUrl || profile?.logoUrl : undefined
+  const { org, profile } = data
+  const description = profile?.tagline || org.description || `${org.name} on City/Sync.`
+  const image = profile?.coverUrl || profile?.logoUrl || undefined
   return {
     title: `${org.name} · City/Sync`,
     description,
@@ -30,7 +32,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 function signupHref(slug: string, taskId?: string) {
-  const next = taskId ? `/participant/opportunities/${taskId}` : `/orgs/${slug}`
+  const next = taskId ? `/aesthetic-lab/opportunities/${taskId}` : `/orgs/${slug}`
   return `/signup?type=participant&next=${encodeURIComponent(next)}`
 }
 
@@ -43,31 +45,37 @@ export default async function OrgProfilePage({
 }) {
   const data = await getPublicProfileBySlug(params.slug)
   if (!data) notFound()
-  const { org, profile, published } = data
+  const { org, profile } = data
   const slug = org.slug ?? ''
   const session = await getSession()
   const isSignedIn = !!session
   const isParticipant = session?.role === 'participant'
 
-  // Published gates branding/copy; opportunities + impact are always live.
+  // Approved issuers have one always-live organization page. The content here
+  // is the same source used by embedded profiles and the issuer preview.
   const display: ProfileDisplay = {
     orgName: org.name,
-    tagline: published ? profile?.tagline ?? '' : '',
-    mission: (published && profile?.mission) || org.description || '',
-    logoUrl: published ? profile?.logoUrl ?? '' : '',
-    coverUrl: published ? profile?.coverUrl ?? '' : '',
-    location: published ? profile?.location ?? '' : '',
-    website: published ? profile?.website ?? '' : '',
-    contactEmail: published ? profile?.contactEmail ?? '' : '',
-    phone: published ? profile?.phone ?? '' : '',
-    socials: published ? profile?.socials ?? {} : {},
-    causes: published ? profile?.causes ?? [] : [],
+    tagline: profile?.tagline ?? '',
+    mission: profile?.mission || org.description || '',
+    logoUrl: profile?.logoUrl ?? '',
+    coverUrl: profile?.coverUrl ?? '',
+    bannerStyle: profile?.bannerStyle ?? 'original',
+    bannerPalette: profile?.bannerPalette ?? 'citysync',
+    location: profile?.location ?? '',
+    website: profile?.website ?? '',
+    contactEmail: profile?.contactEmail ?? '',
+    phone: profile?.phone ?? '',
+    socials: profile?.socials ?? {},
+    causes: profile?.causes ?? [],
   }
 
   const onboardingId = profile?.onboardingTaskId ?? null
   const onboarding = onboardingId ? await getOpportunityCard(onboardingId, org.id) : null
-  const open = isSignedIn ? await getOpenOpportunities(org.id, { excludeTaskId: onboardingId }) : []
-  const impact = await getOrgImpact(org.id)
+  const [open, applications, impact] = await Promise.all([
+    getOpenOpportunities(org.id, { excludeTaskId: onboardingId }),
+    getPublicApplications(org.id),
+    getOrgImpact(org.id),
+  ])
 
   let claimMap = new Map<string, string>()
   if (isParticipant && session) {
@@ -80,8 +88,8 @@ export default async function OrgProfilePage({
     const brand = 'inline-flex items-center justify-center rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600'
     const secondary = 'inline-flex items-center justify-center rounded-xl border border-ink-300 px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-ink-50'
 
-    if (!isSignedIn) return <Link href={signupHref(slug, task.id)} className={gold}>Create an account</Link>
-    if (!isParticipant) return <Link href={`/opportunities/${task.id}`} className={secondary}>View</Link>
+    if (!isSignedIn) return <Link href={signupHref(slug, task.id)} className={gold}>View opportunity</Link>
+    if (!isParticipant) return <Link href={`/aesthetic-lab/opportunities/${task.id}`} className={secondary}>View</Link>
     const st = claimMap.get(task.id)
     if (st && st !== 'unclaimed') {
       const label = st === 'verified' ? 'Completed' : st === 'submitted' ? 'Submitted' : "You're signed up"
@@ -90,35 +98,25 @@ export default async function OrgProfilePage({
     if (task.status !== 'open' || task.totalOpenSlots === 0) {
       return <span className="text-sm text-ink-400">No open shifts</span>
     }
-    return <Link href={`/participant/opportunities/${task.id}`} className={brand}>Sign up</Link>
+    return <Link href={`/aesthetic-lab/opportunities/${task.id}`} className={brand}>Sign up</Link>
+  }
+
+  const renderApplicationCta = (application: PublicApplication) => {
+    const href = `/aesthetic-lab/opportunities/${application.taskId}#application`
+    if (!isSignedIn) {
+      return <Link href={`/signup?type=participant&next=${encodeURIComponent(href)}`} className="inline-flex items-center justify-center rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">Apply</Link>
+    }
+    return <Link href={href} className="inline-flex items-center justify-center rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">Apply</Link>
   }
 
   const primaryCta = (
     <Link
-      href={isSignedIn ? '#opportunities' : signupHref(slug, onboarding?.id)}
+      href={applications.length ? '#applications' : '#opportunities'}
       className="rounded-xl bg-gold-500 px-5 py-2.5 text-sm font-semibold text-brand-900 hover:bg-gold-400"
     >
       Volunteer with us
     </Link>
   )
-
-  const opportunitiesOverride = !isSignedIn ? (
-    <Card>
-      <p className="text-sm text-ink-500">
-        {onboarding
-          ? 'Complete onboarding to view and sign up for open opportunities. '
-          : 'Create an account to view and sign up for open opportunities. '}
-        <Link href={signupHref(slug)} className="font-semibold text-brand-600 hover:text-brand-500">
-          Create an account
-        </Link>{' '}
-        or{' '}
-        <Link href={`/login?next=${encodeURIComponent(`/orgs/${slug}`)}`} className="font-semibold text-brand-600 hover:text-brand-500">
-          sign in
-        </Link>
-        .
-      </p>
-    </Card>
-  ) : undefined
 
   const onboardingNote = !isSignedIn ? (
     <p className="mt-3 text-sm text-ink-500">
@@ -135,9 +133,10 @@ export default async function OrgProfilePage({
           impact={impact}
           onboarding={onboarding}
           opportunities={open}
+          applications={applications}
           primaryCta={primaryCta}
           renderCta={renderCta}
-          opportunitiesOverride={opportunitiesOverride}
+          renderApplicationCta={renderApplicationCta}
           onboardingNote={onboardingNote}
           notice={<Flash searchParams={searchParams} />}
         />

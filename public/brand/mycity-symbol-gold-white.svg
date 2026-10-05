@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title description">
+  <title id="title">MyCity gold and white neighborhood symbol</title>
+  <desc id="description">Five white neighborhood blocks surrounding a brand-gold center point.</desc>
+  <rect x="21" y="21" width="31" height="25" rx="5" fill="#F6F7F3"/>
+  <rect x="59" y="21" width="48" height="25" rx="5" fill="#F6F7F3"/>
+  <rect x="21" y="53" width="31" height="22" rx="5" fill="#F6F7F3"/>
+  <rect x="21" y="82" width="31" height="25" rx="5" fill="#F6F7F3"/>
+  <rect x="59" y="82" width="48" height="25" rx="5" fill="#F6F7F3"/>
+  <circle cx="89" cy="64" r="10" fill="#DD9E33"/>
+</svg>

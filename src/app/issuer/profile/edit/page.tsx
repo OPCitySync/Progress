@@ -1,6 +1,4 @@
-import Link from 'next/link'
 import { eq } from 'drizzle-orm'
-import { ArrowLeft } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { orgs } from '@/lib/db/schema'
 import { requireRole } from '@/lib/auth/session'
@@ -8,6 +6,7 @@ import { getEditorProfile, getOrgTasksForSelect } from '@/lib/services/profile'
 import { PageHeader, Flash } from '@/components/ui'
 import { OrgStatusBanner } from '@/components/OrgStatusBanner'
 import { ProfileForm } from '@/components/profile/ProfileForm'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,10 +22,8 @@ export default async function IssuerProfileEditPage({
 
   return (
     <>
-      <Link href="/issuer/profile" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-600">
-        <ArrowLeft size={14} /> Back to preview
-      </Link>
-      <PageHeader title="Edit public profile" subtitle="Fill it in, then save a draft or publish." />
+      <HistoryBackButton fallback="/issuer/profile" variant="plain" className="mb-4" />
+      <PageHeader title="Manage public profile" subtitle="Saved changes appear immediately on your live organization page." />
       <OrgStatusBanner status={org?.status ?? 'pending'} />
       <Flash searchParams={searchParams} />
 
@@ -42,6 +39,8 @@ export default async function IssuerProfileEditPage({
           phone: profile.phone,
           location: profile.location,
           socials: profile.socials,
+          bannerStyle: profile.bannerStyle,
+          bannerPalette: profile.bannerPalette,
           causes: profile.causes,
           onboardingTaskId: profile.onboardingTaskId,
           published: profile.published,

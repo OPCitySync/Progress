@@ -3,6 +3,7 @@ import { getSession, homeFor } from '@/lib/auth/session'
 import { Logo } from '@/components/brand/Logo'
 import { VerificationLog } from '@/components/ledger/VerificationLog'
 import { getAvailableCities } from '@/lib/services/city-networks'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,12 +18,14 @@ export default async function VerificationLogPage({ searchParams }: { searchPara
       <header className="skeuo-public-header">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
           <Logo variant="light" size={26} href="/" />
-          <Link href={session ? homeFor(session.role) : '/login'} className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10">
-            {session ? 'Back to app' : 'Sign in'}
-          </Link>
+          {session ? (
+            <HistoryBackButton fallback={homeFor(session.role)} variant="dark" />
+          ) : (
+            <Link href="/login" className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10">Sign in</Link>
+          )}
         </div>
         <div className="mx-auto max-w-5xl px-6 pb-10">
-          <Link href={`/transparency?city=${city.id}`} className="text-sm text-white/50 hover:text-white">← {city.name} ledger</Link>
+          <HistoryBackButton fallback={`/transparency?city=${city.id}`} variant="dark" />
           <h1 className="mt-2 font-display text-3xl font-semibold text-white">Verification log</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">
             Every {city.name} event below was re-verified just now: its hash is recomputed from its contents (✓ hash), and its link to the previous event is checked (✓ chain).

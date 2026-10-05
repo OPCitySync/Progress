@@ -1,9 +1,8 @@
 import { randomUUID } from 'crypto'
-import { and, desc, eq, isNull, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, lte, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { notifications, reminders, shifts, tasks, orgs, users } from '@/lib/db/schema'
+import { claims, notifications, organizationCalendarEntries, organizationDelegations, organizationQueueAcknowledgements, organizationRoles, reminders, shifts, tasks, orgs, users } from '@/lib/db/schema'
 import { getEmailAdapter } from '@/lib/notify/email'
-import { processOverdueNoShows } from './city-participation'
 
 const PRE_SHIFT_MS = 24 * 60 * 60 * 1000
 
@@ -33,6 +32,67 @@ async function insertNotification(userId: string, kind: string, title: string, b
     link,
     createdAt: Date.now(),
   })
+}
+
+function hasVolunteerManagementPower(permissions: string | null | undefined): boolean {
+  try {
+    const values = JSON.parse(permissions ?? '[]')
+    return Array.isArray(values) && (values.includes('*') || values.includes('participants.manage'))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Sent only after an organization has verified a volunteer's participation.
+ * This is an invitation to share a private reflection, never a requirement for
+ * service recognition or credit issuance.
+ */
+export async function notifyVerifiedShiftReflection(input: {
+  userId: string
+  claimId: string
+  taskTitle: string
+  organizationName: string
+}): Promise<void> {
+  await insertNotification(
+    input.userId,
+    'verified_shift_reflection',
+    `Your participation has been verified`,
+    `You helped ${input.organizationName}. If you’d like, share a private thought about ${input.taskTitle}.`,
+    `/aesthetic-lab/reflections/${input.claimId}`,
+  )
+}
+
+/**
+ * Private organization alert for a volunteer reflection. Active organization
+ * authorities receive a link directly to the completed event record; no
+ * reflection text is copied into the notification or public ledger.
+ */
+export async function notifyOrganizationVolunteerReflection(input: {
+  orgId: string
+  shiftId: string
+  taskTitle: string
+  participantName: string
+}): Promise<void> {
+  const recipients = await db
+    .select({ delegation: organizationDelegations, role: organizationRoles })
+    .from(organizationDelegations)
+    .leftJoin(organizationRoles, eq(organizationDelegations.roleId, organizationRoles.id))
+    .where(and(eq(organizationDelegations.orgId, input.orgId), eq(organizationDelegations.status, 'active')))
+
+  const recipientIds = Array.from(new Set(recipients
+    .filter(({ delegation, role }) => delegation.role === 'owner' || hasVolunteerManagementPower(role?.permissions ?? delegation.capabilities))
+    .map(({ delegation }) => delegation.userId)))
+  if (recipientIds.length === 0) return
+
+  const link = `/aesthetic-lab/issuer/catalog?workspace=opportunities&event=${encodeURIComponent(input.shiftId)}`
+  await Promise.all(recipientIds.map((userId) => insertNotification(
+    userId,
+    'volunteer_reflection',
+    `New volunteer note — ${input.taskTitle}`,
+    `${input.participantName} shared a private thought about this completed shift.`,
+    link,
+  )))
 }
 
 async function enqueue(r: {
@@ -114,6 +174,115 @@ export async function notifyShiftClaimed(userId: string, shiftId: string): Promi
   }
 }
 
+/** A roster member was added directly by an organization. This is deliberately
+ * distinct from a self-service claim, so the notification explains why the
+ * commitment appeared in the participant's workspace. */
+export async function notifyShiftAssigned(userId: string, shiftId: string): Promise<void> {
+  try {
+    const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
+    if (!shift) return
+    const task = (await db.select().from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
+    const org = task ? (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0] : undefined
+    const title = task?.title ?? 'a volunteer shift'
+    const when = whenText(shift)
+    const link = task ? `/aesthetic-lab/opportunities/${task.id}/sessions/${shift.id}` : '/aesthetic-lab/commitments'
+    await insertNotification(
+      userId,
+      'organization_shift_assignment',
+      `You were scheduled: ${title}`,
+      `${org?.name ?? 'An organization'} scheduled you for ${when}. Open the shift to review the details or change your commitment.`,
+      link,
+    )
+    if (task && shift.startsAt && shift.startsAt - PRE_SHIFT_MS > Date.now()) {
+      await enqueue({
+        userId,
+        taskId: task.id,
+        shiftId: shift.id,
+        kind: 'pre_shift',
+        inApp: true,
+        email: true,
+        title: `Reminder: ${title}`,
+        body: `Your scheduled shift with ${org?.name ?? 'the organization'} is coming up — ${when}.`,
+        link,
+        sendAfter: shift.startsAt - PRE_SHIFT_MS,
+      })
+    }
+  } catch (error) {
+    console.error('notifyShiftAssigned failed', error)
+  }
+}
+
+/** A roster manager removed a participant from a future private shift. The
+ * notification makes the schedule change explicit without turning it into a
+ * conversation thread. */
+export async function notifyShiftAssignmentRemoved(userId: string, shiftId: string): Promise<void> {
+  try {
+    const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
+    if (!shift) return
+    const task = (await db.select().from(tasks).where(eq(tasks.id, shift.taskId)).limit(1))[0]
+    const org = task ? (await db.select().from(orgs).where(eq(orgs.id, task.orgId)).limit(1))[0] : undefined
+    const title = task?.title ?? 'a volunteer shift'
+    await insertNotification(
+      userId,
+      'organization_shift_assignment_removed',
+      `Schedule changed: ${title}`,
+      `${org?.name ?? 'An organization'} removed you from the shift on ${whenText(shift)}.`,
+      '/aesthetic-lab/commitments',
+    )
+  } catch (error) {
+    console.error('notifyShiftAssignmentRemoved failed', error)
+  }
+}
+
+/**
+ * A future onboarding session was cancelled by its organization. This is an
+ * in-app notice only: participants are released from that specific session
+ * and can choose another available date themselves.
+ */
+export async function notifyOnboardingSessionCancelled(input: {
+  userIds: string[]
+  taskId: string
+  organizationName: string
+  startsAt: number | null
+}): Promise<void> {
+  const when = input.startsAt
+    ? new Date(input.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'the scheduled date'
+  const recipientIds = Array.from(new Set(input.userIds))
+  await Promise.all(recipientIds.map((userId) =>
+    insertNotification(
+      userId,
+      'onboarding_cancelled',
+      'Onboarding session cancelled',
+      `${input.organizationName} cancelled the onboarding session on ${when}. Please sign up for another session.`,
+      `/aesthetic-lab/opportunities/${input.taskId}`,
+    ),
+  ))
+}
+
+/** A scheduled volunteer event was cancelled by its organization. */
+export async function notifyShiftCancelled(input: {
+  userIds: string[]
+  taskId: string
+  taskTitle: string
+  organizationName: string
+  startsAt: number | null
+}): Promise<void> {
+  const when = input.startsAt
+    ? new Date(input.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'the scheduled date'
+  const recipientIds = Array.from(new Set(input.userIds))
+  await Promise.all(recipientIds.map((userId) =>
+    insertNotification(
+      userId,
+      'shift_cancelled',
+      'Volunteer event cancelled',
+      `${input.organizationName} cancelled “${input.taskTitle}” on ${when}. Please choose another opportunity if you would still like to participate.`,
+      `/aesthetic-lab/opportunities/${input.taskId}`,
+    ),
+  ))
+}
+
 export async function cancelRemindersForClaim(userId: string, shiftId: string): Promise<void> {
   await db
     .update(reminders)
@@ -136,7 +305,7 @@ export async function cancelRemindersForTask(taskId: string): Promise<void> {
 }
 
 /** Drain due pending reminders into in-app notifications and/or email. */
-export async function processDueReminders(now = Date.now()): Promise<{ sent: number; failed: number; noShows: number; barred: number }> {
+export async function processDueReminders(now = Date.now()): Promise<{ sent: number; failed: number; noShows: number; barred: number; calendarNotifications: number }> {
   const due = await db
     .select()
     .from(reminders)
@@ -167,8 +336,31 @@ export async function processDueReminders(now = Date.now()): Promise<{ sent: num
       failed++ // left pending; retried on the next run
     }
   }
-  const attendance = await processOverdueNoShows(now)
-  return { sent, failed, noShows: attendance.marked, barred: attendance.barred }
+  const calendarNotifications = await processDueOrganizationCalendarReminders(now)
+  return { sent, failed, noShows: 0, barred: 0, calendarNotifications }
+}
+
+/** Deliver private, in-app reminders for an organization’s own calendar notes. */
+export async function processDueOrganizationCalendarReminders(now = Date.now()): Promise<number> {
+  const due = await db
+    .select()
+    .from(organizationCalendarEntries)
+    .where(and(isNull(organizationCalendarEntries.notifiedAt), lte(organizationCalendarEntries.reminderAt, now)))
+    .limit(200)
+
+  let sent = 0
+  for (const entry of due) {
+    await insertNotification(
+      entry.createdByUserId,
+      'organization_calendar',
+      `Calendar reminder: ${entry.title}`,
+      entry.details || 'An organization calendar item is due now.',
+      '/aesthetic-lab/issuer',
+    )
+    await db.update(organizationCalendarEntries).set({ notifiedAt: now, updatedAt: now }).where(eq(organizationCalendarEntries.id, entry.id))
+    sent++
+  }
+  return sent
 }
 
 /** Alert a set of participants about a new matching opportunity (in-app now, email queued). */
@@ -203,14 +395,36 @@ export async function getNotifications(userId: string, limit = 15): Promise<Noti
 }
 
 /** The lightweight unread signal shown beside the participant account controls. */
-export async function getUnreadNotificationCount(userId: string): Promise<number> {
+export async function getUnreadNotificationCount(userId: string, excludeKinds: string[] = []): Promise<number> {
+  const base = [eq(notifications.userId, userId), isNull(notifications.readAt)]
+  if (excludeKinds.length) base.push(notInArray(notifications.kind, excludeKinds))
   const row = (
     await db
       .select({ count: sql<number>`count(*)` })
       .from(notifications)
-      .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)))
+      .where(and(...base))
   )[0]
   return Number(row?.count ?? 0)
+}
+
+/** Issuer notifications include stored notices plus unreviewed signup activity
+ * that previously appeared only in the Home Action Queue. */
+export async function getUnreadIssuerNotificationCount(userId: string, orgId: string): Promise<number> {
+  const [storedCount, signupRows, acknowledgementRows] = await Promise.all([
+    getUnreadNotificationCount(userId),
+    db
+      .select({ claimId: claims.id })
+      .from(claims)
+      .innerJoin(tasks, eq(claims.taskId, tasks.id))
+      .innerJoin(shifts, eq(claims.shiftId, shifts.id))
+      .where(and(eq(tasks.orgId, orgId), eq(claims.status, 'claimed'), gte(shifts.endsAt, Date.now()))),
+    db
+      .select({ actionKey: organizationQueueAcknowledgements.actionKey })
+      .from(organizationQueueAcknowledgements)
+      .where(eq(organizationQueueAcknowledgements.orgId, orgId)),
+  ])
+  const acknowledged = new Set(acknowledgementRows.map(({ actionKey }) => actionKey))
+  return storedCount + signupRows.filter(({ claimId }) => !acknowledged.has(`signup:${claimId}`)).length
 }
 
 /** Mark one notification as read without allowing another participant to alter it. */

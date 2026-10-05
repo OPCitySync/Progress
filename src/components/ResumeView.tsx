@@ -74,13 +74,9 @@ export function ResumeView({
       )}
 
       <Card className="mt-6 border-brand-200 bg-brand-50">
-        <p className="text-sm font-semibold text-ink-800">Independently verifiable</p>
+        <p className="text-sm font-semibold text-ink-800">Organization verified</p>
         <p className="mt-1 text-sm text-ink-600">
-          Every contribution here was verified by the issuing organization and recorded on City/Sync’s tamper-evident
-          public ledger.{' '}
-          <Link href="/transparency" className="font-semibold text-brand-600 hover:text-brand-500">
-            See the public ledger →
-          </Link>
+          Every contribution shown here was confirmed by the volunteer organization that issued the record.
         </p>
       </Card>
     </div>

@@ -1,4 +1,6 @@
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
+export * from './program-workspace-schema'
+export * from './volunteer-intake-schema'
 
 // ---------------------------------------------------------------------------
 // Projection tables. Current state, always derivable from the event log.
@@ -26,12 +28,15 @@ export const users = sqliteTable(
     resumePublic: integer('resume_public').notNull().default(0),
     username: text('username'),
     avatarUrl: text('avatar_url').notNull().default(''),
+    bannerStyle: text('banner_style').notNull().default('original'),
+    bannerPalette: text('banner_palette').notNull().default('citysync'),
     // The city a participant selected during signup. It is only considered
     // proven once their first onboarding shift has a verified check-in.
     homeCityId: text('home_city_id'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
+    resumeTokenUniq: uniqueIndex('users_resume_token').on(t.resumeToken),
     usernameUniq: uniqueIndex('users_username').on(t.username),
   }),
 )
@@ -297,6 +302,13 @@ export const orgProfiles = sqliteTable('org_profiles', {
   // The org's recurring onboarding task — featured above open opportunities and
   // the entry point for new volunteers. References tasks.id.
   onboardingTaskId: text('onboarding_task_id'),
+  // How the current liability waiver is collected for the recurring onboarding
+  // session. Digital means acceptance is recorded before reservation; in-person
+  // means staff record receipt of the signed document at check-in.
+  // Organization-wide defaults for onboarding. Individual onboarding templates
+  // may override either rule when a particular program needs a different flow.
+  onboardingWaiverMethod: text('onboarding_waiver_method', { enum: ['digital', 'in_person', 'either'] }),
+  onboardingIdentityCheck: text('onboarding_identity_check', { enum: ['not_required', 'staff_attested'] }),
   published: integer('published').notNull().default(0),
   updatedAt: integer('updated_at').notNull(),
 })
@@ -304,6 +316,7 @@ export const orgProfiles = sqliteTable('org_profiles', {
 export const waiverVersions = sqliteTable('waiver_versions', {
   id: text('id').primaryKey(),
   orgId: text('org_id').notNull(),
+  programId: text('program_id'),
   version: integer('version').notNull(),
   title: text('title').notNull(),
   body: text('body').notNull(),
@@ -326,10 +339,201 @@ export const waiverAcceptances = sqliteTable(
     orgId: text('org_id').notNull(),
     userId: text('user_id').notNull(),
     sha256: text('sha256').notNull(),
+    // Typed signatures are private to the issuing organization. Public
+    // profiles and city-ledger events never expose a participant's signing
+    // name or the underlying waiver content.
+    signatureMethod: text('signature_method', { enum: ['acknowledgement', 'typed_electronic'] })
+      .notNull()
+      .default('acknowledgement'),
+    signerName: text('signer_name'),
+    electronicConsentAt: integer('electronic_consent_at'),
+    signedAt: integer('signed_at'),
     acceptedAt: integer('accepted_at').notNull(),
   },
   (t) => ({
     uniq: uniqueIndex('waiver_acceptances_user_version').on(t.userId, t.waiverVersionId),
+  }),
+)
+
+// Private organization-local eligibility attestations. These record only the
+// outcome of an in-person or organization-controlled review, never copies of
+// IDs, dates of birth, or guardian documents.
+export const volunteerEligibilityRecords = sqliteTable(
+  'volunteer_eligibility_records',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    status: text('status', { enum: ['pending', 'adult_verified', 'minor_consent_verified'] }).notNull().default('pending'),
+    verifiedByUserId: text('verified_by_user_id'),
+    verifiedAt: integer('verified_at'),
+    expiresAt: integer('expires_at'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    uniqueOrganizationVolunteer: uniqueIndex('volunteer_eligibility_records_org_user').on(t.orgId, t.userId),
+    byOrganization: index('volunteer_eligibility_records_org').on(t.orgId, t.status),
+  }),
+)
+
+// An organization-local, staff-attested match between a City/Sync account and
+// the person who appeared in person. This is deliberately not an ID vault:
+// no document image, document number, birth date, or biometric is retained.
+export const volunteerIdentityVerifications = sqliteTable(
+  'volunteer_identity_verifications',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    status: text('status', { enum: ['verified', 'revoked'] }).notNull().default('verified'),
+    verifiedByUserId: text('verified_by_user_id').notNull(),
+    verifiedAt: integer('verified_at').notNull(),
+    revokedByUserId: text('revoked_by_user_id'),
+    revokedAt: integer('revoked_at'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    uniqueOrganizationVolunteer: uniqueIndex('volunteer_identity_verifications_org_user').on(t.orgId, t.userId),
+    byOrganization: index('volunteer_identity_verifications_org').on(t.orgId, t.status),
+  }),
+)
+
+// Organization-owned authorization to perform all or selected opportunity
+// templates. This is separate from identity and youth-safeguarding records so
+// each decision can be granted and revoked independently.
+export const volunteerTaskEligibilityGrants = sqliteTable(
+  'volunteer_task_eligibility_grants',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    scope: text('scope', { enum: ['all', 'task'] }).notNull(),
+    // `all` is used as a durable sentinel for organization-wide eligibility.
+    taskId: text('task_id').notNull(),
+    status: text('status', { enum: ['active', 'revoked'] }).notNull().default('active'),
+    grantedByUserId: text('granted_by_user_id').notNull(),
+    grantedAt: integer('granted_at').notNull(),
+    revokedByUserId: text('revoked_by_user_id'),
+    revokedAt: integer('revoked_at'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    uniqueOrganizationVolunteerScope: uniqueIndex('volunteer_task_eligibility_org_user_task').on(t.orgId, t.userId, t.taskId),
+    byOrganization: index('volunteer_task_eligibility_org').on(t.orgId, t.userId, t.status),
+  }),
+)
+
+// Organization-owned working documents. These stay private to the organization
+// unless it explicitly attaches one to an opportunity. Waivers are deliberately
+// separate: they are versioned legal records with participant acceptance.
+export const organizationDocuments = sqliteTable(
+  'organization_documents',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    programId: text('program_id'),
+    category: text('category', { enum: ['guide', 'safety', 'template'] }).notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    documentUrl: text('document_url'),
+    documentName: text('document_name'),
+    documentMimeType: text('document_mime_type'),
+    documentSha256: text('document_sha256'),
+    active: integer('active').notNull().default(1),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    byOrganization: index('organization_documents_org').on(t.orgId, t.category, t.updatedAt),
+  }),
+)
+
+// Organization-defined areas of volunteer work. A program is deliberately
+// lightweight: organizations decide whether it represents a mission area,
+// project family, location, or any other coordination structure.
+export const volunteerPrograms = sqliteTable(
+  'volunteer_programs',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    operatingMode: text('operating_mode', {
+      enum: ['flexible', 'public_recruitment', 'roster_scheduling', 'project_coordination'],
+    }).notNull().default('flexible'),
+    defaultVisibility: text('default_visibility', { enum: ['public', 'private'] }).notNull().default('public'),
+    defaultLocation: text('default_location').notNull().default(''),
+    defaultCapacity: integer('default_capacity').notNull().default(8),
+    defaultDurationMinutes: integer('default_duration_minutes').notNull().default(120),
+    onboardingPreference: text('onboarding_preference', {
+      enum: ['optional', 'recommended', 'not_needed'],
+    }).notNull().default('optional'),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    uniqueOrganizationProgramName: uniqueIndex('volunteer_programs_org_name').on(t.orgId, t.name),
+    byOrganization: index('volunteer_programs_org').on(t.orgId, t.createdAt),
+  }),
+)
+
+// An optional association makes a guide, safety plan, or reusable template
+// discoverable in the operational context where a team needs it.
+export const organizationDocumentAssignments = sqliteTable(
+  'organization_document_assignments',
+  {
+    id: text('id').primaryKey(),
+    documentId: text('document_id').notNull(),
+    taskId: text('task_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    uniqueDocumentTask: uniqueIndex('organization_document_assignments_document_task').on(t.documentId, t.taskId),
+    byDocument: index('organization_document_assignments_document').on(t.documentId),
+    byTask: index('organization_document_assignments_task').on(t.taskId),
+  }),
+)
+
+// Publishing a resource is an editorial choice, separate from the private
+// document library and the task where the resource may be used. Keeping the
+// destination explicit lets an organization share the same item publicly,
+// with local participants, or both.
+export const organizationResourcePublications = sqliteTable(
+  'organization_resource_publications',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    resourceKind: text('resource_kind', { enum: ['document', 'waiver'] }).notNull(),
+    resourceId: text('resource_id').notNull(),
+    destination: text('destination', { enum: ['profile', 'volunteer_resources'] }).notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    uniqueResourceDestination: uniqueIndex('organization_resource_publications_resource_destination').on(t.orgId, t.resourceKind, t.resourceId, t.destination),
+    byOrganizationDestination: index('organization_resource_publications_org_destination').on(t.orgId, t.destination),
+  }),
+)
+
+// A waiver attached to a non-onboarding task is shown in that shift's sign-up
+// flow and must be signed before a participant can claim one of its shifts.
+// Onboarding acceptance remains governed by the separate active-waiver setup.
+export const waiverTaskAssignments = sqliteTable(
+  'waiver_task_assignments',
+  {
+    id: text('id').primaryKey(),
+    waiverVersionId: text('waiver_version_id').notNull(),
+    taskId: text('task_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    uniqueWaiverTask: uniqueIndex('waiver_task_assignments_waiver_task').on(t.waiverVersionId, t.taskId),
+    byWaiver: index('waiver_task_assignments_waiver').on(t.waiverVersionId),
+    byTask: index('waiver_task_assignments_task').on(t.taskId),
   }),
 )
 
@@ -344,10 +548,28 @@ export const tasks = sqliteTable('tasks', {
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
   location: text('location').notNull().default(''),
+  // Organization-authored preparation guidance shown on a participant's
+  // reserved-session page. These are intentionally plain text so each
+  // organization can describe forms, preparation, and supplies in its own way.
+  beforeSession: text('before_session').notNull().default(''),
+  bringItems: text('bring_items').notNull().default(''),
   credits: integer('credits').notNull(),
   slots: integer('slots').notNull().default(1),
+  // Reusable default for every shift published from this opportunity template.
+  // Individual shifts can still override it at publication time.
+  defaultDurationMinutes: integer('default_duration_minutes').notNull().default(120),
   startsAt: text('starts_at').notNull().default(''),
   status: text('status', { enum: ['open', 'closed'] }).notNull().default('open'),
+  programId: text('program_id'),
+  // An onboarding series remains an opportunity template, but carries the
+  // local membership and waiver rules that ordinary opportunities do not.
+  // This enables organizations to operate several independent series.
+  isOnboarding: integer('is_onboarding').notNull().default(0),
+  // Null inherits the organization-wide onboarding requirement. These values
+  // are intentionally configuration, not evidence: a reservation snapshots
+  // its applicable rule on the claim below.
+  onboardingWaiverMethod: text('onboarding_waiver_method', { enum: ['digital', 'in_person', 'either'] }),
+  onboardingIdentityCheck: text('onboarding_identity_check', { enum: ['not_required', 'staff_attested'] }),
   requiredCredentials: text('required_credentials').notNull().default('[]'), // JSON: CredentialKey[]
   // The approved catalog template this opportunity was scheduled from (nullable
   // for legacy/direct opportunities; required once catalogApproval is enabled).
@@ -415,12 +637,139 @@ export const shifts = sqliteTable(
     label: text('label').notNull().default(''),
     capacity: integer('capacity').notNull().default(1),
     status: text('status', { enum: ['open', 'closed'] }).notNull().default('open'),
+    // A public shift appears in the Civic Participant opportunity board. A
+    // private shift is only visible to volunteers the organization adds.
+    visibility: text('visibility', { enum: ['public', 'private'] }).notNull().default('public'),
+    // This value is derived from visibility: public shifts accept claims and
+    // private shifts are managed directly by the organization.
+    enrollmentMode: text('enrollment_mode', { enum: ['open_claims', 'organization_managed'] }).notNull().default('open_claims'),
     // Short code the on-site lead shares so volunteers can self check in.
     checkInCode: text('check_in_code').notNull().default(''),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
     byTask: index('shifts_task').on(t.taskId),
+  }),
+)
+
+// Staff support is scheduled alongside volunteers, but it is not a volunteer
+// claim: it does not consume public capacity, create a service record, or
+// participate in verification and credit issuance. A snapshot of the active
+// delegation makes the assignment auditable while keeping the two rosters
+// distinct.
+export const shiftStaffAssignments = sqliteTable(
+  'shift_staff_assignments',
+  {
+    id: text('id').primaryKey(),
+    shiftId: text('shift_id').notNull(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    delegationId: text('delegation_id').notNull(),
+    assignedByUserId: text('assigned_by_user_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    shiftUserUniq: uniqueIndex('shift_staff_assignments_shift_user').on(t.shiftId, t.userId),
+    byShift: index('shift_staff_assignments_shift').on(t.shiftId, t.createdAt),
+    byOrganization: index('shift_staff_assignments_org').on(t.orgId, t.createdAt),
+  }),
+)
+
+// A recurring onboarding program publishes only one public session at a time.
+// Once that session ends, the scheduled processor releases the next occurrence.
+export const onboardingRecurringSchedules = sqliteTable(
+  'onboarding_recurring_schedules',
+  {
+    taskId: text('task_id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    intervalDays: integer('interval_days').notNull().default(7),
+    nextStartsAt: integer('next_starts_at').notNull(),
+    durationMinutes: integer('duration_minutes').notNull(),
+    capacity: integer('capacity').notNull(),
+    lastPublishedShiftId: text('last_published_shift_id'),
+    active: integer('active').notNull().default(1),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    byOrganization: index('onboarding_recurring_schedules_org').on(t.orgId, t.active),
+  }),
+)
+
+// A reusable opportunity can hold multiple weekly patterns. Each pattern
+// exposes one upcoming occurrence at a time so the roster and calendar remain
+// clear while a role can still cover several days of the week.
+export const recurringEventSchedules = sqliteTable(
+  'recurring_event_patterns',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull(),
+    orgId: text('org_id').notNull(),
+    intervalDays: integer('interval_days').notNull().default(7),
+    nextStartsAt: integer('next_starts_at').notNull(),
+    durationMinutes: integer('duration_minutes').notNull(),
+    capacity: integer('capacity').notNull(),
+    visibility: text('visibility', { enum: ['public', 'private'] }).notNull().default('public'),
+    enrollmentMode: text('enrollment_mode', { enum: ['open_claims', 'organization_managed'] }).notNull().default('open_claims'),
+    lastPublishedShiftId: text('last_published_shift_id'),
+    active: integer('active').notNull().default(1),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    byOrganization: index('recurring_event_patterns_org').on(t.orgId, t.active),
+    byTask: index('recurring_event_patterns_task').on(t.taskId, t.active),
+  }),
+)
+
+// Future roster plans remain distinct from claims until the matching recurring
+// occurrence is actually published. This prevents premature participant
+// notifications while preserving the issuer's scheduling work.
+export const plannedRecurringAssignments = sqliteTable(
+  'planned_recurring_assignments',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull(),
+    orgId: text('org_id').notNull(),
+    occurrenceStartsAt: integer('occurrence_starts_at').notNull(),
+    userId: text('user_id').notNull(),
+    assignedByUserId: text('assigned_by_user_id').notNull(),
+    status: text('status', { enum: ['planned', 'applied', 'removed'] }).notNull().default('planned'),
+    shiftId: text('shift_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    occurrenceUserUniq: uniqueIndex('planned_recurring_assignments_occurrence_user').on(t.taskId, t.occurrenceStartsAt, t.userId),
+    byOrganization: index('planned_recurring_assignments_org').on(t.orgId, t.occurrenceStartsAt),
+    byOccurrence: index('planned_recurring_assignments_occurrence').on(t.taskId, t.occurrenceStartsAt, t.status),
+  }),
+)
+
+// Staff support for future recurring occurrences stays separate from volunteer
+// plans for the same reason live shift staff stays separate from claims. The
+// delegation is checked again when the occurrence publishes, so revoked access
+// can never be carried into a live staff assignment.
+export const plannedRecurringStaffAssignments = sqliteTable(
+  'planned_recurring_staff_assignments',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull(),
+    orgId: text('org_id').notNull(),
+    occurrenceStartsAt: integer('occurrence_starts_at').notNull(),
+    userId: text('user_id').notNull(),
+    delegationId: text('delegation_id').notNull(),
+    assignedByUserId: text('assigned_by_user_id').notNull(),
+    status: text('status', { enum: ['planned', 'applied', 'removed'] }).notNull().default('planned'),
+    shiftId: text('shift_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    occurrenceUserUniq: uniqueIndex('planned_recurring_staff_assignments_occurrence_user').on(t.taskId, t.occurrenceStartsAt, t.userId),
+    byOrganization: index('planned_recurring_staff_assignments_org').on(t.orgId, t.occurrenceStartsAt),
+    byOccurrence: index('planned_recurring_staff_assignments_occurrence').on(t.taskId, t.occurrenceStartsAt, t.status),
   }),
 )
 
@@ -438,12 +787,74 @@ export const claims = sqliteTable(
     }).notNull().default('claimed'),
     note: text('note').notNull().default(''),
     checkedInAt: integer('checked_in_at'),
+    // Bound to the waiver version that governed an onboarding reservation.
+    // In-person collection is attested by an issuer only after the signed paper
+    // document is received on site; the document itself is never stored here.
+    waiverVersionId: text('waiver_version_id'),
+    waiverCollectionMethod: text('waiver_collection_method', { enum: ['digital', 'in_person'] }),
+    // Snapshot whether staff identity matching was required for this specific
+    // reservation. The staff attestation itself stays in the organization-
+    // local identity record; no identity document is retained by City/Sync.
+    identityMatchRequired: integer('identity_match_required').notNull().default(0),
+    paperWaiverConfirmedAt: integer('paper_waiver_confirmed_at'),
+    paperWaiverConfirmedBy: text('paper_waiver_confirmed_by'),
+    // A single staff confirmation can verify an entire shift while preserving
+    // a separate, auditable contribution record for every participant.
+    verificationBatchId: text('verification_batch_id'),
+    verifiedByUserId: text('verified_by_user_id'),
+    verifiedAt: integer('verified_at'),
     noShowAt: integer('no_show_at'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({
     uniq: uniqueIndex('claims_shift_user').on(t.shiftId, t.userId),
+    byUserStatus: index('claims_user_status_updated').on(t.userId, t.status, t.updatedAt),
+  }),
+)
+
+// Shift-level staff confirmation. The batch holds the shared note and verifier
+// context; each linked claim retains its own verified status and credit mint.
+export const verificationBatches = sqliteTable(
+  'verification_batches',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    taskId: text('task_id').notNull(),
+    shiftId: text('shift_id').notNull(),
+    verifiedByUserId: text('verified_by_user_id').notNull(),
+    note: text('note').notNull().default(''),
+    participantCount: integer('participant_count').notNull(),
+    verifiedAt: integer('verified_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    byShift: index('verification_batches_shift').on(t.shiftId, t.verifiedAt),
+    byOrganization: index('verification_batches_org').on(t.orgId, t.verifiedAt),
+  }),
+)
+
+// A participant's optional reflection after an organization has verified a
+// completed shift. This is private operational feedback: it is intentionally
+// separate from the staff verification note and is never public ledger data.
+export const volunteerReflections = sqliteTable(
+  'volunteer_reflections',
+  {
+    id: text('id').primaryKey(),
+    claimId: text('claim_id').notNull(),
+    shiftId: text('shift_id').notNull(),
+    taskId: text('task_id').notNull(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    verificationBatchId: text('verification_batch_id'),
+    shiftNote: text('shift_note').notNull().default(''),
+    organizationIdea: text('organization_idea').notNull().default(''),
+    submittedAt: integer('submitted_at').notNull(),
+  },
+  (t) => ({
+    oneReflectionPerClaim: uniqueIndex('volunteer_reflections_claim').on(t.claimId),
+    byOrganizationShift: index('volunteer_reflections_org_shift').on(t.orgId, t.shiftId, t.submittedAt),
+    byParticipant: index('volunteer_reflections_user').on(t.userId, t.submittedAt),
   }),
 )
 
@@ -526,6 +937,47 @@ export const volunteerGroupMembers = sqliteTable(
   }),
 )
 
+// A roster can include people who were invited directly by an organization,
+// before they claim their first opportunity. Claims continue to add people to
+// a roster implicitly; this table preserves the explicit relationship.
+export const volunteerRosterMembers = sqliteTable(
+  'volunteer_roster_members',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    userId: text('user_id').notNull(),
+    source: text('source', { enum: ['invite', 'approval'] }).notNull().default('invite'),
+    invitedByUserId: text('invited_by_user_id'),
+    joinedAt: integer('joined_at').notNull(),
+  },
+  (t) => ({
+    organizationUserUniq: uniqueIndex('volunteer_roster_members_org_user').on(t.orgId, t.userId),
+    byOrganization: index('volunteer_roster_members_org').on(t.orgId, t.joinedAt),
+    byUser: index('volunteer_roster_members_user').on(t.userId, t.joinedAt),
+  }),
+)
+
+// A single-use enrollment link. Only its hash is stored, so the link itself
+// remains a bearer secret that can safely be shown once to the issuer.
+export const volunteerRosterInvites = sqliteTable(
+  'volunteer_roster_invites',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    codeHash: text('code_hash').notNull(),
+    issuedByUserId: text('issued_by_user_id').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    acceptedByUserId: text('accepted_by_user_id'),
+    acceptedAt: integer('accepted_at'),
+    revokedAt: integer('revoked_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    codeHashUniq: uniqueIndex('volunteer_roster_invites_code_hash').on(t.codeHash),
+    byOrganization: index('volunteer_roster_invites_org').on(t.orgId, t.createdAt),
+  }),
+)
+
 export const orgMessages = sqliteTable('org_messages', {
   id: text('id').primaryKey(),
   orgId: text('org_id').notNull(),
@@ -553,11 +1005,66 @@ export const messageRecipients = sqliteTable(
   }),
 )
 
+// A shift-specific conversation. Membership is derived from active shift
+// claims; after the event it becomes a read-only archive for 14 days before
+// the room and messages are permanently removed.
+export const eventChats = sqliteTable(
+  'event_chats',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    taskId: text('task_id').notNull(),
+    shiftId: text('shift_id').notNull(),
+    createdByUserId: text('created_by_user_id').notNull(),
+    title: text('title').notNull(),
+    closesAt: integer('closes_at').notNull(),
+    status: text('status', { enum: ['open', 'archived'] }).notNull().default('open'),
+    createdAt: integer('created_at').notNull(),
+    closedAt: integer('closed_at'),
+  },
+  (t) => ({
+    oneChatPerShift: uniqueIndex('event_chats_shift').on(t.shiftId),
+    byOrganization: index('event_chats_org_status').on(t.orgId, t.status, t.closesAt),
+    byExpiry: index('event_chats_expiry').on(t.status, t.closesAt),
+  }),
+)
+
+export const eventChatMessages = sqliteTable(
+  'event_chat_messages',
+  {
+    id: text('id').primaryKey(),
+    chatId: text('chat_id').notNull(),
+    senderUserId: text('sender_user_id').notNull(),
+    body: text('body').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    byChat: index('event_chat_messages_chat_created').on(t.chatId, t.createdAt),
+  }),
+)
+
+// Per-participant read position for a temporary event chat. This is private
+// inbox state: it never becomes part of the public or organizational ledger.
+export const eventChatReads = sqliteTable(
+  'event_chat_reads',
+  {
+    id: text('id').primaryKey(),
+    chatId: text('chat_id').notNull(),
+    userId: text('user_id').notNull(),
+    lastReadAt: integer('last_read_at').notNull(),
+  },
+  (t) => ({
+    oneReadPositionPerParticipant: uniqueIndex('event_chat_reads_chat_user').on(t.chatId, t.userId),
+    byParticipant: index('event_chat_reads_user').on(t.userId, t.lastReadAt),
+  }),
+)
+
 export const posts = sqliteTable('posts', {
   id: text('id').primaryKey(),
   orgId: text('org_id').notNull(),
   authorUserId: text('author_user_id').notNull(),
   body: text('body').notNull(),
+  imageUrl: text('image_url'),
   createdAt: integer('created_at').notNull(),
 })
 
@@ -571,6 +1078,24 @@ export const postHearts = sqliteTable(
   },
   (t) => ({
     uniq: uniqueIndex('post_hearts_post_user').on(t.postId, t.userId),
+  }),
+)
+
+// Participant-owned saved items. A single table supports both MyCity posts and
+// opportunities without exposing the saved state publicly or duplicating it in
+// a browser-only preference store.
+export const savedItems = sqliteTable(
+  'saved_items',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    kind: text('kind', { enum: ['post', 'task'] }).notNull(),
+    itemId: text('item_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    userItemUniq: uniqueIndex('saved_items_user_kind_item').on(t.userId, t.kind, t.itemId),
+    byUser: index('saved_items_user').on(t.userId, t.kind, t.createdAt),
   }),
 )
 
@@ -618,6 +1143,50 @@ export const reminders = sqliteTable(
   },
   (t) => ({
     due: index('reminders_due').on(t.status, t.sendAfter),
+  }),
+)
+
+// Organization-owned planning notes. These stay private to the organization
+// and are intentionally separate from volunteer shifts and public ledger data.
+export const organizationCalendarEntries = sqliteTable(
+  'organization_calendar_entries',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    cityId: text('city_id').notNull(),
+    createdByUserId: text('created_by_user_id').notNull(),
+    title: text('title').notNull(),
+    details: text('details').notNull().default(''),
+    startsAt: integer('starts_at').notNull(),
+    endsAt: integer('ends_at').notNull(),
+    color: text('color').notNull().default('blue'),
+    reminderKind: text('reminder_kind').notNull().default('none'),
+    reminderAt: integer('reminder_at'),
+    notifiedAt: integer('notified_at'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    byOrganizationSchedule: index('organization_calendar_entries_org_city_schedule').on(t.orgId, t.cityId, t.startsAt),
+    dueReminder: index('organization_calendar_entries_due_reminder').on(t.reminderAt, t.notifiedAt),
+  }),
+)
+
+// Acknowledgements are private organization workspace preferences. They only
+// dismiss a queue prompt; they never alter a volunteer, shift, or ledgered
+// contribution record.
+export const organizationQueueAcknowledgements = sqliteTable(
+  'organization_queue_acknowledgements',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    actionKey: text('action_key').notNull(),
+    acknowledgedByUserId: text('acknowledged_by_user_id').notNull(),
+    acknowledgedAt: integer('acknowledged_at').notNull(),
+  },
+  (t) => ({
+    uniqueAction: uniqueIndex('organization_queue_acknowledgements_org_action').on(t.orgId, t.actionKey),
+    byOrganization: index('organization_queue_acknowledgements_org').on(t.orgId, t.acknowledgedAt),
   }),
 )
 

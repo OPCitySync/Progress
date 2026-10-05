@@ -4,16 +4,28 @@
  * Run: npm run db:migrate
  */
 import { randomUUID } from 'crypto'
+import { programWorkspaceDDL } from '../src/lib/db/program-workspace-schema'
+import { volunteerIntakeDDL } from '../src/lib/db/volunteer-intake-schema'
+import { isPrivateOnboardingEvent } from '../src/lib/ledger/onboarding-privacy'
 import { createClient } from '@libsql/client'
+import { previewDatabaseUrl } from '../src/lib/db/preview-url'
 import { getCityClient } from '../src/lib/db/city-client'
 import { flushAllCityLedgerOutbox } from '../src/lib/ledger/city-outbox'
 
+const previewUrl = previewDatabaseUrl('application.db')
+if (process.env.VERCEL && !process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required for Vercel deployments.')
+}
 const client = createClient({
-  url: process.env.DATABASE_URL ?? 'file:local.db',
-  authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
+  url: previewUrl ?? process.env.DATABASE_URL ?? 'file:local.db',
+  authToken: previewUrl ? undefined : process.env.DATABASE_AUTH_TOKEN || undefined,
 })
 
+const schemaOnly = process.argv.includes('--schema-only')
+
 const statements = [
+  ...programWorkspaceDDL,
+  ...volunteerIntakeDDL,
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -23,6 +35,8 @@ const statements = [
     org_id TEXT,
     credit_balance INTEGER NOT NULL DEFAULT 0,
     lifetime_earned INTEGER NOT NULL DEFAULT 0,
+    banner_style TEXT NOT NULL DEFAULT 'original',
+    banner_palette TEXT NOT NULL DEFAULT 'citysync',
     created_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS orgs (
@@ -46,6 +60,7 @@ const statements = [
   `CREATE TABLE IF NOT EXISTS waiver_versions (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
+    program_id TEXT,
     version INTEGER NOT NULL,
     title TEXT NOT NULL,
     body TEXT NOT NULL,
@@ -63,20 +78,126 @@ const statements = [
     org_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     sha256 TEXT NOT NULL,
+    signature_method TEXT NOT NULL DEFAULT 'acknowledgement',
+    signer_name TEXT,
+    electronic_consent_at INTEGER,
+    signed_at INTEGER,
     accepted_at INTEGER NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS waiver_acceptances_user_version
      ON waiver_acceptances (user_id, waiver_version_id)`,
+  `CREATE TABLE IF NOT EXISTS volunteer_eligibility_records (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    verified_by_user_id TEXT,
+    verified_at INTEGER,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(org_id, user_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_identity_verifications (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'verified',
+    verified_by_user_id TEXT NOT NULL,
+    verified_at INTEGER NOT NULL,
+    revoked_by_user_id TEXT,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(org_id, user_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_task_eligibility_grants (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    granted_by_user_id TEXT NOT NULL,
+    granted_at INTEGER NOT NULL,
+    revoked_by_user_id TEXT,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(org_id, user_id, task_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS organization_documents (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    program_id TEXT,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    document_url TEXT,
+    document_name TEXT,
+    document_mime_type TEXT,
+    document_sha256 TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_by_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_programs (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    operating_mode TEXT NOT NULL DEFAULT 'flexible',
+    default_visibility TEXT NOT NULL DEFAULT 'public',
+    default_location TEXT NOT NULL DEFAULT '',
+    default_capacity INTEGER NOT NULL DEFAULT 8,
+    default_duration_minutes INTEGER NOT NULL DEFAULT 120,
+    onboarding_preference TEXT NOT NULL DEFAULT 'optional',
+    created_by_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(org_id, name)
+  )`,
+  `CREATE TABLE IF NOT EXISTS organization_document_assignments (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(document_id, task_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS organization_resource_publications (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    resource_kind TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(org_id, resource_kind, resource_id, destination)
+  )`,
+  `CREATE TABLE IF NOT EXISTS waiver_task_assignments (
+    id TEXT PRIMARY KEY,
+    waiver_version_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(waiver_version_id, task_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     location TEXT NOT NULL DEFAULT '',
+    before_session TEXT NOT NULL DEFAULT '',
+    bring_items TEXT NOT NULL DEFAULT '',
     credits INTEGER NOT NULL,
     slots INTEGER NOT NULL DEFAULT 1,
+    default_duration_minutes INTEGER NOT NULL DEFAULT 120,
     starts_at TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'open',
+    program_id TEXT,
+    is_onboarding INTEGER NOT NULL DEFAULT 0,
+    onboarding_waiver_method TEXT,
+    onboarding_identity_check TEXT,
     created_by TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`,
@@ -88,8 +209,39 @@ const statements = [
     status TEXT NOT NULL DEFAULT 'claimed',
     note TEXT NOT NULL DEFAULT '',
     checked_in_at INTEGER,
+    waiver_version_id TEXT,
+    waiver_collection_method TEXT,
+    identity_match_required INTEGER NOT NULL DEFAULT 0,
+    paper_waiver_confirmed_at INTEGER,
+    paper_waiver_confirmed_by TEXT,
+    verification_batch_id TEXT,
+    verified_by_user_id TEXT,
+    verified_at INTEGER,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS verification_batches (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    shift_id TEXT NOT NULL,
+    verified_by_user_id TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    participant_count INTEGER NOT NULL,
+    verified_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_reflections (
+    id TEXT PRIMARY KEY,
+    claim_id TEXT NOT NULL UNIQUE,
+    shift_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    verification_batch_id TEXT,
+    shift_note TEXT NOT NULL DEFAULT '',
+    organization_idea TEXT NOT NULL DEFAULT '',
+    submitted_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS shifts (
     id TEXT PRIMARY KEY,
@@ -100,8 +252,91 @@ const statements = [
     label TEXT NOT NULL DEFAULT '',
     capacity INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'open',
+    visibility TEXT NOT NULL DEFAULT 'public',
+    enrollment_mode TEXT NOT NULL DEFAULT 'open_claims',
     check_in_code TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS shift_staff_assignments (
+    id TEXT PRIMARY KEY,
+    shift_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    delegation_id TEXT NOT NULL,
+    assigned_by_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(shift_id, user_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS onboarding_recurring_schedules (
+    task_id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    interval_days INTEGER NOT NULL DEFAULT 7,
+    next_starts_at INTEGER NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    capacity INTEGER NOT NULL,
+    last_published_shift_id TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS onboarding_recurring_schedules_org ON onboarding_recurring_schedules (org_id, active)`,
+  `CREATE TABLE IF NOT EXISTS recurring_event_schedules (
+    task_id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    interval_days INTEGER NOT NULL DEFAULT 7,
+    next_starts_at INTEGER NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    capacity INTEGER NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'public',
+    enrollment_mode TEXT NOT NULL DEFAULT 'open_claims',
+    last_published_shift_id TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS recurring_event_schedules_org ON recurring_event_schedules (org_id, active)`,
+  `CREATE TABLE IF NOT EXISTS recurring_event_patterns (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    interval_days INTEGER NOT NULL DEFAULT 7,
+    next_starts_at INTEGER NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    capacity INTEGER NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'public',
+    enrollment_mode TEXT NOT NULL DEFAULT 'open_claims',
+    last_published_shift_id TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS planned_recurring_assignments (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    occurrence_starts_at INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    assigned_by_user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'planned',
+    shift_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(task_id, occurrence_starts_at, user_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS planned_recurring_staff_assignments (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    occurrence_starts_at INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    delegation_id TEXT NOT NULL,
+    assigned_by_user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'planned',
+    shift_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(task_id, occurrence_starts_at, user_id)
   )`,
   `CREATE TABLE IF NOT EXISTS offerings (
     id TEXT PRIMARY KEY,
@@ -139,6 +374,26 @@ const statements = [
     created_at INTEGER NOT NULL,
     UNIQUE(group_id, user_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_roster_members (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'invite',
+    invited_by_user_id TEXT,
+    joined_at INTEGER NOT NULL,
+    UNIQUE(org_id, user_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS volunteer_roster_invites (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    code_hash TEXT NOT NULL UNIQUE,
+    issued_by_user_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    accepted_by_user_id TEXT,
+    accepted_at INTEGER,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS org_messages (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
@@ -160,11 +415,38 @@ const statements = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS message_recipients_msg_user
      ON message_recipients (message_id, user_id)`,
+  `CREATE TABLE IF NOT EXISTS event_chats (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    shift_id TEXT NOT NULL UNIQUE,
+    created_by_user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    closes_at INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at INTEGER NOT NULL,
+    closed_at INTEGER
+  )`,
+  `CREATE TABLE IF NOT EXISTS event_chat_messages (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    sender_user_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS event_chat_reads (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    last_read_at INTEGER NOT NULL,
+    UNIQUE(chat_id, user_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
     author_user_id TEXT NOT NULL,
     body TEXT NOT NULL,
+    image_url TEXT,
     created_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS post_hearts (
@@ -174,6 +456,15 @@ const statements = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS post_hearts_post_user ON post_hearts (post_id, user_id)`,
+  `CREATE TABLE IF NOT EXISTS saved_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS saved_items_user_kind_item ON saved_items (user_id, kind, item_id)`,
+  `CREATE INDEX IF NOT EXISTS saved_items_user ON saved_items (user_id, kind, created_at)`,
   `CREATE TABLE IF NOT EXISTS events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
@@ -271,6 +562,30 @@ const statements = [
     created_at INTEGER NOT NULL,
     sent_at INTEGER
   )`,
+  `CREATE TABLE IF NOT EXISTS organization_calendar_entries (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    city_id TEXT NOT NULL,
+    created_by_user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    details TEXT NOT NULL DEFAULT '',
+    starts_at INTEGER NOT NULL,
+    ends_at INTEGER NOT NULL,
+    color TEXT NOT NULL DEFAULT 'blue',
+    reminder_kind TEXT NOT NULL DEFAULT 'none',
+    reminder_at INTEGER,
+    notified_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS organization_queue_acknowledgements (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    action_key TEXT NOT NULL,
+    acknowledged_by_user_id TEXT NOT NULL,
+    acknowledged_at INTEGER NOT NULL,
+    UNIQUE(org_id, action_key)
+  )`,
   `CREATE TABLE IF NOT EXISTS org_profiles (
     org_id TEXT PRIMARY KEY,
     tagline TEXT NOT NULL DEFAULT '',
@@ -284,6 +599,8 @@ const statements = [
     socials TEXT NOT NULL DEFAULT '{}',
     causes TEXT NOT NULL DEFAULT '[]',
     onboarding_task_id TEXT,
+    onboarding_waiver_method TEXT,
+    onboarding_identity_check TEXT,
     published INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL
   )`,
@@ -401,7 +718,18 @@ const columnMigrations = [
   `ALTER TABLE claims ADD COLUMN shift_id TEXT`,
   `ALTER TABLE claims ADD COLUMN checked_in_at INTEGER`,
   `ALTER TABLE shifts ADD COLUMN check_in_code TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE shifts ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`,
+  `ALTER TABLE shifts ADD COLUMN enrollment_mode TEXT NOT NULL DEFAULT 'open_claims'`,
+  `ALTER TABLE recurring_event_schedules ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`,
+  `ALTER TABLE recurring_event_schedules ADD COLUMN enrollment_mode TEXT NOT NULL DEFAULT 'open_claims'`,
   `ALTER TABLE tasks ADD COLUMN required_credentials TEXT NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE tasks ADD COLUMN default_duration_minutes INTEGER NOT NULL DEFAULT 120`,
+  `ALTER TABLE tasks ADD COLUMN before_session TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE tasks ADD COLUMN bring_items TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE tasks ADD COLUMN is_onboarding INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE tasks ADD COLUMN program_id TEXT`,
+  `ALTER TABLE organization_documents ADD COLUMN program_id TEXT`,
+  `ALTER TABLE waiver_versions ADD COLUMN program_id TEXT`,
   `ALTER TABLE users ADD COLUMN interests TEXT NOT NULL DEFAULT '[]'`,
   `ALTER TABLE users ADD COLUMN neighborhood TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE users ADD COLUMN resume_token TEXT`,
@@ -410,19 +738,67 @@ const columnMigrations = [
   `ALTER TABLE users ADD COLUMN home_city_id TEXT`,
   `ALTER TABLE orgs ADD COLUMN requested_city_id TEXT`,
   `ALTER TABLE orgs ADD COLUMN parent_org_id TEXT`,
+  `ALTER TABLE posts ADD COLUMN image_url TEXT`,
   `ALTER TABLE tasks ADD COLUMN city_id TEXT NOT NULL DEFAULT 'berkeley'`,
   `ALTER TABLE claims ADD COLUMN no_show_at INTEGER`,
   `ALTER TABLE offerings ADD COLUMN city_id TEXT NOT NULL DEFAULT 'berkeley'`,
   `ALTER TABLE redemptions ADD COLUMN city_id TEXT NOT NULL DEFAULT 'berkeley'`,
   `ALTER TABLE users ADD COLUMN username TEXT`,
   `ALTER TABLE users ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE users ADD COLUMN banner_style TEXT NOT NULL DEFAULT 'original'`,
+  `ALTER TABLE users ADD COLUMN banner_palette TEXT NOT NULL DEFAULT 'citysync'`,
   `ALTER TABLE organization_delegations ADD COLUMN role_id TEXT`,
   `ALTER TABLE organization_invites ADD COLUMN role_id TEXT`,
+  `ALTER TABLE volunteer_programs ADD COLUMN operating_mode TEXT NOT NULL DEFAULT 'flexible'`,
+  `ALTER TABLE volunteer_programs ADD COLUMN default_visibility TEXT NOT NULL DEFAULT 'public'`,
+  `ALTER TABLE volunteer_programs ADD COLUMN default_location TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE volunteer_programs ADD COLUMN default_capacity INTEGER NOT NULL DEFAULT 8`,
+  `ALTER TABLE volunteer_programs ADD COLUMN default_duration_minutes INTEGER NOT NULL DEFAULT 120`,
+  `ALTER TABLE volunteer_programs ADD COLUMN onboarding_preference TEXT NOT NULL DEFAULT 'optional'`,
   `ALTER TABLE org_messages ADD COLUMN group_id TEXT`,
   `ALTER TABLE waiver_versions ADD COLUMN document_url TEXT`,
   `ALTER TABLE waiver_versions ADD COLUMN document_name TEXT`,
   `ALTER TABLE waiver_versions ADD COLUMN document_mime_type TEXT`,
   `ALTER TABLE waiver_versions ADD COLUMN document_sha256 TEXT`,
+  `ALTER TABLE org_profiles ADD COLUMN onboarding_waiver_method TEXT`,
+  `ALTER TABLE org_profiles ADD COLUMN onboarding_identity_check TEXT`,
+  `ALTER TABLE tasks ADD COLUMN onboarding_waiver_method TEXT`,
+  `ALTER TABLE tasks ADD COLUMN onboarding_identity_check TEXT`,
+  `ALTER TABLE claims ADD COLUMN waiver_version_id TEXT`,
+  `ALTER TABLE claims ADD COLUMN waiver_collection_method TEXT`,
+  `ALTER TABLE claims ADD COLUMN identity_match_required INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE claims ADD COLUMN paper_waiver_confirmed_at INTEGER`,
+  `ALTER TABLE claims ADD COLUMN paper_waiver_confirmed_by TEXT`,
+  `ALTER TABLE claims ADD COLUMN verification_batch_id TEXT`,
+  `ALTER TABLE claims ADD COLUMN verified_by_user_id TEXT`,
+  `ALTER TABLE claims ADD COLUMN verified_at INTEGER`,
+  `ALTER TABLE onboarding_intakes ADD COLUMN application_public INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE onboarding_intakes ADD COLUMN role_join_mode TEXT NOT NULL DEFAULT 'open'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN archived_at INTEGER`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN scope TEXT NOT NULL DEFAULT 'role'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN target_task_id TEXT`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN resume_policy TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN cover_letter_policy TEXT NOT NULL DEFAULT 'none'`,
+  `ALTER TABLE onboarding_application_forms ADD COLUMN published_at INTEGER`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN signature_method TEXT NOT NULL DEFAULT 'acknowledgement'`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN signer_name TEXT`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN electronic_consent_at INTEGER`,
+  `ALTER TABLE waiver_acceptances ADD COLUMN signed_at INTEGER`,
+]
+
+// Small, deterministic compatibility updates that make existing records agree
+// with newly added schema. These are safe to repeat during deployments.
+const compatibilityMigrations = [
+  `INSERT OR IGNORE INTO recurring_event_patterns
+    (id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at)
+    SELECT 'legacy:' || task_id, task_id, org_id, interval_days, next_starts_at, duration_minutes, capacity, visibility, enrollment_mode, last_published_shift_id, active, created_at, updated_at
+    FROM recurring_event_schedules`,
+  // The existing profile pointer becomes the designated primary series. New
+  // onboarding series are stored directly on their task records.
+  `UPDATE tasks SET is_onboarding = 1 WHERE id IN (SELECT onboarding_task_id FROM org_profiles WHERE onboarding_task_id IS NOT NULL)`,
+  // Preserve currently open applications when upgrading to form-level
+  // publication. Existing program intake forms become the all-role path.
+  `UPDATE onboarding_application_forms SET published_at = COALESCE(published_at, created_at), scope = 'all', target_task_id = NULL WHERE id IN (SELECT active_form_id FROM onboarding_intakes WHERE application_public = 1 AND active_form_id IS NOT NULL)`,
 ]
 
 const indexes = [
@@ -439,14 +815,57 @@ const indexes = [
   `CREATE UNIQUE INDEX IF NOT EXISTS claims_shift_user ON claims (shift_id, user_id)`,
   `CREATE INDEX IF NOT EXISTS notifications_user ON notifications (user_id)`,
   `CREATE INDEX IF NOT EXISTS reminders_due ON reminders (status, send_after)`,
+  `CREATE INDEX IF NOT EXISTS organization_calendar_entries_org_city_schedule ON organization_calendar_entries (org_id, city_id, starts_at)`,
+  `CREATE INDEX IF NOT EXISTS organization_calendar_entries_due_reminder ON organization_calendar_entries (reminder_at, notified_at)`,
+  `CREATE INDEX IF NOT EXISTS organization_queue_acknowledgements_org ON organization_queue_acknowledgements (org_id, acknowledged_at)`,
+  `CREATE INDEX IF NOT EXISTS organization_documents_org ON organization_documents (org_id, category, updated_at)`,
+  `CREATE INDEX IF NOT EXISTS organization_documents_program ON organization_documents (program_id, updated_at)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_programs_org ON volunteer_programs (org_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS tasks_program ON tasks (program_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS recurring_event_patterns_org ON recurring_event_patterns (org_id, active)`,
+  `CREATE INDEX IF NOT EXISTS recurring_event_patterns_task ON recurring_event_patterns (task_id, active)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS planned_recurring_assignments_occurrence_user ON planned_recurring_assignments (task_id, occurrence_starts_at, user_id)`,
+  `CREATE INDEX IF NOT EXISTS planned_recurring_assignments_org ON planned_recurring_assignments (org_id, occurrence_starts_at)`,
+  `CREATE INDEX IF NOT EXISTS planned_recurring_assignments_occurrence ON planned_recurring_assignments (task_id, occurrence_starts_at, status)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS planned_recurring_staff_assignments_occurrence_user ON planned_recurring_staff_assignments (task_id, occurrence_starts_at, user_id)`,
+  `CREATE INDEX IF NOT EXISTS planned_recurring_staff_assignments_org ON planned_recurring_staff_assignments (org_id, occurrence_starts_at)`,
+  `CREATE INDEX IF NOT EXISTS planned_recurring_staff_assignments_occurrence ON planned_recurring_staff_assignments (task_id, occurrence_starts_at, status)`,
+  `CREATE INDEX IF NOT EXISTS organization_document_assignments_document ON organization_document_assignments (document_id)`,
+  `CREATE INDEX IF NOT EXISTS organization_document_assignments_task ON organization_document_assignments (task_id)`,
+  `CREATE INDEX IF NOT EXISTS organization_resource_publications_org_destination ON organization_resource_publications (org_id, destination)`,
+  `CREATE INDEX IF NOT EXISTS waiver_task_assignments_waiver ON waiver_task_assignments (waiver_version_id)`,
+  `CREATE INDEX IF NOT EXISTS waiver_task_assignments_task ON waiver_task_assignments (task_id)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_eligibility_records_org ON volunteer_eligibility_records (org_id, status)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_identity_verifications_org ON volunteer_identity_verifications (org_id, status)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_task_eligibility_org ON volunteer_task_eligibility_grants (org_id, user_id, status)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS credentials_user_type ON credentials (user_id, type)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_groups_org_name ON volunteer_groups (org_id, name)`,
   `CREATE INDEX IF NOT EXISTS volunteer_groups_org ON volunteer_groups (org_id)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_group_members_group_user ON volunteer_group_members (group_id, user_id)`,
   `CREATE INDEX IF NOT EXISTS volunteer_group_members_group ON volunteer_group_members (group_id)`,
   `CREATE INDEX IF NOT EXISTS volunteer_group_members_user ON volunteer_group_members (user_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_roster_members_org_user ON volunteer_roster_members (org_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_roster_members_org ON volunteer_roster_members (org_id, joined_at)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_roster_members_user ON volunteer_roster_members (user_id, joined_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_roster_invites_code_hash ON volunteer_roster_invites (code_hash)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_roster_invites_org ON volunteer_roster_invites (org_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS org_messages_group ON org_messages (group_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS event_chats_shift ON event_chats (shift_id)`,
+  `CREATE INDEX IF NOT EXISTS event_chats_org_status ON event_chats (org_id, status, closes_at)`,
+  `CREATE INDEX IF NOT EXISTS event_chats_expiry ON event_chats (status, closes_at)`,
+  `CREATE INDEX IF NOT EXISTS event_chat_messages_chat_created ON event_chat_messages (chat_id, created_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS event_chat_reads_chat_user ON event_chat_reads (chat_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS event_chat_reads_user ON event_chat_reads (user_id, last_read_at)`,
+  `CREATE INDEX IF NOT EXISTS verification_batches_shift ON verification_batches (shift_id, verified_at)`,
+  `CREATE INDEX IF NOT EXISTS verification_batches_org ON verification_batches (org_id, verified_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS shift_staff_assignments_shift_user ON shift_staff_assignments (shift_id, user_id)`,
+  `CREATE INDEX IF NOT EXISTS shift_staff_assignments_shift ON shift_staff_assignments (shift_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS shift_staff_assignments_org ON shift_staff_assignments (org_id, created_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS volunteer_reflections_claim ON volunteer_reflections (claim_id)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_reflections_org_shift ON volunteer_reflections (org_id, shift_id, submitted_at)`,
+  `CREATE INDEX IF NOT EXISTS volunteer_reflections_user ON volunteer_reflections (user_id, submitted_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS users_resume_token ON users (resume_token)`,
+  `CREATE INDEX IF NOT EXISTS claims_user_status_updated ON claims (user_id, status, updated_at)`,
   `CREATE INDEX IF NOT EXISTS catalog_entries_org ON catalog_entries (org_id)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS cities_slug ON cities (slug)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS cities_join_code ON cities (join_code)`,
@@ -761,6 +1180,7 @@ async function backfillOrganizationRoles() {
     'opportunities.manage',
     'participants.manage',
     'waiver.manage',
+    'documents.manage',
     'profile.manage',
     'reports.view',
     'feed.manage',
@@ -1035,6 +1455,7 @@ async function backfillLegacyCityLedgerOutbox() {
   let queued = 0
 
   for (const event of eventRows.rows) {
+    if (isPrivateOnboardingEvent(String(event.type))) continue
     let payload: Record<string, unknown> = {}
     try {
       const parsed: unknown = JSON.parse(String(event.payload))
@@ -1085,16 +1506,36 @@ async function backfillLegacyCityLedgerOutbox() {
 }
 
 async function main() {
-  for (const sql of statements) {
+  // Production builds only need additive tables and columns. Index changes,
+  // city-ledger delivery, and historical backfills remain part of the explicit
+  // full migration command.
+  const selectedStatements = schemaOnly
+    ? statements.filter((sql) => /^\s*CREATE TABLE\b/i.test(sql))
+    : statements
+
+  for (const sql of selectedStatements) {
     await client.execute(sql)
   }
   for (const sql of columnMigrations) {
     try {
       await client.execute(sql)
-    } catch {
-      /* column already exists */
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!message.toLowerCase().includes('duplicate column name')) throw error
     }
   }
+  for (const sql of compatibilityMigrations) {
+    await client.execute(sql)
+  }
+
+  if (schemaOnly) {
+    console.log(
+      `✓ Deployment schema ready (${selectedStatements.length} table checks + ${columnMigrations.length} column checks + ${compatibilityMigrations.length} compatibility updates)`,
+    )
+    client.close()
+    return
+  }
+
   for (const sql of indexes) {
     await client.execute(sql)
   }
@@ -1109,7 +1550,7 @@ async function main() {
   const legacyOutbox = await backfillLegacyCityLedgerOutbox()
   const delivery = await flushAllCityLedgerOutbox()
   console.log(
-    `✓ Schema ready (${statements.length} statements + ${columnMigrations.length} column checks + ${indexes.length} indexes; ` +
+    `✓ Schema ready (${statements.length} statements + ${columnMigrations.length} column checks + ${compatibilityMigrations.length} compatibility updates + ${indexes.length} indexes; ` +
       `${filled} org slug(s) backfilled; ${organizationLocations.saved} organization location(s) saved (${organizationLocations.defaults} default(s)); ${shiftRes.created} shift(s) created, ${shiftRes.linked} claim(s) linked; ${codes} check-in code(s) set; ${cityData.memberships} city membership(s) and ${cityData.statuses} participant status record(s) added; ${cityFinance.walletCount} city wallet(s), ${cityFinance.legacyEntries} opening ledger entry/entries, ${legacyOutbox} legacy city-ledger event(s) queued)`,
   )
   console.log(`✓ City ledger delivery ready (${delivery.map((result) => `${result.cityId}: ${result.delivered} delivered${result.pending ? `, ${result.pending} pending` : ''}${result.failed ? ' (retrying)' : ''}`).join('; ') || 'no pending events'})`)

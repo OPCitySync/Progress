@@ -1,6 +1,7 @@
 import { createClient, type Client } from '@libsql/client'
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql'
 import * as citySchema from './city-schema'
+import { previewDatabaseUrl } from './preview-url'
 
 type CityDatabase = LibSQLDatabase<typeof citySchema>
 
@@ -30,8 +31,13 @@ export function cityDatabaseUrl(cityId: string): string {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cityId)) {
     throw new Error(`Invalid city database identifier "${cityId}".`)
   }
+  const previewUrl = previewDatabaseUrl(`city-${cityId}.db`)
+  if (previewUrl) return previewUrl
   const configured = process.env[cityEnvKey(cityId)]
   if (configured) return configured
+  if (process.env.VERCEL) {
+    throw new Error(`${cityEnvKey(cityId)} is required for Vercel deployments.`)
+  }
   return `file:city-${cityId}.db`
 }
 
@@ -59,7 +65,7 @@ export function getCityClient(cityId: string): Client {
   if (existing) return existing
   const client = createClient({
     url: cityDatabaseUrl(cityId),
-    authToken: process.env[cityEnvKey(cityId).replace(/_URL$/, '_AUTH_TOKEN')] || undefined,
+    authToken: process.env.CITYSYNC_PREVIEW_DATABASE_DIR ? undefined : process.env[cityEnvKey(cityId).replace(/_URL$/, '_AUTH_TOKEN')] || undefined,
   })
   clients.set(cityId, client)
   return client

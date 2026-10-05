@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { signUpAction } from '@/app/actions'
-import { getSession, homeFor } from '@/lib/auth/session'
+import { aestheticHomeFor, getSession } from '@/lib/auth/session'
 import { Logo } from '@/components/brand/Logo'
 import { Card, Input, Label, Textarea, Button, Flash } from '@/components/ui'
 import { getAvailableCities } from '@/lib/services/city-networks'
@@ -9,17 +9,19 @@ import { getAvailableCities } from '@/lib/services/city-networks'
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: { error?: string; type?: string; next?: string }
+  searchParams: { error?: string; type?: string; next?: string; rosterInvite?: string; organizationInvite?: string }
 }) {
   const session = await getSession()
-  if (session) redirect(homeFor(session.role))
+  if (session) redirect(aestheticHomeFor(session.role))
 
   const type = (['participant', 'issuer', 'redeemer'].includes(searchParams.type ?? '')
     ? searchParams.type
     : 'participant') as 'participant' | 'issuer' | 'redeemer'
   const isOrg = type !== 'participant'
   const next = searchParams.next?.startsWith('/') ? searchParams.next : ''
-  const nextParam = next ? `&next=${encodeURIComponent(next)}` : ''
+  const rosterInvite = searchParams.rosterInvite?.trim() ?? ''
+  const organizationInvite = searchParams.organizationInvite?.trim() ?? ''
+  const nextParam = `${next ? `&next=${encodeURIComponent(next)}` : ''}${organizationInvite ? `&organizationInvite=${encodeURIComponent(organizationInvite)}` : ''}`
   const cities = await getAvailableCities()
   const signupCopy =
     type === 'participant'
@@ -30,11 +32,11 @@ export default async function SignupPage({
       : type === 'issuer'
         ? {
             title: 'Register your organization',
-            description: 'Create an organization account to publish and manage opportunities.',
+            description: 'Create your organization and become its first owner.',
           }
         : {
             title: 'Register your organization',
-            description: 'Create an organization account to accept civic credits.',
+            description: 'Create your organization and become its first owner.',
           }
 
   return (
@@ -52,6 +54,8 @@ export default async function SignupPage({
           <input type="hidden" name="kind" value={type} />
           <input type="hidden" name="redirectTo" value={`/signup?type=${type}${nextParam}`} />
           {next ? <input type="hidden" name="next" value={next} /> : null}
+          {type === 'participant' && rosterInvite ? <input type="hidden" name="rosterInvite" value={rosterInvite} /> : null}
+          {type === 'participant' && organizationInvite ? <input type="hidden" name="organizationInvite" value={organizationInvite} /> : null}
 
           {isOrg ? (
             <>
@@ -109,12 +113,17 @@ export default async function SignupPage({
           </fieldset>
 
           <div>
-            <Label htmlFor="name">{isOrg ? 'Contact name' : 'Your name'}</Label>
+            <Label htmlFor="name">Your name</Label>
             <Input id="name" name="name" required />
           </div>
           <div>
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{isOrg ? 'Your sign-in email' : 'Email'}</Label>
             <Input id="email" name="email" type="email" required autoComplete="email" />
+            {isOrg ? (
+              <p className="mt-1.5 text-xs leading-relaxed text-ink-500">
+                Use an email address that belongs to you, not a shared inbox such as info@ or volunteers@. Your organization’s public contact email can be added separately.
+              </p>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="password">Password (8+ characters)</Label>
@@ -122,13 +131,16 @@ export default async function SignupPage({
           </div>
 
           {isOrg ? (
-            <p className="rounded-xl bg-ink-50 px-4 py-3 text-xs leading-relaxed text-ink-500">
-              Creating an organization also creates your Civic Participant Identity. You’ll initially operate as the organization’s owner, and can switch between the organizational account and your user account.
-            </p>
+            <div className="rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3">
+              <p className="text-sm font-semibold text-ink-800">One account for you and your organization access</p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-600">
+                This creates your personal MyCity account and assigns you as the organization’s first owner. After signing in, you can switch between your personal profile and the organization workspace.
+              </p>
+            </div>
           ) : null}
 
           <Button type="submit" className="w-full">
-            Create account
+            {isOrg ? 'Create organization' : 'Create account'}
           </Button>
         </form>
         <p className="mt-5 text-center text-sm text-ink-500">

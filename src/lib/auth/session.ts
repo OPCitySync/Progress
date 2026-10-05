@@ -60,20 +60,30 @@ export function clearSession() {
   cookies().delete(COOKIE)
 }
 
-export async function requireSession(): Promise<Session> {
+function expiredSessionRedirect() {
+  const loginPath = '/login?error=' + encodeURIComponent('This identity is no longer authorized to act.')
+  return '/logout?next=' + encodeURIComponent(loginPath)
+}
+
+export async function requireSession(next?: string): Promise<Session> {
   const session = await getSession()
-  if (!session) redirect('/login')
+  if (!session) {
+    const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : ''
+    redirect(safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : '/login')
+  }
   const active = await validateActiveSession(session)
   if (!active) {
-    clearSession()
-    redirect('/login?error=' + encodeURIComponent('This identity is no longer authorized to act.'))
+    // Server components may redirect, but Next.js only permits cookie writes
+    // from Server Actions and Route Handlers. The logout route clears this
+    // stale cookie before returning the user to sign-in.
+    redirect(expiredSessionRedirect())
   }
   return active
 }
 
 export async function requireRole(role: Session['role']): Promise<Session> {
   const session = await requireSession()
-  if (session.role !== role) redirect(homeFor(session.role))
+  if (session.role !== role) redirect(aestheticHomeFor(session.role))
   return session
 }
 
@@ -87,5 +97,21 @@ export function homeFor(role: Session['role']): string {
       return '/redeemer'
     default:
       return '/participant'
+  }
+}
+
+/**
+ * The default authenticated entry point for the branch-preview experience.
+ * Keep `homeFor` above for the established application routes: callers that
+ * explicitly link to the legacy workspace should continue to work there.
+ */
+export function aestheticHomeFor(role: Session['role']): string {
+  switch (role) {
+    case 'issuer':
+      return '/aesthetic-lab/issuer'
+    case 'participant':
+      return '/aesthetic-lab'
+    default:
+      return homeFor(role)
   }
 }

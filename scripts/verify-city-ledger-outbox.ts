@@ -1,36 +1,35 @@
-/**
- * Small integration check for the city-ledger outbox. Run it against an empty
- * disposable DATABASE_URL and CITY_DB_BERKELEY_URL after `npm run db:migrate`.
- */
-import { db, client } from '../src/lib/db/client'
-import { cityEvents } from '../src/lib/db/city-schema'
-import { getCityDb } from '../src/lib/db/city-client'
-import { appendEvent } from '../src/lib/ledger/ledger'
-import { flushCityLedgerOutbox } from '../src/lib/ledger/city-outbox'
-import { EventTypes } from '../src/lib/ledger/events'
+/** Self-isolating outbox check. The source database is read only. */
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import assert from 'node:assert/strict'
 
 async function main() {
-  await db.transaction(async (tx) => {
-    await appendEvent(
-      tx,
-      EventTypes.TASK_CREATED,
-      { taskId: 'outbox-check', orgId: 'outbox-check', cityId: 'berkeley', title: 'Outbox integration check', credits: 1 },
-      'outbox-checker',
-    )
+  const directory=mkdtempSync(join(tmpdir(),'citysync-outbox-check-'))
+  const database=join(directory,'app.db')
+  execFileSync('sqlite3',[resolve(process.argv[2]||'local.db'),'.backup '+JSON.stringify(database)])
+  process.env.DATABASE_URL='file:'+database
+  delete process.env.DATABASE_AUTH_TOKEN
+  const cityId='outbox-test'
+  process.env.CITY_DB_OUTBOX_TEST_URL='file:'+join(directory,'city.db')
+  const {db,client}=await import('../src/lib/db/client')
+  const {cityEvents}=await import('../src/lib/db/city-schema')
+  const {getCityDb,getCityClient,provisionCityDatabase}=await import('../src/lib/db/city-client')
+  const {appendEvent}=await import('../src/lib/ledger/ledger')
+  const {flushCityLedgerOutbox}=await import('../src/lib/ledger/city-outbox')
+  const {EventTypes}=await import('../src/lib/ledger/events')
+  await provisionCityDatabase(cityId)
+  await db.transaction(async tx=>{
+    await appendEvent(tx,EventTypes.TASK_CREATED,{taskId:'outbox-check',orgId:'outbox-check',cityId,title:'Isolated outbox integration check',credits:1},'outbox-checker')
+    await appendEvent(tx,EventTypes.VOLUNTEER_ADMISSION_REVIEWED,{orgId:'outbox-check',cityId,participantId:'test-participant',status:'not_approved'},'outbox-checker')
   })
-
-  const first = await flushCityLedgerOutbox('berkeley')
-  const second = await flushCityLedgerOutbox('berkeley')
-  const events = await getCityDb('berkeley').select().from(cityEvents)
-
-  if (first.delivered !== 1 || first.pending !== 0 || first.failed || second.delivered !== 0 || events.length !== 1) {
-    throw new Error(`Outbox integration check failed: ${JSON.stringify({ first, second, cityEvents: events.length })}`)
-  }
-  console.log('✓ City-ledger outbox delivered once and retry remained idempotent.')
-  client.close()
+  const first=await flushCityLedgerOutbox(cityId),second=await flushCityLedgerOutbox(cityId)
+  const events=await getCityDb(cityId).select().from(cityEvents)
+  assert.equal(first.delivered,1);assert.equal(first.pending,0);assert.equal(first.failed,false)
+  assert.equal(second.delivered,0);assert.equal(events.length,1)
+  assert.equal(events[0].type,EventTypes.TASK_CREATED,'private admission is never mirrored')
+  client.close();getCityClient(cityId).close()
+  console.log('PASS: public outbox delivery is idempotent; private onboarding stays local. Disposable database: '+database)
 }
-
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+main().catch(error=>{console.error(error);process.exitCode=1})

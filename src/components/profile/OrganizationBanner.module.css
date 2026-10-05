@@ -1,0 +1,118 @@
+.banner {
+  --banner-deep: #15151e;
+  --banner-mid: #35488b;
+  --banner-accent: #f7c95d;
+  --banner-accent-deep: #dd9e33;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(125deg, var(--banner-deep), var(--banner-mid));
+}
+
+.coverImage,
+.wash,
+.art {
+  position: absolute;
+  inset: 0;
+}
+
+.coverImage {
+  z-index: -3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .28;
+  filter: saturate(.75) contrast(1.08);
+}
+
+.wash {
+  z-index: -2;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--banner-deep) 92%, transparent), color-mix(in srgb, var(--banner-mid) 78%, transparent));
+}
+
+.art { z-index: -1; }
+
+.originalRing {
+  position: absolute;
+  top: -38%;
+  right: -5%;
+  width: 39%;
+  aspect-ratio: 1;
+  border: clamp(18px, 4vw, 42px) solid color-mix(in srgb, var(--banner-accent) 88%, transparent);
+  border-radius: 50%;
+  transform: rotate(-12deg);
+}
+
+.originalSquare {
+  position: absolute;
+  top: 28%;
+  right: 30%;
+  width: clamp(13px, 2.4vw, 29px);
+  aspect-ratio: 1;
+  border-radius: 22%;
+  background: color-mix(in srgb, var(--banner-accent) 88%, transparent);
+  box-shadow: 0 8px 18px rgba(0,0,0,.18);
+  transform: rotate(12deg);
+}
+
+.foldOne,
+.foldTwo,
+.foldThree {
+  position: absolute;
+  top: -26%;
+  bottom: -28%;
+  width: 34%;
+  transform: skewX(-18deg);
+}
+
+.foldOne { right: 6%; background: color-mix(in srgb, var(--banner-accent) 90%, transparent); }
+.foldTwo { right: 25%; background: color-mix(in srgb, var(--banner-accent-deep) 77%, transparent); }
+.foldThree { right: 43%; background: color-mix(in srgb, var(--banner-mid) 58%, transparent); }
+
+.foldOne::after,
+.foldTwo::after {
+  position: absolute;
+  inset: 0 auto 0 100%;
+  width: 20%;
+  background: rgba(0, 0, 0, .17);
+  content: '';
+  clip-path: polygon(0 0, 100% 12%, 100% 88%, 0 100%);
+}
+
+.loopOne,
+.loopTwo {
+  position: absolute;
+  width: 42%;
+  aspect-ratio: 2.15;
+  border: clamp(10px, 1.8vw, 24px) solid color-mix(in srgb, var(--banner-accent) 88%, transparent);
+  border-radius: 999px;
+  transform: rotate(-17deg);
+}
+
+.loopOne { right: 18%; top: 4%; }
+.loopTwo { right: -2%; bottom: -9%; border-color: color-mix(in srgb, var(--banner-mid) 78%, white 8%); transform: rotate(16deg); }
+.loopDot { position: absolute; right: 32%; top: 46%; width: clamp(12px, 2vw, 25px); aspect-ratio: 1; border-radius: 50%; background: var(--banner-accent); box-shadow: 0 0 0 8px color-mix(in srgb, var(--banner-deep) 55%, transparent); }
+
+.mosaic {
+  position: absolute;
+  right: 7%;
+  top: 10%;
+  display: grid;
+  width: 46%;
+  height: 80%;
+  grid-template-columns: 1.12fr .78fr 1fr;
+  grid-template-rows: .82fr 1.18fr;
+  gap: clamp(5px, .8vw, 12px);
+  transform: rotate(-4deg);
+}
+
+.mosaic span { border-radius: clamp(6px, 1vw, 14px); box-shadow: inset 0 1px rgba(255,255,255,.28), 0 10px 22px rgba(0,0,0,.12); }
+.mosaic span:nth-child(1) { grid-row: 1 / 3; background: color-mix(in srgb, var(--banner-accent-deep) 92%, transparent); }
+.mosaic span:nth-child(2) { background: color-mix(in srgb, var(--banner-mid) 84%, white 7%); }
+.mosaic span:nth-child(3) { background: color-mix(in srgb, var(--banner-accent) 95%, transparent); }
+.mosaic span:nth-child(4) { grid-column: 2 / 4; background: color-mix(in srgb, var(--banner-mid) 62%, var(--banner-accent) 18%); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .art { transition: transform .28s ease; }
+  .banner:hover .art { transform: scale(1.015); }
+}

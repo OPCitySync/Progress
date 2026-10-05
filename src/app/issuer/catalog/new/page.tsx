@@ -1,9 +1,9 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/session'
 import { features } from '@/lib/config'
 import { listTypes } from '@/lib/services/catalog'
 import { getOrganizationLocations } from '@/lib/services/organization-locations'
+import { HistoryBackButton } from '@/app/aesthetic-lab/HistoryBackButton'
 import { createCatalogEntryAction } from '@/app/actions'
 import { Card, PageHeader, Flash, Input, Label, Textarea, Button } from '@/components/ui'
 import { CredentialPicker } from '@/components/CredentialPicker'
@@ -23,9 +23,7 @@ export default async function NewCatalogEntryPage({
 
   return (
     <>
-      <Link href="/issuer/catalog" className="mb-4 inline-block text-sm text-ink-400 hover:text-ink-600">
-        ← Catalog
-      </Link>
+      <HistoryBackButton fallback="/issuer/catalog" variant="plain" className="mb-4" />
       <PageHeader title="New template" subtitle="A reusable opportunity you can schedule again and again." />
       <Flash searchParams={searchParams} />
 

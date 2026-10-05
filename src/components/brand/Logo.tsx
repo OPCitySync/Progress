@@ -9,11 +9,15 @@ type LogoProps = {
 }
 
 export function Logo({ href = '/', kind = 'wordmark', variant = 'light', size = 32, className }: LogoProps) {
+  const tone = variant === 'on-white' || variant === 'dark' ? 'dark' : 'light'
+  const source = kind === 'wordmark' && tone === 'light'
+    ? '/brand/mycity-logo-gold-white-transparent.svg'
+    : `/brand/mycity-${kind}-${tone}.svg`
   const img = (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`/brand/citysync-${kind}-${variant}.svg`}
-      alt="City/Sync"
+      src={source}
+      alt="mycity"
       style={{ height: size, width: 'auto' }}
       className={className}
     />

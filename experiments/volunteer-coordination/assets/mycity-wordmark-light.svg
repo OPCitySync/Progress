@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="450" height="128" viewBox="0 0 450 128" role="img" aria-label="mycity">
+  <rect x="21" y="21" width="31" height="25" rx="5" fill="#F6F7F3"/>
+  <rect x="59" y="21" width="48" height="25" rx="5" fill="#F6F7F3"/>
+  <rect x="21" y="53" width="31" height="22" rx="5" fill="#F6F7F3"/>
+  <rect x="21" y="82" width="31" height="25" rx="5" fill="#F6F7F3"/>
+  <rect x="59" y="82" width="48" height="25" rx="5" fill="#F6F7F3"/>
+  <circle cx="89" cy="64" r="10" fill="#DD9E33"/>
+  <text x="149" y="99" fill="#DD9E33" font-family="Inter, Avenir Next, Arial, sans-serif" font-size="84" font-weight="700" letter-spacing="-5">my<tspan fill="#F6F7F3">city</tspan></text>
+</svg>

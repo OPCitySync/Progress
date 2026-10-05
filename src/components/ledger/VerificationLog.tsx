@@ -3,12 +3,13 @@ import { flushCityLedgerOutbox } from '@/lib/ledger/city-outbox'
 import { buildLookups, describeEvent } from '@/lib/ledger/describe'
 import { Card, Badge, Mono } from '@/components/ui'
 import { fmtDateTime, shortHash } from '@/lib/format'
+import { isPrivateOnboardingEvent } from '@/lib/ledger/onboarding-privacy'
 
 export async function VerificationLog({ cityId }: { cityId: string }) {
   await flushCityLedgerOutbox(cityId)
   const { events, intact, firstBrokenSeq } = await verifyCityChainDetailed(cityId)
   const lookups = await buildLookups()
-  const newestFirst = [...events].reverse()
+  const newestFirst = events.filter(event => !isPrivateOnboardingEvent(event.type)).reverse()
 
   return (
     <>

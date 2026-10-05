@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420">
+  <rect width="960" height="420" fill="#e7edda"/>
+  <circle cx="744" cy="112" r="63" fill="#c9d69b"/>
+  <path d="M0 269Q172 193 352 262T689 249T960 226V420H0Z" fill="#c4d3b6"/>
+  <path d="M0 340Q190 261 403 326T960 304V420H0Z" fill="#a9bc99"/>
+  <g stroke="#5f7e5d" stroke-width="4" fill="none" stroke-linecap="round"><path d="M670 277V144m0 64-32-34m32 15 30-31m-110 139v-94m0 49-27-24m27 10 26-25m161 67V193m0 42-23-20m23 31 23-19"/></g>
+  <g fill="#749064"><ellipse cx="641" cy="171" rx="23" ry="11" transform="rotate(36 641 171)"/><ellipse cx="696" cy="160" rx="22" ry="10" transform="rotate(-38 696 160)"/><ellipse cx="665" cy="141" rx="11" ry="26"/><ellipse cx="567" cy="228" rx="20" ry="9" transform="rotate(30 567 228)"/><ellipse cx="609" cy="215" rx="20" ry="10" transform="rotate(-38 609 215)"/><ellipse cx="590" cy="199" rx="11" ry="21"/><ellipse cx="752" cy="215" rx="17" ry="9" transform="rotate(30 752 215)"/><ellipse cx="794" cy="229" rx="20" ry="10" transform="rotate(-30 794 229)"/></g>
+  <path d="m523 279 261-28 79 36-255 36Z" fill="#9eac7e"/><path d="m523 279 85 44v57l-85-44Z" fill="#ae825c"/><path d="m608 323 255-36v58l-255 35Z" fill="#bd9670"/>
+  <path d="m620 350 228-33" stroke="#9c7652" stroke-width="2"/>
+  <g fill="#305342" font-family="system-ui,sans-serif"><text x="66" y="94" font-size="12" letter-spacing="4">A MORNING IN THE GARDEN</text><text x="63" y="162" font-size="45" font-weight="500">A little time.</text><text x="63" y="218" font-size="45" font-weight="500">Something growing.</text><text x="66" y="273" font-size="16" fill="#657d57">Sunday · All experience levels welcome</text></g>
+</svg>

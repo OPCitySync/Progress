@@ -33,6 +33,8 @@ export default async function IssuerProfilePreviewPage() {
     mission: profile.mission || org.description || '',
     logoUrl: profile.logoUrl,
     coverUrl: profile.coverUrl,
+    bannerStyle: profile.bannerStyle,
+    bannerPalette: profile.bannerPalette,
     location: profile.location,
     website: profile.website,
     contactEmail: profile.contactEmail,
@@ -81,12 +83,8 @@ export default async function IssuerProfilePreviewPage() {
       <OrgStatusBanner status={org?.status ?? 'pending'} />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Badge tone={profile.published ? 'green' : 'gray'}>{profile.published ? 'Published' : 'Draft'}</Badge>
-        <span className="text-xs text-ink-400">
-          {profile.published
-            ? 'Your custom page is live. The preview below matches what visitors see.'
-            : 'Not published yet — visitors currently see a default page. This preview shows your draft.'}
-        </span>
+        <Badge tone="green">Live</Badge>
+        <span className="text-xs text-ink-400">Saved profile changes appear here and on your public organization page.</span>
       </div>
 
       <OrgProfileBody

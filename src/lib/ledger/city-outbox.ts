@@ -1,9 +1,10 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { cityLedgerOutbox } from '@/lib/db/schema'
 import { getCityDb } from '@/lib/db/city-client'
 import { appendCityEvent } from './city-ledger'
 import type { EventType } from './events'
+import { privateOnboardingEventTypes } from './onboarding-privacy'
 
 const BATCH_SIZE = 250
 
@@ -30,7 +31,7 @@ export async function flushCityLedgerOutbox(cityId: string, limit = BATCH_SIZE):
   const rows = await db
     .select()
     .from(cityLedgerOutbox)
-    .where(and(eq(cityLedgerOutbox.cityId, cityId), isNull(cityLedgerOutbox.deliveredAt)))
+    .where(and(eq(cityLedgerOutbox.cityId, cityId), isNull(cityLedgerOutbox.deliveredAt), notInArray(cityLedgerOutbox.type, privateOnboardingEventTypes)))
     .orderBy(asc(cityLedgerOutbox.eventSeq))
     .limit(limit)
 
@@ -70,7 +71,7 @@ export async function flushCityLedgerOutbox(cityId: string, limit = BATCH_SIZE):
   const remaining = await db
     .select({ count: sql<number>`count(*)` })
     .from(cityLedgerOutbox)
-    .where(and(eq(cityLedgerOutbox.cityId, cityId), isNull(cityLedgerOutbox.deliveredAt)))
+    .where(and(eq(cityLedgerOutbox.cityId, cityId), isNull(cityLedgerOutbox.deliveredAt), notInArray(cityLedgerOutbox.type, privateOnboardingEventTypes)))
   return { cityId, delivered, pending: Number(remaining[0]?.count ?? 0), failed: false }
 }
 
@@ -79,7 +80,7 @@ export async function flushAllCityLedgerOutbox(): Promise<CityLedgerDeliveryResu
   const rows = await db
     .select({ cityId: cityLedgerOutbox.cityId })
     .from(cityLedgerOutbox)
-    .where(isNull(cityLedgerOutbox.deliveredAt))
+    .where(and(isNull(cityLedgerOutbox.deliveredAt), notInArray(cityLedgerOutbox.type, privateOnboardingEventTypes)))
     .orderBy(asc(cityLedgerOutbox.cityId), asc(cityLedgerOutbox.eventSeq))
   const cityIds = Array.from(new Set(rows.map((row) => row.cityId)))
   const results: CityLedgerDeliveryResult[] = []
