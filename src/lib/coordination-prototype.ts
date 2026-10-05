@@ -21,7 +21,7 @@ export function coordinationPrototypeEnabled() {
 }
 
 export function coordinationIntegratedEnabled() {
-  return process.env.CITYSYNC_COORDINATION_UI === 'integrated' && (!process.env.VERCEL || process.env.VERCEL_ENV === 'preview')
+  return process.env.CITYSYNC_COORDINATION_UI === 'integrated'
 }
 
 export async function coordinationAsset(path: string, mount = '/coordination') {

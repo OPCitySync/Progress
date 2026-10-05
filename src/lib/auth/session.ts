@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { validateActiveSession } from '@/lib/services/identity-access'
+import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 
 const COOKIE = 'cs_session'
 
@@ -101,11 +102,15 @@ export function homeFor(role: Session['role']): string {
 }
 
 /**
- * The default authenticated entry point for the branch-preview experience.
+ * The default authenticated entry point for the current MyCity experience.
  * Keep `homeFor` above for the established application routes: callers that
  * explicitly link to the legacy workspace should continue to work there.
  */
 export function aestheticHomeFor(role: Session['role']): string {
+  if (coordinationIntegratedEnabled()) {
+    if (role === 'issuer') return '/mycity#/coordinator/home'
+    if (role === 'participant') return '/mycity#/volunteer/home'
+  }
   switch (role) {
     case 'issuer':
       return '/aesthetic-lab/issuer'
