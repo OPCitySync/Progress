@@ -17,12 +17,12 @@ export function issuerSection(page) {
 }
 export function issuerNavigation(ctx) {
   const {state,ui,e,icon}=ctx,section=issuerSection(ui.page);
-  const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors');
+  const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors')||{id:'',name:'Organization',profile:{}};
   const colors=ISSUER_HEADER_PALETTE;
   const activeTab=({program:'programs',work:'planning',activity:'planning',schedule:'planning',position:'recruitment',application:'recruitment','org-profile':'discover'})[ui.page]||ui.page;
   const pending=state.recruitment.applications.filter(a=>a.orgId===org.id&&a.submittedAt&&['submitted','reviewing','needs-info','offered','onboarding'].includes(a.status)).length;
   const brandWordmark=`${ctx.assetBase}/assets/mycity-logo-gold-blue-on-white.svg`;
-  return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a><header class="issuer-header" style="--issuer-deep:${colors[0]};--issuer-mid:${colors[1]};--issuer-accent:${colors[2]}"><div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?(ui.page==='settings'?'Connected organization settings':'Branch preview · sample data'):'Local prototype · sample data'}</span></span></div><div class="issuer-mainbar"><a href="#/coordinator/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a><nav aria-label="Issuer sections" class="issuer-section-nav">${ISSUER_SECTIONS.map(s=>`<a href="#/coordinator/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>${headerAccount(ctx)}</div></header>${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/coordinator/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='recruitment'&&pending?`<span class="issuer-count">${pending}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
+  return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a><header class="issuer-header" style="--issuer-deep:${colors[0]};--issuer-mid:${colors[1]};--issuer-accent:${colors[2]}"><div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Connected workspace':'Local prototype · sample data'}</span></span></div><div class="issuer-mainbar"><a href="#/coordinator/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a><nav aria-label="Issuer sections" class="issuer-section-nav">${ISSUER_SECTIONS.map(s=>`<a href="#/coordinator/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>${headerAccount(ctx)}</div></header>${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/coordinator/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='recruitment'&&pending?`<span class="issuer-count">${pending}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
 }
 
 export const VOLUNTEER_SECTIONS = [
@@ -38,7 +38,7 @@ export function volunteerNavigation(ctx) {
   const brandWordmark=`${ctx.assetBase}/assets/mycity-logo-gold-blue-on-white.svg`;
   return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a>
     <header class="issuer-header" style="--issuer-deep:#15151e;--issuer-mid:#34343f;--issuer-accent:#fbf0dc">
-      <div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Branch preview · sample data':'Local prototype · sample data'}</span></span></div>
+      <div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Connected workspace':'Local prototype · sample data'}</span></span></div>
       <div class="issuer-mainbar"><a href="#/volunteer/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a>
       <nav aria-label="Volunteer sections" class="issuer-section-nav">${VOLUNTEER_SECTIONS.map(s=>`<a href="#/volunteer/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>
       ${headerAccount(ctx)}</div>
@@ -50,11 +50,11 @@ export function volunteerNavigation(ctx) {
 // Shared header utilities keep messages one click away from every workspace.
 function headerAccount(ctx) {
   const {state,ui,e,icon,button,avatar}=ctx,issuer=ui.mode==='coordinator';
-  const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors');
+  const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors')||{id:'',name:'Organization',location:'',profile:{}};
   const person=issuer?{name:ctx.coordinatorName,color:'peach'}:ctx.currentPerson();
   const connectedOrg=issuer&&ctx.integratedPlatform?ctx.platformContext?.organization:null;
-  const identity=issuer?{name:connectedOrg?.name||org.name,color:'sage'}:ctx.integratedPlatform?{name:ctx.platformContext?.accountName||person.name,color:'peach'}:person;
-  const logo=connectedOrg?.logoUrl||org.profile.logo;
+  const identity=issuer?{name:connectedOrg?.name||org.name||'Organization',color:'sage'}:ctx.integratedPlatform?{name:ctx.platformContext?.accountName||person.name,color:'peach'}:person;
+  const logo=connectedOrg?.logoUrl||org.profile?.logo;
   const otherIdentities=ctx.platformContext?.identities?.filter(target=>!target.active)||[];
   const workspaceSwitch=ctx.integratedPlatform
     ? otherIdentities.map(target=>button(icon('switch')+`<span><small>Switch to</small>${e(target.label)}<small>${target.role==='issuer'?'Issuer workspace':'Volunteer workspace'}</small></span>`,'connectedIdentity',`data-identity-id="${e(target.id)}"`,'header-profile-item')).join('') || '<span class="header-profile-empty">No other workspaces available</span>'

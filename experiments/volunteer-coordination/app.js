@@ -22,13 +22,14 @@ import { ensureFeed, feedActor, transitionFeed } from './feed-model.js';
 import { renderFeed, renderFeedResults, renderFeedComposer, renderVolunteerActionHistory } from './feed-view.js';
 import { ensureCommunications, transitionCommunication } from './communication-model.js';
 import { renderConversations, renderCommunicationComposer } from './communication-view.js';
-import { STORAGE_KEY, REQUIREMENTS, createInitialState, transition, missingRequirements, confirmedCount, activeCommitment, parseCSV } from './model.js';
+import { STORAGE_KEY, REQUIREMENTS, createEmptyState, createInitialState, transition, missingRequirements, confirmedCount, activeCommitment, assignmentModeOf, activityWaiverConsent, parseCSV } from './model.js';
 
-// The branch preview and standalone prototype share an origin in local dev,
-// but must not reuse each other's browser-local sample records or asset paths.
-const integratedPlatform = document.querySelector('meta[name="citysync-data-mode"]')?.content === 'integrated-preview-sample-data';
+// The connected application and standalone prototype can share an origin in
+// local development, but the application must never load prototype fixtures.
+const dataMode = document.querySelector('meta[name="citysync-data-mode"]')?.content;
+const integratedPlatform = dataMode === 'integrated-platform' || dataMode === 'integrated-preview-sample-data';
 const storageKey = integratedPlatform
-  ? `${STORAGE_KEY}-mycity-branch` : STORAGE_KEY;
+  ? `${STORAGE_KEY}-mycity-connected-v1` : STORAGE_KEY;
 let connectedContext = null;
 let connectedContextError = '';
 let connectedResume = null;
@@ -36,10 +37,16 @@ let connectedResumeError = '';
 let connectedResumeLoading = false;
 
 let state;
-try { const saved = JSON.parse(localStorage.getItem(storageKey)); state = saved?.version === 1 && Array.isArray(saved.people) && Array.isArray(saved.activities) && Array.isArray(saved.commitments) ? saved : createInitialState(); } catch { state = createInitialState(); }
+const bootstrapParticipant = location.hash.replace(/^#\/?/, '').split('/')[0] === 'volunteer';
+const newState = () => integratedPlatform ? createEmptyState({ participant: bootstrapParticipant }) : createInitialState();
+try {
+  if (integratedPlatform) localStorage.removeItem(`${STORAGE_KEY}-mycity-branch`);
+  const saved = JSON.parse(localStorage.getItem(storageKey));
+  state = saved?.version === 1 && Array.isArray(saved.people) && Array.isArray(saved.activities) && Array.isArray(saved.commitments) ? saved : newState();
+} catch { state = newState(); }
 state = ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state)))))));
 try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
-const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, passportSort: 'name', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: 'coordinator', page: 'home', person: 'alex', query: '', filter: 'all', dialog: null, csv: [] };
+const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, passportSort: 'name', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
 try { const savedPerson = sessionStorage.getItem(storageKey + '-persona'); if (state.people.some(p => p.id === savedPerson)) ui.person = savedPerson; } catch {}
 try { const savedOrg = sessionStorage.getItem(storageKey + '-recruit-org'); if (state.recruitment.organizations.some(o => o.id === savedOrg)) ui.recruitOrg = savedOrg; } catch {}
 const app = document.querySelector('#app');
@@ -84,17 +91,71 @@ const icons = {
 const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.work}</svg>`;
 const button = (label, action, attrs = '', cls = 'btn') => `<button type="button" class="${cls}" data-action="${action}" ${attrs}>${label}</button>`;
 const badge = (text, kind = 'neutral') => `<span class="badge ${kind}">${e(text)}</span>`;
-const avatar = (p, size = '') => `<span class="avatar ${e(p.color)} ${size}" aria-hidden="true">${e(p.name.split(' ').map(w => w[0]).slice(0, 2).join(''))}</span>`;
-const currentPerson = () => state.people.find(p => p.id === ui.person) || state.people[0];
+const emptyPerson = () => ({ id: 'connected-account', name: connectedContext?.accountName || 'Your Account', email: '', relationship: 'interested', role: '', color: 'sage', requirements: {}, availability: 'Not shared yet', preference: '', connectedAccount: true });
+const avatar = (p = emptyPerson(), size = '') => `<span class="avatar ${e(p.color || 'sage')} ${size}" aria-hidden="true">${e(String(p.name || 'Account').split(' ').map(w => w[0]).slice(0, 2).join(''))}</span>`;
+const currentPerson = () => state.people.find(p => p.id === ui.person) || state.people.find(p => p.connectedAccount) || state.people[0] || emptyPerson();
 const orgMode = () => ui.mode === 'coordinator';
 const packingReady = p => ['welcome', 'waiver', 'food'].every(key => requirementReady(state, p, key));
 const deliveryReady = p => ['welcome', 'waiver', 'driver'].every(key => requirementReady(state, p, key));
 const dateLabel = (date, options = { weekday: 'short', month: 'short', day: 'numeric' }) => date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', options) : 'As needed';
 const titleForType = type => ACTIVITY_TYPES[type] || 'Archived activity';
-const canSee = a => !a.archived && (orgMode() || (state.programWorkspace.programs.find(p => p.id === a.programId)?.status !== 'draft' && (a.visibility === 'public' || currentPerson().relationship === 'member')) || activeCommitment(state, currentPerson().id, a.id));
+const canSee = a => !a.archived && (orgMode() || (state.programWorkspace.programs.find(p => p.id === a.programId)?.status !== 'draft' && (assignmentModeOf(a) === 'public' || currentPerson().relationship === 'member')) || activeCommitment(state, currentPerson().id, a.id));
 const commitmentsFor = a => state.commitments.filter(c => c.activityId === a.id && ['confirmed', 'proposed', 'waitlisted'].includes(c.status));
+const assignmentLabel = a => ({ manual: 'Organization assigns', roster: 'Open to roster', public: 'Open to public' }[assignmentModeOf(a)] || 'Organization assigns');
 function toast(message) { const t = document.querySelector('#toast'); t.textContent = message; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 4800); }
 function save() { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { toast('Browser storage is unavailable. Changes will last for this visit only.'); } }
+function applyConnectedContext(context) {
+  if (!integratedPlatform || !context) return;
+  if (context.role === 'issuer' && context.organization) {
+    const organization = context.organization;
+    const existing = state.recruitment.organizations.find(item => item.id === HOME_ORG) || {};
+    const initial = organization.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'OR';
+    state.people = state.people.filter(person => !person.connectedAccount);
+    state.recruitment.organizations = [
+      {
+        ...existing,
+        id: HOME_ORG,
+        platformId: organization.id,
+        connectedOrganization: true,
+        name: organization.name,
+        cause: existing.cause || '',
+        color: existing.color || 'sage',
+        initial,
+        location: organization.location || context.cityName || '',
+        mission: existing.mission || '',
+        description: existing.description || '',
+        contact: context.accountName || existing.contact || '',
+        email: organization.email || '',
+        support: existing.support || '',
+        welcome: existing.welcome || '',
+        profile: existing.profile || {
+          tagline: '', causes: [], phone: organization.phone || '', website: '', socials: {}, palette: 'forest', banner: 'confluence',
+          logo: organization.logoUrl || '', cover: '', coverAlt: '', featuredRoleId: '', updatedAt: '',
+        },
+      },
+      ...state.recruitment.organizations.filter(item => item.id !== HOME_ORG),
+    ];
+    const members = state.programWorkspace.organizationMembers.filter(member => !member.connectedAccount);
+    members.unshift({ id: 'connected-account', name: context.accountName || 'Organization account', role: organization.canEdit ? 'Organization owner' : 'Organization member', workspaceAccess: true, active: true, connectedAccount: true });
+    state.programWorkspace.organizationMembers = members;
+    ui.recruitOrg = HOME_ORG;
+  } else {
+    let person = state.people.find(item => item.connectedAccount);
+    if (!person) {
+      person = emptyPerson();
+      state.people.unshift(person);
+    }
+    Object.assign(person, { name: context.accountName || 'Your Account', connectedAccount: true });
+    ui.person = person.id;
+  }
+  state = ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state)))))));
+  const person = state.people.find(item => item.connectedAccount);
+  if (person) {
+    const profile = state.passports.profiles[person.id] ||= { city: '', languages: '', skills: '', bio: '', openForVolunteering: false };
+    if (!profile.city && context.cityName) profile.city = context.cityName;
+  }
+  save();
+}
 function act(action, options = {}) {
   try {
     const result = transition(state, action); state = result.state; save();
@@ -155,8 +216,8 @@ function recruitmentContextOrg() {
   const orgId = ['recruitment','profile'].includes(ui.page) ? ui.recruitOrg : ui.page === 'org-profile' ? ui.item : ui.page === 'position' ? state.recruitment.positions.find(p => p.id === ui.item)?.orgId : ui.page === 'application' ? state.recruitment.applications.find(a => a.id === ui.item)?.orgId : null;
   return state.recruitment.organizations.find(o => o.id === orgId) || null;
 }
-const workspaceLabel = () => integratedPlatform && ui.page === 'settings' ? connectedContext?.organization?.name || 'Organization' : !orgMode() && ['passport','history','resume'].includes(ui.page) ? 'My passport' : recruitmentContextOrg()?.name || (['discover','applications'].includes(ui.page) ? 'Your city' : 'Berkeley Neighbors');
-const coordinatorName = () => recruitmentContextOrg()?.contact || 'Maya Thompson';
+const workspaceLabel = () => integratedPlatform && orgMode() ? connectedContext?.organization?.name || recruitmentContextOrg()?.name || 'Organization' : !orgMode() && ['passport','history','resume'].includes(ui.page) ? 'My passport' : recruitmentContextOrg()?.name || (['discover','applications'].includes(ui.page) ? 'Your city' : 'Berkeley Neighbors');
+const coordinatorName = () => integratedPlatform ? connectedContext?.accountName || 'Organization account' : recruitmentContextOrg()?.contact || 'Maya Thompson';
 function pageHeader(kicker, title, subtitle, controls = '') { return `<div class="page-heading"><div>${kicker ? `<span class="eyebrow">${kicker}</span>` : ''}<h1>${title}</h1><p>${subtitle}</p></div><div class="page-actions">${controls}</div></div>`; }
 function stat(label, value, detail, glyph) { return `<div class="stat"><div class="stat-top"><span>${label}</span>${icon(glyph)}</div><strong>${value}</strong><small>${detail}</small></div>`; }
 function coverage(a) {
@@ -197,7 +258,7 @@ function requirementRows(p, keys, coordinator = orgMode(), date = today()) {
 }
 function activityCard(a) {
   const total = a.roles.reduce((n, r) => n + r.capacity, 0); const count = confirmedCount(state, a.id); const mine = activeCommitment(state, currentPerson().id, a.id);
-  return `<article class="activity-card"><div class="activity-art ${e(a.color)}"><span class="art-label">${e(a.program)}</span>${icon(a.type === 'project' ? 'book' : a.id === 'garden' ? 'leaf' : 'work', 'art-icon')}<span class="art-corner">${a.type === 'project' ? 'MAKE SOMETHING USEFUL' : 'SHOW UP. MAKE A DIFFERENCE.'}</span></div><div class="activity-card-body"><div class="card-tags">${badge(titleForType(a.type), a.color)}${badge(a.visibility === 'public' ? 'Open to newcomers' : 'Team members')}</div><h3><button data-action="activity" data-id="${e(a.id)}">${e(a.title)}</button></h3><p class="card-description">${e(a.description)}</p><div class="card-meta">${icon('calendar')} ${dateLabel(a.date)}<span>·</span>${e(a.time)}</div><div class="card-meta">${icon('pin')} ${e(a.location)}</div><div class="card-bottom"><span>${!orgMode() && mine ? badge(mine.status, mine.status === 'confirmed' ? 'sage' : 'sand') : `${count} of ${total} confirmed`}</span>${button('View ' + icon('arrow'), 'activity', `data-id="${e(a.id)}"`, 'text-button')}</div></div></article>`;
+  return `<article class="activity-card"><div class="activity-art ${e(a.color)}"><span class="art-label">${e(a.program)}</span>${icon(a.type === 'project' ? 'book' : a.id === 'garden' ? 'leaf' : 'work', 'art-icon')}<span class="art-corner">${a.type === 'project' ? 'MAKE SOMETHING USEFUL' : 'SHOW UP. MAKE A DIFFERENCE.'}</span></div><div class="activity-card-body"><div class="card-tags">${badge(titleForType(a.type), a.color)}${a.type === 'project' ? badge('Program team') : badge(assignmentLabel(a), assignmentModeOf(a) === 'public' ? 'sage' : assignmentModeOf(a) === 'roster' ? 'lilac' : 'neutral')}</div><h3><button data-action="activity" data-id="${e(a.id)}">${e(a.title)}</button></h3><p class="card-description">${e(a.description)}</p><div class="card-meta">${icon('calendar')} ${dateLabel(a.date)}<span>·</span>${e(a.time)}</div><div class="card-meta">${icon('pin')} ${e(a.location)}</div><div class="card-bottom"><span>${!orgMode() && mine ? badge(mine.status, mine.status === 'confirmed' ? 'sage' : 'sand') : `${count} of ${total} confirmed`}</span>${button('View ' + icon('arrow'), 'activity', `data-id="${e(a.id)}"`, 'text-button')}</div></div></article>`;
 }
 function workPage() {
   const activities = state.activities.filter(canSee);
@@ -215,8 +276,21 @@ function activityPage() {
   const a = state.activities.find(a => a.id === ui.item);
   if (!a || (!canSee(a) && !(a.archived && (orgMode() || activeCommitment(state,currentPerson().id,a.id))))) return `<div class="empty-state">This activity is available to team members.${button('View your organization', 'nav', 'data-page="organization"', 'btn primary')}</div>`;
   if (a.archived) return pageHeader('HISTORICAL RECORD', e(a.title), 'This activity type has been retired. Previous commitments are preserved; new signups are closed.') + `<section class="panel detail-section"><h2>Previous commitments</h2>${commitmentsFor(a).map(c => `<p>${e(state.people.find(p=>p.id===c.personId)?.name)} · ${e(c.status)}</p>`).join('') || '<p>No commitments recorded.</p>'}</section>`;
-  const list = commitmentsFor(a); const mine = activeCommitment(state, currentPerson().id, a.id);
-  return `<button class="back-link" data-action="nav" data-page="work">← All work & activities</button>${pageHeader(e(a.program.toUpperCase()), e(a.title), e(a.description), orgMode() && a.workStatus !== 'Complete' ? button(icon('plus') + 'Invite a volunteer', 'assign', `data-id="${e(a.id)}"`, 'btn primary') : mine || a.workStatus === 'Complete' ? '' : button(a.type === 'project' ? 'Contribute to this task' : 'Choose a place', 'signup', `data-id="${e(a.id)}"`, 'btn primary'))}<div class="activity-detail-grid"><div>${programActivityContext(feedContext(), a)}<section class="panel detail-section activity-facts"><div>${icon('calendar')}<span><small>${a.type === 'project' ? 'DUE DATE' : 'WHEN'}</small><strong>${dateLabel(a.date)}</strong>${e(a.time)}</span></div><div>${icon('pin')}<span><small>WHERE</small><strong>${e(a.location)}</strong>${e(a.recurrence)}</span></div><div>${icon('people')}<span><small>YOUR CONTACT</small><strong>${e(a.contact)}</strong>Ask a question below</span></div></section>${!orgMode() && mine ? `<section class="panel commitment-banner"><div><h3>${mine.status === 'proposed' ? 'Would you like to join us?' : 'Your commitment'}</h3><p>${mine.status === 'proposed' ? 'Your place counts toward coverage after you accept.' : 'Your coordinator sees the same information.'}</p></div>${commitmentControls(mine, a)}</section>` : ''}<section class="panel detail-section"><div class="section-heading"><div><span class="eyebrow">PICK UP WHERE THE TEAM LEFT OFF</span><h2>${a.type === 'project' ? 'Task handoff' : 'The handoff'}</h2></div>${orgMode() || mine?.status === 'confirmed' ? button('Update ' + icon('arrow'), 'handoff', `data-id="${e(a.id)}"`, 'text-button') : ''}</div><div class="handoff-box"><span class="handoff-label">DONE SO FAR</span><p>${e(a.progress)}</p><span class="handoff-label">WHAT COMES NEXT</span><p class="next-step">${e(a.next)}</p><div class="handoff-owner">${icon('people')} ${e(a.owner)} is carrying the next step ${a.projectStatus ? badge(a.projectStatus, 'lilac') : ''}</div></div><h3 class="prep-title">Before you arrive</h3><p class="muted">${e(a.bring)}</p></section><section class="panel detail-section"><div class="section-heading"><div><span class="eyebrow">KEEP THE CONVERSATION WITH THE WORK</span><h2>Team conversation</h2></div>${badge(`${state.messages.filter(m => m.activityId === a.id).length} messages`)}</div>${conversation(a.id)}</section></div><aside><section class="panel detail-section"><div class="section-heading"><h2>${'The team'}</h2>${badge(`${confirmedCount(state, a.id)} confirmed`, 'sage')}</div>${coverage(a)}<div class="team-list">${list.map(c => { const p = state.people.find(p => p.id === c.personId); return `<div class="team-member">${avatar(p, 'small')}<div><strong>${e(p.name)}</strong><small>${e(a.roles.find(r => r.id === c.roleId)?.name)}</small></div>${orgMode() && c.status === 'waitlisted' ? button('Offer place', 'offer', `data-id="${e(c.id)}"`, 'btn tiny secondary') : badge(c.status, c.status === 'confirmed' ? 'sage' : 'sand')}${orgMode() && c.status === 'confirmed' ? button(c.attendance === 'present' ? icon('check') : icon('plus'), 'attendance', `data-id="${e(c.id)}" data-value="${c.attendance === 'present' ? 'unrecorded' : 'present'}" aria-label="${c.attendance === 'present' ? 'Undo check-in for' : 'Check in'} ${e(p.name)}" title="${c.attendance === 'present' ? 'Checked in' : 'Record check-in'}"`, `icon-button ${c.attendance === 'present' ? 'checked' : ''}`) : ''}</div>`; }).join('') || '<p class="muted">The first place is waiting for someone.</p>'}</div>${orgMode() && a.workStatus !== 'Complete' ? button(icon('plus') + 'Invite someone', 'assign', `data-id="${e(a.id)}"`, 'btn secondary full-width') : ''}<p class="microcopy">${orgMode() ? 'Invitations count only after acceptance. Use + beside a confirmed person to record check-in.' : 'An invitation is a choice. Accept only if it works for you.'}</p></section><section class="panel detail-section"><h3>How joining works</h3><div class="setting-row"><span>Visible to</span><strong>${a.visibility === 'public' ? 'Everyone' : 'Team members'}</strong></div><div class="setting-row"><span>Joining</span><strong>${a.enrollment === 'managed' ? 'Coordinator invitation' : a.enrollment === 'self' ? 'Volunteer signup' : 'Signup or invitation'}</strong></div><p class="microcopy">Preparation is checked for the role you choose.</p></section></aside></div>`;
+  const mode = assignmentModeOf(a);
+  const list = state.commitments.filter(commitment => commitment.activityId === a.id && ['confirmed','proposed','waitlisted','verified'].includes(commitment.status));
+  const mine = activeCommitment(state, currentPerson().id, a.id);
+  const verifiedMine = state.commitments.find(commitment => commitment.personId === currentPerson().id && commitment.activityId === a.id && commitment.status === 'verified');
+  const participantCta = mine || verifiedMine || a.workStatus === 'Complete' ? ''
+    : mode === 'manual' ? '<span class="activity-managed-label">Organization assignment</span>'
+    : a.type === 'project' ? button('Contribute to this task', 'signup', `data-id="${e(a.id)}"`, 'btn primary')
+    : button(mode === 'public' ? 'Claim Open Place' : 'Join Roster Activity', 'signup', `data-id="${e(a.id)}"`, 'btn primary');
+  const coordinatorCta = a.workStatus !== 'Complete' && mode === 'manual' ? button(icon('plus') + 'Invite a volunteer', 'assign', `data-id="${e(a.id)}"`, 'btn primary') : '';
+  const pathway = mode === 'manual'
+    ? [['1','Organization chooses from its approved roster'],['2','Volunteer accepts or declines'],['3','Accepted place becomes confirmed']]
+    : mode === 'roster'
+      ? [['1','Approved roster members can see this date'],['2','Volunteer chooses an open place'],['3','The commitment appears on both calendars']]
+      : [['1','Anyone in the City Network can review it'],['2','Requirements and the current waiver are completed'],['3','One place is confirmed; roster membership is unchanged']];
+  return `<button class="back-link" data-action="nav" data-page="work">← All work & activities</button>${pageHeader(e(a.program.toUpperCase()), e(a.title), e(a.description), orgMode() ? coordinatorCta : participantCta)}<div class="activity-detail-grid"><div>${programActivityContext(feedContext(), a)}<section class="panel detail-section activity-facts"><div>${icon('calendar')}<span><small>${a.type === 'project' ? 'DUE DATE' : 'WHEN'}</small><strong>${dateLabel(a.date)}</strong>${e(a.time)}</span></div><div>${icon('pin')}<span><small>WHERE</small><strong>${e(a.location)}</strong>${e(a.recurrence)}</span></div><div>${icon('people')}<span><small>YOUR CONTACT</small><strong>${e(a.contact)}</strong>Ask a question below</span></div></section>${!orgMode() && mine ? `<section class="panel commitment-banner"><div><h3>${mine.status === 'proposed' ? 'Would you like to join us?' : 'Your commitment'}</h3><p>${mine.status === 'proposed' ? 'Your place counts toward coverage after you accept.' : 'Your coordinator sees the same information.'}</p></div>${commitmentControls(mine, a)}</section>` : ''}${!orgMode() && verifiedMine ? `<section class="panel commitment-banner"><div><h3>Your contribution is verified.</h3><p>This activity now appears in your Volunteer Passport experience.</p></div>${badge('Verified','sage')}</section>` : ''}<section class="panel detail-section"><div class="section-heading"><div><span class="eyebrow">PICK UP WHERE THE TEAM LEFT OFF</span><h2>${a.type === 'project' ? 'Task handoff' : 'The handoff'}</h2></div>${orgMode() || mine?.status === 'confirmed' ? button('Update ' + icon('arrow'), 'handoff', `data-id="${e(a.id)}"`, 'text-button') : ''}</div><div class="handoff-box"><span class="handoff-label">DONE SO FAR</span><p>${e(a.progress)}</p><span class="handoff-label">WHAT COMES NEXT</span><p class="next-step">${e(a.next)}</p><div class="handoff-owner">${icon('people')} ${e(a.owner)} is carrying the next step ${a.projectStatus ? badge(a.projectStatus, 'lilac') : ''}</div></div><h3 class="prep-title">Before you arrive</h3><p class="muted">${e(a.bring)}</p></section><section class="panel detail-section"><div class="section-heading"><div><span class="eyebrow">KEEP THE CONVERSATION WITH THE WORK</span><h2>Team conversation</h2></div>${badge(`${state.messages.filter(m => m.activityId === a.id).length} messages`)}</div>${conversation(a.id)}</section></div><aside><section class="panel detail-section"><div class="section-heading"><h2>The team</h2>${badge(`${confirmedCount(state, a.id)} confirmed`, 'sage')}</div>${coverage(a)}<div class="team-list">${list.map(c => { const p = state.people.find(p => p.id === c.personId); const statusTone = ['confirmed','verified'].includes(c.status) ? 'sage' : 'sand'; return `<div class="team-member">${avatar(p, 'small')}<div><strong>${e(p.name)}</strong><small>${e(a.roles.find(r => r.id === c.roleId)?.name)}</small></div>${orgMode() && c.status === 'waitlisted' ? button('Offer place', 'offer', `data-id="${e(c.id)}"`, 'btn tiny secondary') : badge(c.status === 'verified' ? 'Verified' : c.status, statusTone)}${orgMode() && c.status === 'confirmed' ? button(c.attendance === 'present' ? icon('check') : icon('plus'), 'attendance', `data-id="${e(c.id)}" data-value="${c.attendance === 'present' ? 'unrecorded' : 'present'}" aria-label="${c.attendance === 'present' ? 'Undo check-in for' : 'Check in'} ${e(p.name)}" title="${c.attendance === 'present' ? 'Checked in' : 'Record check-in'}"`, `icon-button ${c.attendance === 'present' ? 'checked' : ''}`) : ''}${orgMode() && c.status === 'confirmed' && c.attendance === 'present' ? button('Verify contribution','verify',`data-id="${e(c.id)}"`,'btn tiny primary') : ''}</div>`; }).join('') || '<p class="muted">The first place is waiting for someone.</p>'}</div>${orgMode() && a.workStatus !== 'Complete' && mode === 'manual' ? button(icon('plus') + 'Invite someone', 'assign', `data-id="${e(a.id)}"`, 'btn secondary full-width') : ''}<p class="microcopy">${orgMode() ? mode === 'manual' ? 'Assignments count only after the volunteer accepts. Record attendance, then verify completed work.' : 'Volunteers choose their own place. Record attendance, then verify completed work.' : 'Every activity commitment is a separate choice.'}</p></section><section class="panel detail-section activity-pathway-card"><span class="eyebrow">${e(assignmentLabel(a).toUpperCase())}</span><h3>How this activity works</h3><div class="activity-pathway-steps">${pathway.map(([number,text])=>`<div><span>${number}</span><p>${e(text)}</p></div>`).join('')}</div>${mode === 'public' && a.waiverDocumentId ? `<button class="text-button" data-action="docOpen" data-id="${e(a.waiverDocumentId)}">View current liability waiver →</button>` : ''}</section></aside></div>`;
 }
 function conversation(activityId) {
   return `<div class="conversation">${state.messages.filter(m => m.activityId === activityId).map(m => `<div class="message">${avatar({ name: m.author, color: m.author === 'Maya' ? 'peach' : 'sage' }, 'small')}<div><strong>${e(m.author)} <small>${e(m.time)}</small></strong><p>${e(m.text)}</p></div></div>`).join('') || '<p class="muted">Start the conversation. A little context goes a long way.</p>'}</div><form data-form="message" data-activity="${e(activityId)}" class="message-form"><label class="sr-only" for="message-${e(activityId)}">Message the team</label><input id="message-${e(activityId)}" name="text" placeholder="Ask a question or share an update…" required maxlength="1500"><button class="btn primary" type="submit">Send ${icon('arrow')}</button></form><p class="microcopy">Shared with this activity’s team in the prototype. No external messages are sent.</p>`;
@@ -442,9 +516,37 @@ function assignmentDialog(activityId) {
   showDialog('Invite someone to help', `<form data-form="assign" data-activity="${e(a.id)}"><div class="dialog-body"><p class="dialog-intro">${e(a.title)} · ${dateLabel(a.date)}<br>The volunteer accepts before this counts as confirmed coverage.</p><label>Role<select name="roleId" id="assign-role">${a.roles.map(r => `<option value="${e(r.id)}">${e(r.name)} · ${r.capacity - confirmedCount(state, a.id, r.id)} places open</option>`).join('')}</select></label><label>Volunteer<select name="personId" required>${eligible.map(p => `<option value="${e(p.id)}">${e(p.name)} · ${e(p.availability)}</option>`).join('')}</select></label><p class="microcopy">Any missing preparation must be completed before they accept. Availability is a preference, not a promise.</p>${!eligible.length ? '<div class="callout sand">Everyone on the team already has a commitment, invitation, or waitlist place for this activity.</div>' : ''}${errorOutput()}</div><div class="dialog-footer">${button('Cancel', 'close', '', 'btn secondary')}<button class="btn primary" type="submit" ${!eligible.length ? 'disabled' : ''}>Propose assignment</button></div></form>`);
 }
 function signupDialog(activityId, roleId) {
-  const a = state.activities.find(a => a.id === activityId); const p = currentPerson(); const role = a.roles.find(r => r.id === roleId) || a.roles[0]; const missing = missingRequirements(p, role, state, a.date > today() ? a.date : today()); const full = confirmedCount(state, a.id, role.id) >= role.capacity;
+  const a = state.activities.find(a => a.id === activityId); const p = currentPerson(); const role = a.roles.find(r => r.id === roleId) || a.roles[0]; const mode = assignmentModeOf(a); const missing = missingRequirements(p, role, state, a.date > today() ? a.date : today(), a); const blocking = mode === 'public' ? missing.filter(key => key !== 'waiver') : missing; const full = confirmedCount(state, a.id, role.id) >= role.capacity;
+  if (mode === 'manual') { toast('This activity is assigned by the organization. A volunteer must receive and accept an invitation.'); return; }
+  if (mode === 'roster' && p.relationship !== 'member') { toast('This activity is open only to volunteers on the organization roster.'); return; }
+  const waiver = mode === 'public' ? state.documentLibrary?.items?.find(document => document.id === a.waiverDocumentId && isLiabilityWaiver(document)) : null;
+  const signed = activityWaiverConsent(state, p.id, a);
+  const access = mode === 'public'
+    ? '<div class="activity-pathway-note public"><strong>Public activity</strong><p>Anyone eligible can claim an open place. This does not add you to the organization roster.</p></div>'
+    : '<div class="activity-pathway-note roster"><strong>Roster signup</strong><p>This date is available only to approved volunteers in this organization. Choosing it creates one commitment.</p></div>';
+  const waiverStep = mode === 'public' && !full ? waiver
+    ? signed
+      ? `<div class="activity-waiver-receipt">${icon('check')}<div><strong>Current waiver already signed</strong><p>${e(signed.documentTitle)} · accepted ${e(new Date(signed.acceptedAt).toLocaleDateString())}</p></div></div>`
+      : `<section class="activity-waiver-step"><div><span class="eyebrow">REQUIRED FOR THIS ACTIVITY</span><h3>Review and sign the liability waiver</h3><p>Your signature is tied to this document version and this activity.</p></div><div class="activity-waiver-document"><div>${icon('book')}<span><strong>${e(waiver.title)}</strong><small>Version updated ${e(waiver.updatedAt || 'current')}</small></span></div>${button('View Document','docOpen',`data-id="${e(waiver.id)}"`,'btn secondary small')}</div><label>Type your full name<input name="signerName" required autocomplete="name" value="${e(p.name)}"></label><label class="checkbox-label"><input type="checkbox" name="waiverAccepted" required> I have reviewed this waiver and agree to sign it electronically for this activity.</label></section>`
+    : '<div class="callout sand"><strong>This activity cannot accept claims yet.</strong><p>The organization needs to attach a current liability waiver.</p></div>'
+    : '';
   ui.dialog = { type: 'signup', id: activityId, roleId: role.id };
-  showDialog(a.type === 'project' ? 'Contribute to this task' : 'Make a little time', `<form data-form="signup" data-activity="${e(a.id)}" data-role="${e(role.id)}" data-full="${full}"><div class="dialog-body"><h3>${e(a.title)}</h3><p class="muted">${dateLabel(a.date)} · ${e(a.time)}<br>${e(a.location)}</p><label>Your role<select id="signup-role" data-activity="${e(a.id)}">${a.roles.map(r => `<option value="${e(r.id)}" ${r.id === role.id ? 'selected' : ''}>${e(r.name)}</option>`).join('')}</select></label>${missing.length ? `<h3>Before you confirm</h3><p class="muted">Preparation must remain valid through this activity. Complete a local step or renew shared evidence if needed.</p>${requirementRows(p, missing, false, a.date > today() ? a.date : today())}${button('Open my preparation', 'nav', 'data-page="organization"', 'text-button')}` : '<div class="callout sage"><strong>You’re ready for this work.</strong><p>Your completed preparation is already recognized.</p></div>'}${full ? '<div class="callout sand">This role is full. Join the waitlist; you’ll choose whether to accept when a place opens.</div>' : ''}${p.relationship !== 'member' ? '<p class="microcopy">Joining this public event does not make you an ongoing team member.</p>' : ''}${errorOutput()}</div><div class="dialog-footer">${button('Not now', 'close', '', 'btn secondary')}<button class="btn primary" type="submit" ${missing.length && !full ? 'disabled' : ''}>${full ? 'Join waitlist' : 'Confirm my place'}</button></div></form>`);
+  showDialog(a.type === 'project' ? 'Contribute to this task' : mode === 'public' ? 'Claim an open place' : 'Join this roster activity', `<form data-form="signup" data-activity="${e(a.id)}" data-role="${e(role.id)}" data-full="${full}"><div class="dialog-body">${access}<h3>${e(a.title)}</h3><p class="muted">${dateLabel(a.date)} · ${e(a.time)}<br>${e(a.location)}</p><label>Your role<select id="signup-role" data-activity="${e(a.id)}">${a.roles.map(r => `<option value="${e(r.id)}" ${r.id === role.id ? 'selected' : ''}>${e(r.name)}</option>`).join('')}</select></label>${blocking.length ? `<h3>Before you confirm</h3><p class="muted">Complete these preparation steps before this place can be confirmed.</p>${requirementRows(p, blocking, false, a.date > today() ? a.date : today())}${button('Open my preparation', 'nav', 'data-page="organization"', 'text-button')}` : ''}${waiverStep}${!blocking.length && (mode !== 'public' || signed) ? '<div class="callout sage"><strong>You’re ready for this work.</strong><p>Your current preparation is already recognized.</p></div>' : ''}${full ? '<div class="callout sand">This role is full. Join the waitlist; you’ll choose whether to accept when a place opens.</div>' : ''}${mode === 'public' && p.relationship !== 'member' ? '<p class="microcopy">Claiming this activity creates one commitment. It does not place you on the organization’s ongoing volunteer roster.</p>' : ''}${errorOutput()}</div><div class="dialog-footer">${button('Not now', 'close', '', 'btn secondary')}<button class="btn primary" type="submit" ${blocking.length && !full || mode === 'public' && !full && !waiver ? 'disabled' : ''}>${full ? 'Join waitlist' : mode === 'public' ? signed ? 'Confirm my place' : 'Sign & Confirm Place' : 'Confirm my place'}</button></div></form>`);
+}
+function responseDialog(commitmentId) {
+  const commitment=state.commitments.find(item=>item.id===commitmentId&&item.status==='proposed');
+  if(!commitment)return toast('This invitation is no longer waiting for a response.');
+  const a=state.activities.find(item=>item.id===commitment.activityId),p=currentPerson(),role=a?.roles.find(item=>item.id===commitment.roleId);
+  if(!a||!role||commitment.personId!==p.id)return toast('This invitation is not available.');
+  const mode=assignmentModeOf(a),missing=missingRequirements(p,role,state,a.date>today()?a.date:today(),a),blocking=mode==='public'?missing.filter(key=>key!=='waiver'):missing;
+  const waiver=mode==='public'?state.documentLibrary?.items?.find(document=>document.id===a.waiverDocumentId&&isLiabilityWaiver(document)):null;
+  const signed=activityWaiverConsent(state,p.id,a);
+  const waiverStep=mode==='public'?waiver?signed
+    ? `<div class="activity-waiver-receipt">${icon('check')}<div><strong>Current waiver already signed</strong><p>${e(signed.documentTitle)} · accepted ${e(new Date(signed.acceptedAt).toLocaleDateString())}</p></div></div>`
+    : `<section class="activity-waiver-step"><div><span class="eyebrow">REQUIRED BEFORE ACCEPTANCE</span><h3>Review and sign the liability waiver</h3><p>Your signature is tied to this document version and this activity.</p></div><div class="activity-waiver-document"><div>${icon('book')}<span><strong>${e(waiver.title)}</strong><small>Version updated ${e(waiver.updatedAt||'current')}</small></span></div>${button('View Document','docOpen',`data-id="${e(waiver.id)}"`,'btn secondary small')}</div><label>Type your full name<input name="signerName" required autocomplete="name" value="${e(p.name)}"></label><label class="checkbox-label"><input type="checkbox" name="waiverAccepted" required> I have reviewed this waiver and agree to sign it electronically for this activity.</label></section>`
+    : '<div class="callout sand"><strong>The organization must attach a current liability waiver before you can accept.</strong></div>':'';
+  ui.dialog={type:'response',id:commitmentId};
+  showDialog('Review Activity Invitation',`<form data-form="respondActivity" data-id="${e(commitment.id)}"><div class="dialog-body"><div class="profile-banner">${avatar(p)}<div><strong>${e(a.title)}</strong><small>${dateLabel(a.date)} · ${e(a.time)} · ${e(a.location)}</small></div></div><div class="activity-pathway-note"><strong>Your choice</strong><p>The organization proposed this activity. It counts toward staffing only after you accept.</p></div>${blocking.length?`<h3 class="prep-title">Complete before accepting</h3>${requirementRows(p,blocking,false,a.date>today()?a.date:today())}`:''}${waiverStep}${errorOutput()}</div><div class="dialog-footer">${button('Decline Invitation','respond',`data-id="${e(commitment.id)}" data-accept="no"`,'btn secondary')}<button class="btn primary" type="submit" ${blocking.length||mode==='public'&&!waiver?'disabled':''}>Accept Activity</button></div></form>`);
 }
 function cancellationDialog(commitmentId) {
   const c = state.commitments.find(c => c.id === commitmentId); const a = state.activities.find(a => a.id === c.activityId);
@@ -545,6 +647,7 @@ document.addEventListener('click', async event => {
         await switchMyCityIdentity(d.identityId);
         connectedContext = await loadMyCityContext();
         connectedContextError = '';
+        applyConnectedContext(connectedContext);
         connectedResume = null;
         connectedResumeError = '';
         ui.mode = connectedContext.role === 'issuer' ? 'coordinator' : 'volunteer';
@@ -716,10 +819,11 @@ document.addEventListener('click', async event => {
     case 'requirement': requirementDialog(d.person, d.key); break;
     case 'assign': assignmentDialog(d.id); break;
     case 'signup': signupDialog(d.id); break;
-    case 'respond': act({ type: 'respond', commitmentId: d.id, accept: d.accept === 'yes' }); break;
+    case 'respond': if (d.accept === 'yes') responseDialog(d.id); else act({ type: 'respond', commitmentId: d.id, accept: false }); break;
     case 'cancel': cancellationDialog(d.id); break;
     case 'offer': act({ type: 'offerWaitlist', commitmentId: d.id }); break;
     case 'attendance': act({ type: 'attendance', commitmentId: d.id, attendance: d.value }); break;
+    case 'verify': act({ type: 'verifyContribution', commitmentId: d.id, actor: 'coordinator' }); break;
     case 'handoff': handoffDialog(d.id); break;
     case 'preferences': preferencesDialog(); break;
     case 'commPane': ui.communicationPane=d.pane;ui.communicationSelection='';ui.communicationQuery='';if(!orgMode())ui.communicationChatView=d.pane==='archive'?'archive':'active';render();break;
@@ -747,6 +851,14 @@ document.addEventListener('change', async event => {
     if (publicFields) publicFields.hidden = !publicOffering;
     const waiver = document.querySelector('#shift-waiver-document');
     if (waiver) waiver.required = publicOffering;
+  }
+  if (event.target.id === 'passport-invitation-type') {
+    const form=event.target.closest('form'),type=event.target.value;
+    form?.querySelectorAll('[data-passport-invite-field]').forEach(field=>{
+      const active=field.dataset.passportInviteField===type;field.hidden=!active;
+      const select=field.querySelector('select');if(select)select.required=active;
+    });
+    const message=form?.elements.message;if(message)message.required=type==='conversation';
   }
   if (event.target.id === 'assisted-person') openRecruitmentDialog('Assist', { id: event.target.dataset.position, person: event.target.value });
   if (event.target.closest('[data-form="ppAdd"]')) updatePassportRecordForm();
@@ -861,11 +973,17 @@ document.addEventListener('submit', async event => {
     case 'rcDeleteRole': recruitmentAction({ type: 'deletePosition', positionId: d.id }); break;
     case 'rcOrg': recruitmentAction({ type: 'saveOrganization', ...values }); break;
     case 'rcDecision': recruitmentAction({ type: ['withdraw','declineOffer'].includes(d.decision) ? d.decision : 'review', applicationId: d.id, status: d.decision, ...values }); break;
-    case 'rcStep': recruitmentAction({ type: 'completeStep', applicationId: d.id, key: d.key, ...values }); break;
+    case 'rcStep': recruitmentAction({ type: 'completeStep', applicationId: d.id, key: d.key, ...values, documentAccepted: fields.has('documentAccepted') }); break;
     case 'rcMessage': recruitmentAction({ type: 'message', applicationId: d.id, ...values }); break;
     case 'resumeSave': passportAction({type:'resume', sections:fields.getAll('sections'),recordIds:fields.getAll('recordIds')}); break;
     case 'ppProfile': passportAction({ type: 'profile', ...values }); break;
-    case 'ppInvite': recruitmentAction({ type: 'inviteToPosition', personId: d.person, ...values }); break;
+    case 'ppInvite': {
+      const invitationType=values.invitationType||'role';
+      if(invitationType==='activity')recruitmentAction({type:'inviteToActivity',personId:d.person,activityId:values.activityId,message:values.message});
+      else if(invitationType==='conversation')recruitmentAction({type:'startPassportConversation',personId:d.person,message:values.message});
+      else recruitmentAction({type:'inviteToPosition',personId:d.person,positionId:values.positionId,message:values.message});
+      break;
+    }
     case 'ppAdd': passportAction({ type: 'addRecord', ...values }); break;
     case 'ppShare': passportAction({ type: 'share', ...values, sections: fields.getAll('sections'), recordIds: fields.getAll('recordIds') }); break;
     case 'ppRevoke': passportAction({ type: 'revokeShare', grantId: d.id }); break;
@@ -880,9 +998,10 @@ document.addEventListener('submit', async event => {
     case 'import': {
       try { let next = state; let count = 0; for (const p of ui.csv.filter(p => !p.skip)) { next = transition(next, { type: 'addPerson', ...p, method: 'existing' }).state; count++; } if (!count) throw Error('Preview at least one valid person first.'); state = next; save(); closeDialog(); render(); toast(`${count} existing team ${count === 1 ? 'member' : 'members'} added. No invitations sent.`); } catch (err) { dialog.querySelector('.form-error').textContent = err.message; } break;
     }
-    case 'requirement': { const previous = ui.dialog; if (act({ type: 'requirement', personId: d.person, key: d.key, actor: ui.mode })) { if (previous?.type === 'signup') signupDialog(previous.id, previous.roleId); else if (previous?.type === 'person') personDialog(previous.id); } break; }
+    case 'requirement': { const previous = ui.dialog; if (act({ type: 'requirement', personId: d.person, key: d.key, actor: ui.mode })) { if (previous?.type === 'signup') signupDialog(previous.id, previous.roleId); else if (previous?.type === 'response') responseDialog(previous.id); else if (previous?.type === 'person') personDialog(previous.id); } break; }
     case 'assign': act({ type: 'commit', activityId: d.activity, ...values, status: 'proposed', actor: ui.mode }); break;
-    case 'signup': act({ type: 'commit', activityId: d.activity, roleId: d.role, personId: ui.person, status: d.full === 'true' ? 'waitlisted' : 'confirmed', actor: ui.mode }); break;
+    case 'signup': act({ type: 'commit', activityId: d.activity, roleId: d.role, personId: ui.person, status: d.full === 'true' ? 'waitlisted' : 'confirmed', actor: ui.mode, signerName: values.signerName, waiverAccepted: fields.has('waiverAccepted') }); break;
+    case 'respondActivity': act({ type: 'respond', commitmentId: d.id, accept: true, signerName: values.signerName, waiverAccepted: fields.has('waiverAccepted') }); break;
     case 'cancel': act({ type: 'cancel', commitmentId: d.id, note: values.note }); break;
     case 'handoff': act({ type: 'handoff', activityId: d.id, ...values }); break;
     case 'preferences': act({ type: 'preferences', personId: ui.person, ...values }); break;
@@ -930,7 +1049,7 @@ dialog.addEventListener('close', () => { if (!dialog.open) { releaseDocumentFile
 window.addEventListener('hashchange', readRoute);
 window.addEventListener('storage', event => { if (event.key === storageKey && event.newValue) { try { const incoming = JSON.parse(event.newValue); if (incoming.version === 1) { state = ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(incoming))))))); render(); } } catch {} } });
 readRoute();
-if (integratedPlatform) loadMyCityContext().then(context => { connectedContext = context; connectedContextError = ''; render(); }).catch(error => { connectedContextError = error.message; render(); });
+if (integratedPlatform) loadMyCityContext().then(context => { connectedContext = context; connectedContextError = ''; applyConnectedContext(context); render(); }).catch(error => { connectedContextError = error.message; render(); });
 
 bindPlanning({context:feedContext, render, commit:result=>{state=result.state;save();render();toast(result.notice);}, showDialog, closeDialog, toast, create:(type,programId)=>createDialog(type,programId)});
 

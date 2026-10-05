@@ -5,7 +5,7 @@ export const BANNERS = { original:'Original', 'folded-ribbon':'Folded Ribbon', c
 export const PROFILE_FIELDS = { tagline:['Tagline',120], mission:['Mission',1200], causes:['Cause areas',240], location:['Location',240], email:['Public email',200], phone:['Phone',80], website:['Website',500], description:['About the organization',1600], support:['Access & support',800], welcome:['Your welcome',1000], contact:['Volunteer contact',100] };
 export function ensureProfiles(state) {
   ensureRecruitment(state);
-  for(const o of state.recruitment.organizations) if(!o.profile) o.profile={tagline:o.id==='berkeley-neighbors'?'Good things happen when neighbors show up.':'A place for your kind of help.',causes:[o.cause],phone:'',website:'',socials:{},palette:o.color==='sand'?'terracotta':o.color==='blue'?'citysync':'forest',banner:'confluence',logo:'',cover:'',coverAlt:'',featuredRoleId:'',updatedAt:''};
+  for(const o of state.recruitment.organizations) if(!o.profile) o.profile={tagline:state.allowSampleData===false?'':o.id==='berkeley-neighbors'?'Good things happen when neighbors show up.':'A place for your kind of help.',causes:o.cause?[o.cause]:[],phone:'',website:'',socials:{},palette:o.color==='sand'?'terracotta':o.color==='blue'?'citysync':'forest',banner:'confluence',logo:'',cover:'',coverAlt:'',featuredRoleId:'',updatedAt:''};
   return state;
 }
 export function safeWebLink(value) {

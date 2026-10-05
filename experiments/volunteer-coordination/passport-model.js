@@ -16,16 +16,16 @@ export function ensurePassport(state) {
     if (!state.passports.profiles[p.id]) {
       state.passports.profiles[p.id] = { city: '', languages: '', skills: '', bio: '' };
       // Explicit sample records, never inferred from readiness flags or scheduled commitments.
-      if (p.id === 'elena') {
+      if (state.allowSampleData !== false && p.id === 'elena') {
         state.passports.profiles[p.id] = { city: 'Berkeley', languages: 'English, Spanish', skills: 'Food packing, welcoming newcomers', bio: 'I enjoy practical work with a regular neighborhood team.' };
         state.passports.records.push({ id: 'elena-food', personId: p.id, kind: 'training', title: 'Community food packing foundations', organizationId: 'east-bay-learning', issuer: PASSPORT_ORGS['east-bay-learning'], standard: 'food-packing/1', date: '2026-08-20', expires: '2027-08-20', summary: 'Safe packing, hygiene and allergen awareness. Local arrival and equipment guidance still apply.', status: 'attested', attestation: { by: 'Rosa Martinez', organizationId: 'east-bay-learning', date: '2026-08-20', basis: 'Sample course completion register EB-1042' }, demo: true });
       }
-      if (p.id === 'alex') {
+      if (state.allowSampleData !== false && p.id === 'alex') {
         state.passports.profiles[p.id] = { city: 'Berkeley', languages: 'English', skills: 'Food packing, gardening', bio: 'Happiest doing something useful with my neighbors.' };
         state.passports.records.push({ id: 'alex-service', personId: p.id, kind: 'service', title: 'Neighborhood pantry team', organizationId: PASSPORT_ORG, issuer: PASSPORT_ORGS[PASSPORT_ORG], standard: '', date: '2026-09-12', expires: '', hours: 2, summary: 'Packed produce bags and welcomed neighbors at the distribution table.', status: 'attested', attestation: { by: 'Maya Thompson', organizationId: PASSPORT_ORG, date: '2026-09-13', basis: 'Sample shift lead completion record' }, demo: true });
       }
     }
-    if (typeof state.passports.profiles[p.id].openForVolunteering !== 'boolean') state.passports.profiles[p.id].openForVolunteering = ['elena', 'jules', 'robin'].includes(p.id);
+    if (typeof state.passports.profiles[p.id].openForVolunteering !== 'boolean') state.passports.profiles[p.id].openForVolunteering = state.allowSampleData !== false && ['elena', 'jules', 'robin'].includes(p.id);
   }
   return state;
 }
@@ -106,6 +106,10 @@ export function passportExport(state, personId) {
 export function transitionPassport(current, action, date = today()) {
   const state = ensurePassport(structuredClone(current));
   const store = state.passports;
+  const homeOrganization = state.recruitment?.organizations?.find(organization => organization.id === PASSPORT_ORG);
+  const organizationName = homeOrganization?.name || PASSPORT_ORGS[PASSPORT_ORG];
+  const coordinatorName = state.programWorkspace?.organizationMembers?.find(member=>member.connectedAccount)?.name || homeOrganization?.contact || 'Maya Thompson';
+  const recipientName = orgId => state.recruitment?.organizations?.find(organization => organization.id === orgId)?.name || PASSPORT_ORGS[orgId] || 'Organization';
   const p = state.people.find(p => p.id === action.personId);
   assertion(p, 'Volunteer not found.');
   const owner = action.actor === p.id;
@@ -138,10 +142,10 @@ export function transitionPassport(current, action, date = today()) {
     assertion(action.organizationId !== 'external' || clean(action.issuer), 'Name the issuing organization.');
     const hours = action.hours === '' || action.hours == null ? null : Number(action.hours);
     assertion(action.kind !== 'service' || hours === null || (Number.isFinite(hours) && hours > 0 && hours <= 24), 'Hours for one contribution must be between 0 and 24, or left blank.');
-    store.records.push({ id: uid(), personId: p.id, kind: action.kind, title: clean(action.title, 120), organizationId: action.organizationId, issuer: action.organizationId === PASSPORT_ORG ? PASSPORT_ORGS[PASSPORT_ORG] : clean(action.issuer, 120), standard: action.kind === 'training' && action.standard === 'food-packing/1' ? action.standard : '', date: action.date, expires: action.kind === 'training' ? action.expires || '' : '', ...(action.kind === 'service' ? { hours } : {}), summary: clean(action.summary), status: 'self-reported' });
+    store.records.push({ id: uid(), personId: p.id, kind: action.kind, title: clean(action.title, 120), organizationId: action.organizationId, issuer: action.organizationId === PASSPORT_ORG ? organizationName : clean(action.issuer, 120), standard: action.kind === 'training' && action.standard === 'food-packing/1' ? action.standard : '', date: action.date, expires: action.kind === 'training' ? action.expires || '' : '', ...(action.kind === 'service' ? { hours } : {}), summary: clean(action.summary), status: 'self-reported' });
     detail = 'Added a self-reported record'; notice = 'Record added privately. Share it when you are ready.';
   } else if (action.type === 'share') {
-    own(); assertion([PASSPORT_ORG, 'tool-library'].includes(action.orgId), 'Choose a receiving organization.');
+    own(); assertion(state.recruitment?.organizations?.some(organization => organization.id === action.orgId) || [PASSPORT_ORG, 'tool-library'].includes(action.orgId), 'Choose a receiving organization.');
     assertion(validDate(action.expires) && action.expires > date && action.expires <= daysFromDate(date, 365), 'Choose a sharing end date within the next year.');
     const sections = [...new Set(action.sections || [])]; const recordIds = [...new Set(action.recordIds || [])];
     assertion(sections.every(s => Object.hasOwn(SHARE_SECTIONS, s)), 'Unknown profile section.');
@@ -150,29 +154,29 @@ export function transitionPassport(current, action, date = today()) {
     assertion(clean(action.purpose), 'Say why you are sharing.');
     for (const g of store.grants.filter(g => g.personId === p.id && g.orgId === action.orgId && !g.revokedAt)) g.revokedAt = new Date().toISOString();
     store.grants.unshift({ id: uid(), personId: p.id, orgId: action.orgId, sections, recordIds, purpose: clean(action.purpose, 200), expires: action.expires, createdAt: new Date().toISOString() });
-    detail = `Shared selected information with ${PASSPORT_ORGS[action.orgId]}`; notice = 'Sharing saved. New records stay private until you select them.';
+    detail = `Shared selected information with ${recipientName(action.orgId)}`; notice = 'Sharing saved. New records stay private until you select them.';
   } else if (action.type === 'revokeShare') {
     own(); const g = store.grants.find(g => g.id === action.grantId && g.personId === p.id);
     assertion(g && !g.revokedAt, 'This sharing permission has already ended.'); g.revokedAt = new Date().toISOString();
-    detail = `Ended access for ${PASSPORT_ORGS[g.orgId]}`; notice = 'Access ended. Preparation relying on this share now needs review.';
+    detail = `Ended access for ${recipientName(g.orgId)}`; notice = 'Access ended. Preparation relying on this share now needs review.';
   } else if (action.type === 'view') {
     review(); assertion(sharedPassport(state, p.id, PASSPORT_ORG, date), 'No active sharing permission.');
-    detail = 'Maya Thompson opened the shared passport at Berkeley Neighbors'; notice = 'Shared passport opened';
+    detail = `${coordinatorName} opened the shared passport at ${organizationName}`; notice = 'Shared passport opened';
   } else if (action.type === 'attest') {
     const { r } = sharedRecord();
     assertion(r.organizationId === PASSPORT_ORG, 'Only the issuing organization can confirm its own record.');
     assertion(r.status === 'self-reported', 'Only an unconfirmed record can be confirmed.');
     assertion(clean(action.basis), 'Record what you checked, such as a course or shift register.');
     assertion(!r.expires || r.expires >= date, 'This record has expired. Add a replacement record.');
-    r.status = 'attested'; r.attestation = { by: 'Maya Thompson', organizationId: PASSPORT_ORG, date, basis: clean(action.basis, 400) };
-    detail = `Berkeley Neighbors confirmed: ${r.title}`; notice = 'Organization confirmation recorded. Acceptance for a role is a separate decision.';
+    r.status = 'attested'; r.attestation = { by: coordinatorName, organizationId: PASSPORT_ORG, date, basis: clean(action.basis, 400) };
+    detail = `${organizationName} confirmed: ${r.title}`; notice = 'Organization confirmation recorded. Acceptance for a role is a separate decision.';
   } else if (action.type === 'decide') {
     const { r, shared } = sharedRecord();
     assertion(['accepted', 'needs-follow-up'].includes(action.outcome), 'Choose a review outcome.');
     assertion(clean(action.basis), 'Explain your decision for the volunteer.');
     if (action.outcome === 'accepted') assertion(portableFoodEligible(r, date), 'This record does not meet the food packing standard and trusted issuer policy.');
     // Keep previous decisions and their reasons; only the newest decision governs reuse.
-    store.decisions.unshift({ id: uid(), personId: p.id, grantId: shared.grant.id, recordId: r.id, outcome: action.outcome, requirement: action.outcome === 'accepted' ? 'food' : null, by: 'Maya Thompson', organizationId: PASSPORT_ORG, date, basis: clean(action.basis, 400) });
+    store.decisions.unshift({ id: uid(), personId: p.id, grantId: shared.grant.id, recordId: r.id, outcome: action.outcome, requirement: action.outcome === 'accepted' ? 'food' : null, by: coordinatorName, organizationId: PASSPORT_ORG, date, basis: clean(action.basis, 400) });
     detail = `${action.outcome === 'accepted' ? 'Accepted for food packing introduction' : 'Requested follow-up'}: ${r.title}`;
     notice = action.outcome === 'accepted' ? 'Food packing evidence accepted. Membership, local welcome and agreement stay separate.' : 'Follow-up reason is visible to the volunteer.';
   } else if (action.type === 'dispute') {

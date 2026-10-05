@@ -8,7 +8,7 @@ import { transitionPassport } from './passport-model.js';
 import { recruitmentDialog, renderRecruitment } from './recruitment-view.js';
 
 const day='2026-09-23';
-const initial=()=>ensureRecruitment(createInitialState());
+const initial=()=>ensureDocuments(ensureRecruitment(createInitialState()));
 const act=(s,a,date=day)=>transitionRecruitment(s,{actor:'robin',orgId:'berkeley-neighbors',...a},date);
 const answers={motivation:'I enjoy helping neighbors.',availability:'Tuesday afternoons',experience:'Happy to learn.',answer:'Packing and welcoming.',email:'robin@example.org',consent:true};
 const apply=(s,extra={})=>act(s,{type:'saveApplication',personId:'robin',positionId:'food-team',...answers,submit:true,...extra});
@@ -90,7 +90,7 @@ test('each onboarding step enforces its owner and a named buddy is required',()=
 });
 test('activation follows mutual acceptance and complete preparation, adds one roster relationship and no booking',()=>{
   let {state,id}=onboarding();
-  for(const key of ['welcome','waiver','food'])state=act(state,{type:'completeStep',applicationId:id,key,note:'Reviewed the preparation with the team.'}).state;
+  for(const key of ['welcome','waiver','food'])state=act(state,{type:'completeStep',applicationId:id,key,note:'Reviewed the preparation with the team.',...(key==='waiver'?{signerName:'Robin Ellis',documentAccepted:true}:{})}).state;
   state=act(state,{type:'completeStep',actor:'coordinator',applicationId:id,key:'orientation',note:'Introduced and discussed support.',buddy:'Sam',firstStep:'Choose a kitchen shift together.'}).state;
   state=act(state,{type:'activate',actor:'coordinator',applicationId:id}).state;
   assert.equal(state.people.find(p=>p.id==='robin').relationship,'member');assert.equal(state.recruitment.memberships.length,1);assert.equal(state.commitments.some(c=>c.personId==='robin'),false);
@@ -98,7 +98,7 @@ test('activation follows mutual acceptance and complete preparation, adds one ro
 });
 test('other organization onboarding never modifies Berkeley preparation or roster',()=>{
   let {state,id}=onboarding('library-welcome','tool-library');const original=structuredClone(state.people.find(p=>p.id==='robin'));
-  for(const key of ['welcome','waiver'])state=act(state,{type:'completeStep',applicationId:id,key,note:'Reviewed local welcome.'}).state;
+  for(const key of ['welcome','waiver'])state=act(state,{type:'completeStep',applicationId:id,key,note:'Reviewed local welcome.',...(key==='waiver'?{signerName:'Robin Ellis',documentAccepted:true}:{})}).state;
   state=act(state,{type:'completeStep',actor:'coordinator',orgId:'tool-library',applicationId:id,key:'orientation',note:'Introduced at the desk.',buddy:'Jordan',firstStep:'Agree a desk shift.'}).state;
   state=act(state,{type:'activate',actor:'coordinator',orgId:'tool-library',applicationId:id}).state;
   assert.deepEqual(state.people.find(p=>p.id==='robin'),original);assert.equal(state.recruitment.memberships[0].orgId,'tool-library');assert.equal(state.recruitment.preparation['tool-library'].robin.welcome,true);
@@ -174,6 +174,17 @@ test('requirements can use organization documents for reading, signature, provis
   const dialog=recruitmentDialog(ctx,'Requirement');
   for(const text of ['Read or view information','Acknowledge or sign a document','Provide information or a file','Organization confirms completion','Volunteer liability waiver'])assert.ok(dialog.content.includes(text));
 });
+test('onboarding signatures bind the volunteer to the current document version',()=>{
+  let {state,id}=onboarding();
+  assert.throws(()=>act(state,{type:'completeStep',applicationId:id,key:'waiver',note:'Signed.'}),/type your full name/);
+  state=act(state,{type:'completeStep',applicationId:id,key:'waiver',note:'Electronically signed.',signerName:'Robin Ellis',documentAccepted:true}).state;
+  const application=state.recruitment.applications.find(item=>item.id===id);
+  const signature=application.completed.waiver.signature;
+  assert.equal(signature.documentId,'sample-liability-waiver');
+  assert.equal(onboardingSteps(state,application).find(step=>step.key==='waiver').done,true);
+  state.documentLibrary.items.find(item=>item.id===signature.documentId).updatedAt='2026-09-24';
+  assert.equal(onboardingSteps(state,application).find(step=>step.key==='waiver').done,false);
+});
 test('application management separates Passport, public, and invite-link pathways',()=>{
   let start=initial();start.passports.profiles.robin.openForVolunteering=true;
   start=act(start,{type:'inviteToPosition',actor:'coordinator',personId:'robin',positionId:'food-team',message:'Your experience may fit this role.'}).state;
@@ -190,6 +201,23 @@ test('application management separates Passport, public, and invite-link pathway
   const page=renderRecruitment(ctx);
   for(const title of ['Passport Invitations & Interest','Public Applications & Interest','Volunteer Invite Links'])assert.ok(page.includes(title));
   assert.equal(page.includes('recruitment-stage-flow'),false);
+});
+test('Passport outreach can invite a role, invite a public activity, or begin only a conversation',()=>{
+  let state=ensureDocuments(initial());state.passports.profiles.robin.openForVolunteering=true;
+  state=act(state,{type:'inviteToActivity',actor:'coordinator',personId:'robin',activityId:'garden',message:'Would you like to join this garden day?'}).state;
+  const activityInvitation=state.recruitment.invitations.find(invitation=>invitation.kind==='activity');
+  const commitment=state.commitments.find(item=>item.id===activityInvitation.commitmentId);
+  assert.equal(commitment.status,'proposed');assert.equal(state.people.find(person=>person.id==='robin').relationship,'interested');
+  state=transition(state,{type:'requirement',personId:'robin',key:'welcome',actor:'volunteer'}).state;
+  state=transition(state,{type:'respond',commitmentId:commitment.id,accept:true,signerName:'Robin Ellis',waiverAccepted:true}).state;
+  assert.equal(state.commitments.find(item=>item.id===commitment.id).status,'confirmed');
+  assert.equal(state.recruitment.invitations.find(invitation=>invitation.id===activityInvitation.id).status,'accepted');
+  state=act(state,{type:'startPassportConversation',actor:'coordinator',personId:'robin',message:'Your neighborhood experience caught our attention. Would you like to talk?'}).state;
+  const conversation=state.recruitment.invitations.find(invitation=>invitation.kind==='conversation');
+  assert.equal(conversation.status,'contacted');
+  assert.equal(state.communications.outbound[0].audienceType,'outreach');
+  assert.equal(state.commitments.filter(item=>item.personId==='robin').length,1);
+  assert.equal(state.recruitment.applications.filter(item=>item.personId==='robin').length,0);
 });
 test('volunteer applications and commitments share one My Volunteering page',()=>{
   const state=initial();

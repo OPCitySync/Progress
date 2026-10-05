@@ -25,7 +25,7 @@ export function renderDocuments(ctx) {
   const {icon,button}=ctx;
   return `<div class="page-heading documents-page-heading"><div><h1>Documents</h1><p>Keep your organization’s guidance, reference links, and program materials easy to find.</p></div></div>
     <section class="panel documents-panel" aria-label="Document library"><div class="documents-panel-header"><div><span class="eyebrow">ORGANIZATION LIBRARY</span><h2>Documents &amp; Resources</h2></div><div class="documents-header-actions">${button(icon('plus')+'Liability Waiver','docWaiver','','btn secondary documents-waiver-action')}${button(icon('plus')+'Add Document','docAdd','','btn primary')}</div></div><div id="documents-results">${renderDocumentList(ctx)}</div></section>
-    <p class="microcopy documents-note">This library is a browser-local preview. Uploaded files stay in this browser and are not shared with volunteers.</p>`;
+    <p class="microcopy documents-note">${ctx.integratedPlatform?'Documents remain private to this organization unless they are assigned to a volunteer requirement or program.':'This library is a browser-local preview. Uploaded files stay in this browser and are not shared with volunteers.'}</p>`;
 }
 
 export function renderDocumentDetail(ctx,id,fileUrl='') {

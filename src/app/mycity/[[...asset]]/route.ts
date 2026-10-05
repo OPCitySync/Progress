@@ -13,7 +13,7 @@ export async function GET(_request: Request, { params }: { params: { asset?: str
   const defaultRoute = session.role === 'participant' ? 'volunteer' : 'coordinator'
   const body = !params.asset?.length
     ? asset.body
-      .replace('content="local-prototype-demo"', 'content="integrated-preview-sample-data"')
+      .replace('content="local-prototype-demo"', 'content="integrated-platform"')
       .replace('</head>', `<script>if (!location.hash) location.replace('/mycity#/${defaultRoute}/home')</script>\n  </head>`)
     : asset.body
   return new Response(body, {
@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: { params: { asset?: str
       'Content-Type': asset.contentType,
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
-      'X-CitySync-Data-Mode': 'integrated-preview-sample-data',
+      'X-CitySync-Data-Mode': 'integrated-platform',
       'Content-Security-Policy': "connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
     },
   })

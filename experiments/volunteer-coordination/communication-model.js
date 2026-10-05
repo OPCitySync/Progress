@@ -9,7 +9,7 @@ export function ensureCommunications(state) {
   if(!state.communications) {
     const roster=activeRoster(state).map(person=>person.id);
     state.communications={
-      outbound:[
+      outbound:state.allowSampleData === false ? [] : [
         {id:'message-weekend-briefing',subject:'Weekend volunteer briefing',body:'Thank you for being part of this weekend’s work. Activity-specific arrival details are available in each Event Chat.',audienceType:'roster',audienceLabel:'Full volunteer roster',recipientIds:roster,createdAt:'2026-09-24T16:30:00-07:00',author:'Maya Thompson'},
         {id:'message-welcome-draft',subject:'Welcome guide ready for review',body:'The revised volunteer welcome guide is ready. Please review the arrival and accessibility details before we share it with new volunteers.',audienceType:'individual',audienceLabel:'Jules Okafor',recipientIds:['jules'],createdAt:'2026-09-23T10:15:00-07:00',author:'Maya Thompson'},
       ],
@@ -57,6 +57,7 @@ export function volunteerInbox(state,personId) {
 
 export function transitionCommunication(current,action) {
   const state=ensureCommunications(structuredClone(current)),communications=state.communications;
+  const coordinatorName=state.programWorkspace?.organizationMembers?.find(member=>member.connectedAccount)?.name||state.recruitment?.organizations?.find(organization=>organization.id==='berkeley-neighbors')?.contact||'Maya Thompson';
   if(action.type==='send') {
     if(action.actor!=='coordinator')throw Error('Only an organization account can send roster messages.');
     const subject=clean(action.subject,160),body=clean(action.body);
@@ -74,7 +75,7 @@ export function transitionCommunication(current,action) {
       audienceLabel=recipientIds.map(id=>state.people.find(person=>person.id===id)?.name).filter(Boolean).join(', ');
     } else throw Error('Choose who should receive this message.');
     if(!recipientIds.length)throw Error('This audience has no current volunteers.');
-    communications.outbound.unshift({id:uid(),subject,body,audienceType:action.audienceType,audienceLabel,recipientIds,createdAt:new Date().toISOString(),author:'Maya Thompson'});
+    communications.outbound.unshift({id:uid(),subject,body,audienceType:action.audienceType,audienceLabel,recipientIds,createdAt:new Date().toISOString(),author:coordinatorName});
     return {state,notice:`Message saved for ${recipientIds.length} ${recipientIds.length===1?'volunteer':'volunteers'}.`};
   }
   if(action.type==='readMessage') {

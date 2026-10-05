@@ -1,4 +1,4 @@
-/** Connected organization identity only. Other prototype screens remain sample data. */
+/** Load the signed-in identity used to hydrate the connected MyCity workspace. */
 export async function loadMyCityContext() {
   const response = await fetch('/api/mycity/context', { credentials: 'same-origin', cache: 'no-store' });
   const result = await response.json();

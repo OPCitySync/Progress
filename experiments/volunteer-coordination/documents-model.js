@@ -35,9 +35,10 @@ function migrateProgramResources(state) {
 export function ensureDocuments(state) {
   if (state.documentLibrary) {
     state.documentLibrary.version = 2;
+    if (state.allowSampleData === false) state.documentLibrary.items = state.documentLibrary.items.filter(document => !document.sample && !String(document.id || '').startsWith('sample-'));
     const sampleWaiver = state.documentLibrary.items.find(document => document.id === 'sample-liability-waiver');
     if (sampleWaiver) sampleWaiver.documentType = 'liability-waiver';
-    if (!state.documentLibrary.items.some(document => document.id === 'sample-liability-waiver')) {
+    if (state.allowSampleData !== false && !state.documentLibrary.items.some(document => document.id === 'sample-liability-waiver')) {
       state.documentLibrary.items.push({
         id: 'sample-liability-waiver', title: 'Volunteer liability waiver', category: 'Forms', documentType: 'liability-waiver',
         summary: 'Participation agreement required for public volunteer opportunities.',
@@ -50,6 +51,10 @@ export function ensureDocuments(state) {
       document.allVolunteerActivities = Boolean(document.allVolunteerActivities);
     }
     migrateProgramResources(state);
+    return state;
+  }
+  if (state.allowSampleData === false) {
+    state.documentLibrary = { version: 2, items: [] };
     return state;
   }
   const programId = name => state.programWorkspace?.programs.find(program => program.name === name)?.id || '';

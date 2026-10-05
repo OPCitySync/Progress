@@ -1,4 +1,4 @@
-import { transition, confirmedCount, activeCommitment } from './model.js';
+import { transition, confirmedCount, activeCommitment, assignmentModeOf } from './model.js';
 import { today } from './passport-model.js';
 
 export function planningMonday(date = today()) {
@@ -17,6 +17,8 @@ export function planningActivities(state, {mode='programs',programId=''}={}) {
 export function planningProblem(state, personId, activityId, date=today()) {
   const a=state.activities.find(a=>a.id===activityId),person=state.people.find(p=>p.id===personId);
   if(!a||a.archived||a.workStatus==='Complete')return 'This activity is closed to new invitations.';
+  if (assignmentModeOf(a) === 'roster') return 'Roster members choose their own open place. Change the activity setting to organization assignment if you want to invite specific people.';
+  if (assignmentModeOf(a) === 'public') return 'This public activity is claimed by eligible Civic Participants after they complete its requirements.';
   const program=state.programWorkspace.programs.find(p=>p.id===a.programId);
   if(program && program.status!=='active')return program.status==='draft'?'Activate this program before inviting volunteers.':'This program is closed.';
   if(a.date && a.date<date)return 'This date has passed. Choose an upcoming activity.';

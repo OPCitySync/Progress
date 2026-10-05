@@ -39,10 +39,20 @@ export function ensurePrograms(state) {
     }
   }
   // Issuer workspace accounts are separate from the volunteer roster.
-  if (!Array.isArray(state.programWorkspace.organizationMembers)) state.programWorkspace.organizationMembers = structuredClone(SAMPLE_WORKSPACE_MEMBERS);
+  if (!Array.isArray(state.programWorkspace.organizationMembers)) state.programWorkspace.organizationMembers = state.allowSampleData === false ? [] : structuredClone(SAMPLE_WORKSPACE_MEMBERS);
   for (const position of state.recruitment?.positions || []) {
     if (position.id === 'delivery-team' && position.activityId === 'standby') position.activityId = 'pantry';
     if (['food-team','delivery-team','try-garden'].includes(position.id) && !position.programId && position.activityId) position.programId = state.activities.find(activity => activity.id === position.activityId)?.programId || '';
+  }
+  // Keep the three volunteer-entry modes explicit on older browser records.
+  // Visibility controls discovery; assignmentMode controls who may reserve a
+  // place. Public activities use a versioned waiver from Documents.
+  for (const activity of state.activities) {
+    if (!['event','shift'].includes(activity.type)) continue;
+    activity.assignmentMode ||= activity.visibility === 'public' ? 'public' : activity.enrollment === 'managed' ? 'manual' : 'roster';
+    activity.visibility = activity.assignmentMode === 'public' ? 'public' : 'members';
+    activity.enrollment = activity.assignmentMode === 'manual' ? 'managed' : 'self';
+    if (state.allowSampleData !== false && activity.assignmentMode === 'public' && !activity.waiverDocumentId) activity.waiverDocumentId = 'sample-liability-waiver';
   }
   return state;
 }
@@ -86,6 +96,7 @@ export function occurrenceDates(first, count, interval) {
 export function transitionProgram(current, action) {
   const state = ensurePrograms(structuredClone(current));
   const ws = state.programWorkspace;
+  const coordinatorName = ws.organizationMembers?.find(member=>member.connectedAccount)?.name || state.recruitment?.organizations?.find(organization=>organization.id==='berkeley-neighbors')?.contact || 'Maya Thompson';
   const coordinator = action.actor === 'coordinator';
   const requireCoordinator = () => { if (!coordinator) throw Error('Only the organization coordinator can change this plan.'); };
   let p = ws.programs.find(p => p.id === action.programId);
@@ -134,7 +145,7 @@ export function transitionProgram(current, action) {
         p.resources.push({ id: uid(), title: clean(action.title), text: clean(action.text), date: new Date().toISOString() }); note = 'Resource added to the program';
       } else {
         if (!clean(action.text)) throw Error('Record the decision, progress, or help needed.');
-        p.updates.unshift({ id: uid(), kind: ['Decision','Progress','Risk'].includes(action.kind) ? action.kind : 'Progress', text: clean(action.text), date: new Date().toISOString(), author: 'Maya Thompson' }); note = 'Program update recorded';
+        p.updates.unshift({ id: uid(), kind: ['Decision','Progress','Risk'].includes(action.kind) ? action.kind : 'Progress', text: clean(action.text), date: new Date().toISOString(), author: coordinatorName }); note = 'Program update recorded';
       }
     } else {
       const a = work.find(a => a.id === action.activityId);
@@ -167,12 +178,12 @@ export function transitionProgram(current, action) {
         if (a.type === 'project') a.projectStatus = to;
         if (to !== 'Complete') delete a.review;
         if (to === 'Ready for review') a.evidence = clean(action.note);
-        if (to === 'Complete') a.review = { note: clean(action.note), actor: 'Maya Thompson', onBehalfOf: a.reviewer, date: new Date().toISOString() };
+        if (to === 'Complete') a.review = { note: clean(action.note), actor: coordinatorName, onBehalfOf: a.reviewer, date: new Date().toISOString() };
         note = `${a.title}: ${to}`;
       } else throw Error('Unknown program action.');
     }
   }
-  ws.history.unshift({ id: uid(), programId: p.id, activityId: action.activityId || '', text: note, detail: clean(action.note), actor: coordinator ? 'Maya Thompson' : state.people.find(p => p.id === action.actor)?.name || action.actor, date: new Date().toISOString() });
+  ws.history.unshift({ id: uid(), programId: p.id, activityId: action.activityId || '', text: note, detail: clean(action.note), actor: coordinator ? coordinatorName : state.people.find(p => p.id === action.actor)?.name || action.actor, date: new Date().toISOString() });
   return { state, id: resultId, notice: note };
 }
 

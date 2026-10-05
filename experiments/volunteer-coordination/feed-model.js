@@ -13,7 +13,7 @@ export function createFeedState() {
   };
 }
 export function ensureFeed(state) {
-  if (!state.feed?.posts) return { ...state, feed: createFeedState() };
+  if (!state.feed?.posts) return { ...state, feed: state.allowSampleData === false ? { queueAcknowledgements: {}, posts: [] } : createFeedState() };
   state.feed.queueAcknowledgements ||= {};
   return state;
 }
@@ -79,9 +79,10 @@ export function transitionFeed(current, action) {
     const imageUrl = action.imageUrl || null;
     if (imageUrl && (!/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(imageUrl) || imageUrl.length > 750000)) throw Error('Choose a PNG, JPEG, WebP, or GIF image under 500 KB.');
     if (imageUrl && !String(action.imageAlt || '').trim()) throw Error('Add a short description of your image.');
-    const post = { id: globalThis.crypto.randomUUID(), orgId: ORG_ID, organization: 'Berkeley Neighbors', organizationType: 'issuer', color: 'sage', createdAt: new Date().toISOString(), body, imageUrl, imageAlt: String(action.imageAlt || '').trim().slice(0, 240), activityId: activity?.id || null, baseHearts: 0, likedBy: [], savedBy: [] };
+    const organization = state.recruitment?.organizations.find(item => item.id === ORG_ID);
+    const post = { id: globalThis.crypto.randomUUID(), orgId: ORG_ID, organization: organization?.name || 'Organization', organizationType: 'issuer', color: organization?.color || 'sage', createdAt: new Date().toISOString(), body, imageUrl, imageAlt: String(action.imageAlt || '').trim().slice(0, 240), activityId: activity?.id || null, baseHearts: 0, likedBy: [], savedBy: [] };
     state.feed.posts.unshift(post);
-    return { state, notice: 'Posted to the sample MyCity Feed. Both views can see it.', postId: post.id };
+    return { state, notice: 'Posted to MyCity Feed. Both views can see it.', postId: post.id };
   }
   const post = state.feed.posts.find(p => p.id === action.postId);
   if (!post) throw Error('That post could not be found.');

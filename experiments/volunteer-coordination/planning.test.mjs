@@ -3,13 +3,19 @@ import assert from 'node:assert/strict';
 import {createInitialState,confirmedCount,transition} from './model.js';
 import {planningActivities,planningMonday,planningDate,transitionPlanning} from './planning-model.js';
 const date='2026-09-24';
-const invite=(s,extra={})=>transitionPlanning(s,{actor:'coordinator',type:'invite',activityId:'garden',personId:'morgan',roleId:'garden',...extra},date).state;
+const manualGarden=s=>{const next=structuredClone(s),activity=next.activities.find(item=>item.id==='garden');Object.assign(activity,{assignmentMode:'manual',visibility:'members',enrollment:'managed'});return next;};
+const invite=(s,extra={})=>transitionPlanning(manualGarden(s),{actor:'coordinator',type:'invite',activityId:'garden',personId:'morgan',roleId:'garden',...extra},date).state;
 test('planning shows all dates in chronological order',()=>{
  assert.equal(planningMonday('2026-09-26'),'2026-09-21');
  assert.equal(planningDate('2026-12-28',7),'2027-01-04');
  const s=createInitialState(),items=planningActivities(s,{mode:'programs'});
  assert(items.some(a=>a.id==='garden'));
  assert(items.every((a,i)=>i===0 || (items[i-1].date||'9999').localeCompare(a.date||'9999')<=0));
+});
+test('planning respects activity access instead of assigning into self-service activities',()=>{
+ const publicState=createInitialState();
+ assert.throws(()=>transitionPlanning(publicState,{actor:'coordinator',type:'invite',activityId:'garden',personId:'morgan',roleId:'garden'},date),/public activity/);
+ assert.throws(()=>transitionPlanning(publicState,{actor:'coordinator',type:'invite',activityId:'pantry',personId:'jules',roleId:'packing'},date),/Roster members choose/);
 });
 test('program activities stay under Programs while general categories show standalone work',()=>{
  let s=createInitialState();const programId=s.activities.find(a=>a.id==='garden').programId;
@@ -40,7 +46,7 @@ test('planning rechecks membership, inactive programs, completion, and past date
  for(const status of ['draft','complete']){const s=createInitialState(),a=s.activities.find(a=>a.id==='garden');s.programWorkspace.programs.find(p=>p.id===a.programId).status=status;assert.throws(()=>invite(s),/program/);}
  const s=createInitialState();s.people.find(p=>p.id==='morgan').relationship='paused';assert.throws(()=>invite(s),/resume/);
  const done=createInitialState();done.activities.find(a=>a.id==='garden').workStatus='Complete';assert.throws(()=>invite(done),/closed/);
- assert.throws(()=>transitionPlanning(createInitialState(),{actor:'coordinator',type:'invite',activityId:'garden',personId:'morgan',roleId:'garden'},'2026-09-28'),/passed/);
+ assert.throws(()=>transitionPlanning(manualGarden(createInitialState()),{actor:'coordinator',type:'invite',activityId:'garden',personId:'morgan',roleId:'garden'},'2026-09-28'),/passed/);
 });
 test('incomplete preparation can receive an invitation, but cannot bypass acceptance checks',()=>{
  const s=createInitialState(),p=s.people.find(p=>p.id==='morgan');p.requirements.waiver=false;const next=invite(s),c=next.commitments.find(c=>c.personId==='morgan'&&c.activityId==='garden');
