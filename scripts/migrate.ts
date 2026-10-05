@@ -31,6 +31,7 @@ const statements = [
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    session_version INTEGER NOT NULL DEFAULT 0,
     role TEXT NOT NULL,
     org_id TEXT,
     credit_balance INTEGER NOT NULL DEFAULT 0,
@@ -38,6 +39,16 @@ const statements = [
     banner_style TEXT NOT NULL DEFAULT 'original',
     banner_palette TEXT NOT NULL DEFAULT 'citysync',
     created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS password_reset_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    email_hash TEXT NOT NULL,
+    requester_hash TEXT NOT NULL,
+    token_hash TEXT UNIQUE,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER
   )`,
   `CREATE TABLE IF NOT EXISTS orgs (
     id TEXT PRIMARY KEY,
@@ -712,6 +723,7 @@ const statements = [
 // SQLite has no ADD COLUMN IF NOT EXISTS; failures for existing columns are expected.
 const columnMigrations = [
   `ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+  `ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE orgs ADD COLUMN slug TEXT`,
   `ALTER TABLE org_profiles ADD COLUMN mission TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE org_profiles ADD COLUMN onboarding_task_id TEXT`,
@@ -814,6 +826,9 @@ const indexes = [
   `DROP INDEX IF EXISTS claims_task_user`,
   `CREATE UNIQUE INDEX IF NOT EXISTS claims_shift_user ON claims (shift_id, user_id)`,
   `CREATE INDEX IF NOT EXISTS notifications_user ON notifications (user_id)`,
+  `CREATE INDEX IF NOT EXISTS password_reset_requests_email_created ON password_reset_requests (email_hash, created_at)`,
+  `CREATE INDEX IF NOT EXISTS password_reset_requests_requester_created ON password_reset_requests (requester_hash, created_at)`,
+  `CREATE INDEX IF NOT EXISTS password_reset_requests_user ON password_reset_requests (user_id, used_at)`,
   `CREATE INDEX IF NOT EXISTS reminders_due ON reminders (status, send_after)`,
   `CREATE INDEX IF NOT EXISTS organization_calendar_entries_org_city_schedule ON organization_calendar_entries (org_id, city_id, starts_at)`,
   `CREATE INDEX IF NOT EXISTS organization_calendar_entries_due_reminder ON organization_calendar_entries (reminder_at, notified_at)`,

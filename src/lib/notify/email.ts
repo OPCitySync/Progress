@@ -28,7 +28,7 @@ class ResendEmailAdapter implements EmailAdapter {
   async send(msg: EmailMessage) {
     const key = process.env.RESEND_API_KEY
     if (!key) throw new Error('RESEND_API_KEY is not set.')
-    const from = process.env.REMINDER_FROM ?? 'City/Sync <noreply@city-sync.org>'
+    const from = process.env.EMAIL_FROM ?? process.env.REMINDER_FROM ?? 'MyCity <noreply@city-sync.org>'
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },

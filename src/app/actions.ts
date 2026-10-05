@@ -355,6 +355,7 @@ export async function saveAccountSettingsAction(formData: FormData) {
     orgId: session.orgId,
     name: participantDisplayName({ name: result.name, username: result.username }),
     email: result.email,
+    sessionVersion: session.sessionVersion,
     activeIdentityId: session.activeIdentityId,
     authorityId: session.authorityId,
   })

@@ -413,6 +413,7 @@ export async function sessionForIdentity(userId: string, identityId: string): Pr
     orgId: context.orgId,
     name: participantDisplayName(user),
     email: user.email,
+    sessionVersion: user.sessionVersion,
     activeIdentityId: context.identityId,
     authorityId: context.authorityId,
   }
@@ -423,7 +424,7 @@ export async function defaultSessionForUser(userId: string): Promise<Session | n
   const user = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0]
   if (!user || user.status === 'disabled') return null
   if (user.role === 'admin') {
-    return { sub: user.id, role: 'admin', orgId: null, name: participantDisplayName(user), email: user.email, activeIdentityId: null, authorityId: null }
+    return { sub: user.id, role: 'admin', orgId: null, name: participantDisplayName(user), email: user.email, sessionVersion: user.sessionVersion, activeIdentityId: null, authorityId: null }
   }
 
   const contexts = await getActorContexts(userId)
@@ -442,6 +443,7 @@ export async function defaultSessionForUser(userId: string): Promise<Session | n
     orgId: context.orgId,
     name: participantDisplayName(user),
     email: user.email,
+    sessionVersion: user.sessionVersion,
     activeIdentityId: context.identityId,
     authorityId: context.authorityId,
   }
@@ -451,6 +453,7 @@ export async function defaultSessionForUser(userId: string): Promise<Session | n
 export async function validateActiveSession(session: Session): Promise<Session | null> {
   const user = (await db.select().from(users).where(eq(users.id, session.sub)).limit(1))[0]
   if (!user || user.status === 'disabled') return null
+  if (session.sessionVersion !== user.sessionVersion) return null
   if (session.role === 'admin') {
     return user.role === 'admin' ? { ...session, name: participantDisplayName(user), email: user.email } : null
   }

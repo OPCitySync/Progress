@@ -17,6 +17,9 @@ export const users = sqliteTable(
     email: text('email').notNull().unique(),
     name: text('name').notNull(),
     passwordHash: text('password_hash').notNull(),
+    // Included in every signed session. Incrementing it invalidates every
+    // previously issued cookie after a password or security reset.
+    sessionVersion: integer('session_version').notNull().default(0),
     role: text('role', { enum: ['admin', 'participant', 'issuer', 'redeemer'] }).notNull(),
     status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
     orgId: text('org_id'),
@@ -38,6 +41,29 @@ export const users = sqliteTable(
   (t) => ({
     resumeTokenUniq: uniqueIndex('users_resume_token').on(t.resumeToken),
     usernameUniq: uniqueIndex('users_username').on(t.username),
+  }),
+)
+
+// Public password-reset requests deliberately store only keyed hashes of the
+// submitted email/request source and a SHA-256 hash of the random token. The
+// original token exists only in the email sent to the account holder.
+export const passwordResetRequests = sqliteTable(
+  'password_reset_requests',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id'),
+    emailHash: text('email_hash').notNull(),
+    requesterHash: text('requester_hash').notNull(),
+    tokenHash: text('token_hash'),
+    createdAt: integer('created_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    usedAt: integer('used_at'),
+  },
+  (t) => ({
+    tokenHashUniq: uniqueIndex('password_reset_requests_token_hash').on(t.tokenHash),
+    byEmail: index('password_reset_requests_email_created').on(t.emailHash, t.createdAt),
+    byRequester: index('password_reset_requests_requester_created').on(t.requesterHash, t.createdAt),
+    byUser: index('password_reset_requests_user').on(t.userId, t.usedAt),
   }),
 )
 

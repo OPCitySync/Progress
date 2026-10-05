@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'crypto'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { users, tasks, redemptions, posts, postHearts } from '@/lib/db/schema'
 import { appendEvent } from '@/lib/ledger/ledger'
@@ -51,7 +51,10 @@ export async function resetUserPassword(
 
   const passwordHash = await hashPassword(tempPassword)
   await db.transaction(async (tx) => {
-    await tx.update(users).set({ passwordHash }).where(eq(users.id, userId))
+    await tx
+      .update(users)
+      .set({ passwordHash, sessionVersion: sql`${users.sessionVersion} + 1` })
+      .where(eq(users.id, userId))
     // Ledger records that a reset happened — never the password itself.
     await appendEvent(tx, EventTypes.USER_PASSWORD_RESET, { userId }, actorId)
   })

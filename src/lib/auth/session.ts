@@ -12,6 +12,8 @@ export type Session = {
   orgId: string | null
   name: string
   email: string
+  /** Incremented after a password/security reset to revoke older cookies. */
+  sessionVersion: number
   /** The participant or delegated-organization actor currently in use. */
   activeIdentityId: string | null
   /** Set only while operating for an organization. */
@@ -49,6 +51,7 @@ export async function getSession(): Promise<Session | null> {
       orgId: (payload.orgId as string | null) ?? null,
       name: String(payload.name ?? ''),
       email: String(payload.email ?? ''),
+      sessionVersion: Number(payload.sessionVersion ?? 0),
       activeIdentityId: (payload.activeIdentityId as string | null) ?? null,
       authorityId: (payload.authorityId as string | null) ?? null,
     }

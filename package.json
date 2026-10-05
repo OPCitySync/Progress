@@ -18,6 +18,7 @@
     "verify:city-ledger": "tsx scripts/verify-city-ledger-outbox.ts",
     "verify:program-workspace": "tsx scripts/verify-program-workspace.ts",
     "verify:volunteer-intake": "tsx scripts/verify-volunteer-intake.ts",
+    "verify:password-reset": "tsx scripts/verify-password-reset.ts",
     "setup": "npm run db:migrate && npm run db:seed",
     "preview:coordination:setup": "node scripts/coordination-preview.mjs setup",
     "preview:coordination": "node scripts/coordination-preview.mjs dev",
