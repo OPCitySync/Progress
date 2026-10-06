@@ -70,7 +70,7 @@ function issuerFeedActionQueue(ctx) {
 
 function issuerFloatingActions(ctx) {
   const {icon,button}=ctx;
-  return `<nav class="city-feed-floating-actions" aria-label="Organization quick actions"><span>${icon('spark')} Quick actions</span><div>${button(icon('plus')+'Schedule Activity','create','','btn')}${button(icon('plus')+'Create a Role','rcCreateRole','','btn')}${button(icon('plus')+'Invite Volunteers','invite','','btn')}${button(icon('people')+'Staff','nav','data-page="planning"','btn')}${button(icon('calendar')+'Calendar','nav','data-page="home"','btn')}</div></nav>`;
+  return `<nav class="city-feed-floating-actions" aria-label="Organization quick actions"><div>${button(icon('plus')+'Schedule Activity','create','','btn')}${button(icon('plus')+'Create a Role','rcCreateRole','','btn')}${button(icon('plus')+'Invite Volunteers','invite','','btn')}${button(icon('people')+'Staff','nav','data-page="planning"','btn')}${button(icon('calendar')+'Calendar','nav','data-page="home"','btn')}</div></nav>`;
 }
 
 function volunteerActionQueue(ctx) {

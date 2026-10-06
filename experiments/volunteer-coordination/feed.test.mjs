@@ -146,7 +146,7 @@ test('issuer feed combines public presence, quick work, and the live action queu
   assert.doesNotMatch(feed, /data-home-action="collapse"/);
   assert.doesNotMatch(feed, /You’re all caught up/);
   assert.match(feed, /city-feed-floating-actions/);
-  assert.match(feed, /Quick actions/);
+  assert.doesNotMatch(feed, />Quick actions</);
   assert.match(feed, /Schedule Activity/);
   assert.match(feed, /Create a Role/);
   assert.match(feed, /Invite Volunteers/);

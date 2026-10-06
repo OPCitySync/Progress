@@ -48,7 +48,9 @@
 
 /* Issuers use the same social feed frame as civic participants. */
 .city-layout.city-layout-issuer{grid-template-columns:220px minmax(0,1fr) 270px;gap:24px}
-.city-personal-issuer .city-person-identity p{min-height:66px}
+.city-personal-issuer .city-person-identity{padding-bottom:10px}
+.city-personal-issuer .city-person-identity p{min-height:0;margin:10px 0 0}
+.city-personal-issuer .city-person-identity p:empty{display:none}
 .city-personal-issuer .city-community-note .text-button{font-size:10px;line-height:1.7;text-align:left}
 @media(min-width:1500px){.city-layout.city-layout-issuer{grid-template-columns:240px minmax(0,1fr) 290px;gap:28px}}
 @media(max-width:1200px){.city-layout.city-layout-issuer{grid-template-columns:190px minmax(0,1fr) 240px;gap:18px}}
@@ -75,10 +77,8 @@
 .city-network-card strong{font-size:10px;line-height:1.4}
 .city-network-card em{overflow:hidden;margin-top:3px;color:#77747b;font-size:8px;font-style:normal;line-height:1.45;text-overflow:ellipsis}
 
-.city-feed-floating-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 11px}
-.city-feed-floating-actions>span{display:flex;align-items:center;gap:6px;color:#817c82;font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
-.city-feed-floating-actions>span .icon{width:13px;height:13px;color:#b27925}
-.city-feed-floating-actions>div{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.city-feed-floating-actions{display:flex;align-items:center;justify-content:flex-start;margin:0 2px 11px}
+.city-feed-floating-actions>div{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:6px}
 .city-feed-floating-actions .btn{display:flex;align-items:center;gap:5px;min-height:31px;padding:6px 9px;border:1px solid #dfdde0;border-radius:9px;background:#fff;box-shadow:0 3px 10px #15151e08;color:#55525a;font-size:8px;font-weight:750}
 .city-feed-floating-actions .btn:first-child{border-color:#dfc28f;background:#fbf1df;color:#81591e}
 .city-feed-floating-actions .btn:hover{border-color:#d6b16e;background:#fffaf1;color:#15151e;transform:translateY(-1px)}
@@ -116,7 +116,7 @@
 .city-embedded-profile .detail-section{border-radius:14px}
 
 @media(max-width:1100px){.city-layout.city-layout-issuer{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-personal{display:grid;position:static}.city-layout-issuer .city-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.city-layout-issuer .city-person-card{max-width:none}.city-layout-issuer .city-person-identity p{min-height:0}}
-@media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}.city-feed-floating-actions{align-items:flex-start;flex-direction:column}.city-feed-floating-actions>div{justify-content:flex-start}}
+@media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}}
 @media(max-width:560px){.city-issuer-queue-row{grid-template-columns:1fr}.city-issuer-queue-copy strong,.city-issuer-queue-copy p{white-space:normal}.city-issuer-queue-actions{justify-content:flex-end}.city-feed-floating-actions .btn{font-size:7px;padding-inline:7px}}
 @media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}}
 
