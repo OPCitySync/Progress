@@ -86,11 +86,7 @@
 
 .city-feed-control-stack.has-issuer-queue .city-toolbar{border-radius:13px 13px 0 0;border-bottom-color:#4a4a55}
 .city-feed-issuer-queue{overflow:hidden;border:1px solid #dfd3bd;border-top:3px solid #dd9e33;border-radius:0 0 13px 13px;background:#fff}
-.city-feed-issuer-queue>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 13px;background:#f6ead5;border-bottom:1px solid #e7d9c0}
-.city-feed-issuer-queue>header h2{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;letter-spacing:-.02em}
-.city-feed-issuer-queue>header h2 span{display:grid;place-items:center;min-width:19px;height:19px;padding-inline:5px;border-radius:999px;background:#fff;color:#7e581e;font-size:8px}
-.city-feed-issuer-queue>header .icon-button{width:27px;height:27px;min-height:27px;padding:5px;border:1px solid #ddceb3;background:#fff;color:#6d5833}
-.city-feed-issuer-queue>header .icon-button .icon{width:13px;height:13px}
+.city-issuer-queue-list{max-height:286px;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#d8c39e transparent;scrollbar-width:thin}
 .city-issuer-queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;min-height:54px;padding:8px 13px;border-bottom:1px solid #eee9df;background:#fff}
 .city-issuer-queue-row:last-child{border-bottom:0}
 .city-issuer-queue-copy{min-width:0}
@@ -99,11 +95,6 @@
 .city-issuer-queue-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
 .city-issuer-queue-actions .btn{min-height:28px;padding:5px 8px;font-size:8px;white-space:nowrap}
 .city-issuer-queue-actions .icon{width:11px;height:11px;margin-left:3px}
-.city-issuer-queue-empty{display:flex;align-items:center;gap:10px;padding:11px 13px;color:#69666c}
-.city-issuer-queue-empty>.icon{width:18px;height:18px;color:#70915e}
-.city-issuer-queue-empty strong{font-size:10px}.city-issuer-queue-empty p{margin:2px 0 0;font-size:8px}
-.city-issuer-queue-more{display:block;padding:7px 13px;border-top:1px solid #eee3d1;background:#fbfaf7;color:#8a6b38;font-size:8px;text-align:center}
-.city-issuer-queue-more:hover{text-decoration:underline}
 
 .city-embedded-profile{min-width:0}
 .city-embedded-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding:10px 13px;border:1px solid #e4e1dc;border-radius:12px;background:#fff}

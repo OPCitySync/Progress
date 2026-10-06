@@ -138,12 +138,13 @@ test('issuer feed combines public presence, quick work, and the live action queu
   assert.match(feed, /class="city-profile-inline/);
   assert.match(feed, /Discover City Network/);
   assert.match(feed, /href="#\/coordinator\/discover"/);
-  assert.match(feed, /Action Queue/);
   assert.match(feed, /city-feed-issuer-queue/);
   assert.match(feed, /city-issuer-queue-copy/);
   assert.match(feed, /city-feed-control-stack[^\"]*has-issuer-queue/);
-  assert.match(feed, /data-home-action="history"/);
+  assert.doesNotMatch(feed, /data-home-action="history"/);
+  assert.doesNotMatch(feed, /data-home-action="acknowledge"/);
   assert.doesNotMatch(feed, /data-home-action="collapse"/);
+  assert.doesNotMatch(feed, /You’re all caught up/);
   assert.match(feed, /city-feed-floating-actions/);
   assert.match(feed, /Quick actions/);
   assert.match(feed, /Schedule Activity/);
@@ -155,6 +156,14 @@ test('issuer feed combines public presence, quick work, and the live action queu
   assert.ok(feed.indexOf('city-feed-floating-actions') < feed.indexOf('city-toolbar city-toolbar-issuer'));
   assert.ok(feed.indexOf('city-toolbar city-toolbar-issuer') < feed.indexOf('city-feed-issuer-queue'));
   assert.match(feed, /id="feed-posts"/);
+
+  const quietState = structuredClone(state);
+  quietState.activities = [];
+  quietState.recruitment.applications = [];
+  quietState.people.forEach(person => { person.relationship = 'member'; });
+  const quietFeed = renderFeed({ ...context, state: quietState });
+  assert.doesNotMatch(quietFeed, /city-feed-issuer-queue/);
+  assert.doesNotMatch(quietFeed, /has-issuer-queue/);
 
   const originalLocation = globalThis.location;
   globalThis.location = { origin: 'http://localhost:4320' };
