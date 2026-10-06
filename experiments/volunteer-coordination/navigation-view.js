@@ -2,7 +2,7 @@ import { safeProfileImage } from './profile-model.js';
 
 const ISSUER_HEADER_PALETTE = ['#15151e', '#34343f', '#fbf0dc'];
 export const ISSUER_SECTIONS = [
-  {id:'home',label:'Home',icon:'home',page:'home',tabs:[['home','Overview'],['feed','MyCity Feed'],['discover','City Network']]},
+  {id:'home',label:'Home',icon:'home',page:'feed',tabs:[]},
   {id:'workspace',label:'Workspace',icon:'work',page:'programs',tabs:[['programs','Programs'],['documents','Documents'],['planning','Planning']]},
   {id:'volunteers',label:'Volunteers',icon:'people',page:'people',tabs:[['people','Roster'],['recruitment','Recruitment & onboarding'],['passport','Passports']]},
   {id:'profile',label:'Public Profile',icon:'leaf',page:'profile',tabs:[]},
@@ -16,13 +16,15 @@ export function issuerSection(page) {
   return ISSUER_SECTIONS[0];
 }
 export function issuerNavigation(ctx) {
-  const {state,ui,e,icon}=ctx,section=issuerSection(ui.page);
+  const {state,ui,e,icon,button}=ctx,section=issuerSection(ui.page);
   const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors')||{id:'',name:'Organization',profile:{}};
   const colors=ISSUER_HEADER_PALETTE;
   const activeTab=({program:'programs',work:'planning',activity:'planning',schedule:'planning',position:'recruitment',application:'recruitment','org-profile':'discover'})[ui.page]||ui.page;
   const pending=state.recruitment.applications.filter(a=>a.orgId===org.id&&a.submittedAt&&['submitted','reviewing','needs-info','offered','onboarding'].includes(a.status)).length;
   const brandWordmark=`${ctx.assetBase}/assets/mycity-logo-gold-blue-on-white.svg`;
-  return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a><header class="issuer-header" style="--issuer-deep:${colors[0]};--issuer-mid:${colors[1]};--issuer-accent:${colors[2]}"><div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Connected workspace':'Local prototype · sample data'}</span></span></div><div class="issuer-mainbar"><a href="#/coordinator/home" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a><nav aria-label="Issuer sections" class="issuer-section-nav">${ISSUER_SECTIONS.map(s=>`<a href="#/coordinator/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>${headerAccount(ctx)}</div></header>${section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/coordinator/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='recruitment'&&pending?`<span class="issuer-count">${pending}</span>`:''}</a>`).join('')}</nav></div>`:''}`;
+  const homeActions=section.id==='home'?`<div class="issuer-subnav-wrap issuer-quickbar-wrap"><nav class="issuer-quickbar" aria-label="Organization quick actions">${button(icon('plus')+'Schedule Activity','create','','issuer-quickbar-action is-primary')}${button(icon('plus')+'Create a Role','rcCreateRole','','issuer-quickbar-action')}${button(icon('plus')+'Invite Volunteers','invite','','issuer-quickbar-action')}${button(icon('people')+'Staff','nav','data-page="planning"','issuer-quickbar-action')}${button(icon('calendar')+'Calendar','nav','data-page="calendar"','issuer-quickbar-action')}</nav></div>`:'';
+  const pageNavigation=section.tabs.length?`<div class="issuer-subnav-wrap"><nav class="issuer-subnav" aria-label="${e(section.label)} navigation">${section.tabs.map(([page,label])=>`<a href="#/coordinator/${page}" class="${page===activeTab?'is-active':''}" ${page===activeTab?'aria-current="page"':''}>${e(label)}${page==='recruitment'&&pending?`<span class="issuer-count">${pending}</span>`:''}</a>`).join('')}</nav></div>`:'';
+  return `<a href="#main-content" data-action="issuerSkip" class="issuer-skip">Skip to content</a><header class="issuer-header" style="--issuer-deep:${colors[0]};--issuer-mid:${colors[1]};--issuer-accent:${colors[2]}"><div class="issuer-studio"><span><i></i> COORDINATION STUDIO <span class="issuer-demo-label">${ctx.integratedPlatform?'Connected workspace':'Local prototype · sample data'}</span></span></div><div class="issuer-mainbar"><a href="#/coordinator/feed" class="issuer-brand" aria-label="MyCity home"><img src="${brandWordmark}" alt="mycity"></a><nav aria-label="Issuer sections" class="issuer-section-nav">${ISSUER_SECTIONS.map(s=>`<a href="#/coordinator/${s.page}" class="issuer-section-link ${s.id===section.id?'is-active':''}" ${s.id===section.id?'aria-current="true"':''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}</nav>${headerAccount(ctx)}</div></header>${homeActions||pageNavigation}`;
 }
 
 export const VOLUNTEER_SECTIONS = [

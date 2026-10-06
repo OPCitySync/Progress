@@ -4,7 +4,7 @@ import { today } from './passport-model.js';
 import { planningMonday } from './planning-model.js';
 
 export function bindIssuerHome({context,render,commit,showDialog,closeDialog,navigate,toast}) {
-  const active=()=>context().ui.mode==='coordinator'&&['home','feed'].includes(context().ui.page);
+  const active=()=>context().ui.mode==='coordinator'&&['calendar','feed'].includes(context().ui.page);
   function apply(action) {
     try {commit(transitionIssuerHome(context().state,{...action,actor:context().ui.mode}));return true;}
     catch(error){const output=document.querySelector('#dialog[open] .form-error');if(output){output.textContent=error.message;output.focus();}else toast(error.message);return false;}

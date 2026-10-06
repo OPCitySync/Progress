@@ -7,6 +7,7 @@ import { ensurePrograms } from './program-model.js';
 import { ensureProfiles } from './profile-model.js';
 import { ensureIssuerHome } from './issuer-home-model.js';
 import { renderFeed, renderVolunteerActionHistory } from './feed-view.js';
+import { ISSUER_SECTIONS, issuerNavigation } from './navigation-view.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const icon = name => `<i data-icon="${name}"></i>`;
@@ -145,15 +146,8 @@ test('issuer feed combines public presence, quick work, and the live action queu
   assert.doesNotMatch(feed, /data-home-action="acknowledge"/);
   assert.doesNotMatch(feed, /data-home-action="collapse"/);
   assert.doesNotMatch(feed, /You’re all caught up/);
-  assert.match(feed, /city-feed-floating-actions/);
-  assert.doesNotMatch(feed, />Quick actions</);
-  assert.match(feed, /Schedule Activity/);
-  assert.match(feed, /Create a Role/);
-  assert.match(feed, /Invite Volunteers/);
-  assert.match(feed, />Staff</);
-  assert.match(feed, />Calendar</);
+  assert.doesNotMatch(feed, /city-feed-floating-actions/);
   assert.doesNotMatch(feed, /city-quick-actions/);
-  assert.ok(feed.indexOf('city-feed-floating-actions') < feed.indexOf('city-toolbar city-toolbar-issuer'));
   assert.ok(feed.indexOf('city-toolbar city-toolbar-issuer') < feed.indexOf('city-feed-issuer-queue'));
   assert.match(feed, /id="feed-posts"/);
 
@@ -190,6 +184,27 @@ test('issuer feed combines public presence, quick work, and the live action queu
     if (originalLocation === undefined) delete globalThis.location;
     else globalThis.location = originalLocation;
   }
+});
+
+test('issuer Home opens the Feed and uses its subheader for operational actions', () => {
+  const state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(createInitialState()))));
+  const ui = { mode: 'coordinator', page: 'feed', person: 'alex' };
+  const html = issuerNavigation({
+    state, ui, e: escapeHtml, icon, button, avatar, assetBase: '', integratedPlatform: false,
+    connectedPlatform: false, coordinatorName: 'Coordinator', platformContext: null,
+    currentPerson: () => state.people.find(person => person.id === ui.person),
+  });
+  assert.equal(ISSUER_SECTIONS[0].page, 'feed');
+  assert.match(html, /href="#\/coordinator\/feed"[^>]*aria-label="MyCity home"/);
+  assert.match(html, /class="issuer-quickbar"/);
+  assert.match(html, /data-action="create"[^>]*>.*Schedule Activity/);
+  assert.match(html, /data-action="rcCreateRole"[^>]*>.*Create a Role/);
+  assert.match(html, /data-action="invite"[^>]*>.*Invite Volunteers/);
+  assert.match(html, /data-page="planning"[^>]*>.*Staff/);
+  assert.match(html, /data-page="calendar"[^>]*>.*Calendar/);
+  assert.doesNotMatch(html, />Overview</);
+  assert.doesNotMatch(html, />MyCity Feed</);
+  assert.doesNotMatch(html, />City Network</);
 });
 
 test('participant action history explains acknowledgement and restores an item', () => {

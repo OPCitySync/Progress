@@ -77,13 +77,6 @@
 .city-network-card strong{font-size:10px;line-height:1.4}
 .city-network-card em{overflow:hidden;margin-top:3px;color:#77747b;font-size:8px;font-style:normal;line-height:1.45;text-overflow:ellipsis}
 
-.city-feed-floating-actions{display:flex;align-items:center;justify-content:flex-start;margin:0 2px 11px}
-.city-feed-floating-actions>div{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:6px}
-.city-feed-floating-actions .btn{display:flex;align-items:center;gap:5px;min-height:31px;padding:6px 9px;border:1px solid #dfdde0;border-radius:9px;background:#fff;box-shadow:0 3px 10px #15151e08;color:#55525a;font-size:8px;font-weight:750}
-.city-feed-floating-actions .btn:first-child{border-color:#dfc28f;background:#fbf1df;color:#81591e}
-.city-feed-floating-actions .btn:hover{border-color:#d6b16e;background:#fffaf1;color:#15151e;transform:translateY(-1px)}
-.city-feed-floating-actions .icon{width:12px;height:12px}
-
 .city-feed-control-stack.has-issuer-queue .city-toolbar{border-radius:13px 13px 0 0;border-bottom-color:#4a4a55}
 .city-feed-issuer-queue{overflow:hidden;border:1px solid #dfd3bd;border-top:3px solid #dd9e33;border-radius:0 0 13px 13px;background:#fff}
 .city-issuer-queue-list{max-height:286px;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#d8c39e transparent;scrollbar-width:thin}
@@ -117,7 +110,7 @@
 
 @media(max-width:1100px){.city-layout.city-layout-issuer{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-personal{display:grid;position:static}.city-layout-issuer .city-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.city-layout-issuer .city-person-card{max-width:none}.city-layout-issuer .city-person-identity p{min-height:0}}
 @media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}}
-@media(max-width:560px){.city-issuer-queue-row{grid-template-columns:1fr}.city-issuer-queue-copy strong,.city-issuer-queue-copy p{white-space:normal}.city-issuer-queue-actions{justify-content:flex-end}.city-feed-floating-actions .btn{font-size:7px;padding-inline:7px}}
+@media(max-width:560px){.city-issuer-queue-row{grid-template-columns:1fr}.city-issuer-queue-copy strong,.city-issuer-queue-copy p{white-space:normal}.city-issuer-queue-actions{justify-content:flex-end}}
 @media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}}
 
 /* Side rails scroll normally until their final card reaches the app header. */
