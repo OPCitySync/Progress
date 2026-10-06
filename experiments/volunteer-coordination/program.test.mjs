@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, transition } from './model.js';
-import { assignDocument, deleteDocument, ensureDocuments, isLiabilityWaiver, saveDocument, updateDocument } from './documents-model.js';
+import { assignDocument, deleteDocument, ensureDocuments, isLiabilityWaiver, liabilityWaiversForActivity, saveDocument, updateDocument } from './documents-model.js';
 import { ensurePrograms, transitionProgram, programHealth, blockersFor, occurrenceDates, workspaceProgramLeads } from './program-model.js';
 const initial = () => createInitialState();
 const garden = s => s.activities.find(a=>a.id==='garden');
@@ -127,6 +127,19 @@ test('program recurring activities use assignment modes and retain one dated pro
  const waiver=added.state.documentLibrary.items[0];assert.equal(waiver.category,'Forms');assert.equal(isLiabilityWaiver(waiver),true);
  result=transition(added.state,{...base,programId:garden(added.state).programId,assignmentMode:'public',visibility:'public',enrollment:'self',waiverDocumentId:waiver.id,requires:['waiver']});
  assert.equal(result.state.activities.at(-1).waiverDocumentId,waiver.id);
+});
+
+test('activity forms can select organization-wide waivers while respecting program-specific assignments',()=>{
+ const start=ensureDocuments(initial()),programId=garden(start).programId,otherProgram=start.programWorkspace.programs.find(program=>program.id!==programId).id;
+ const unassigned={id:'waiver-unassigned',title:'Organization waiver',documentType:'liability-waiver',programIds:[],allVolunteerActivities:false};
+ const allActivities={id:'waiver-all',title:'All activity waiver',documentType:'liability-waiver',programIds:[],allVolunteerActivities:true};
+ const thisProgram={id:'waiver-this-program',title:'Program waiver',documentType:'liability-waiver',programIds:[programId],allVolunteerActivities:false};
+ const otherProgramWaiver={id:'waiver-other-program',title:'Other program waiver',documentType:'liability-waiver',programIds:[otherProgram],allVolunteerActivities:false};
+ const ordinaryDocument={id:'guide',title:'Volunteer guide',documentType:'',programIds:[],allVolunteerActivities:false};
+ start.documentLibrary.items=[unassigned,allActivities,thisProgram,otherProgramWaiver,ordinaryDocument];
+ assert.deepEqual(liabilityWaiversForActivity(start).map(document=>document.id),['waiver-unassigned','waiver-all']);
+ assert.deepEqual(liabilityWaiversForActivity(start,programId).map(document=>document.id),['waiver-unassigned','waiver-all','waiver-this-program']);
+ assert.ok(liabilityWaiversForActivity(start,programId,'waiver-other-program').some(document=>document.id==='waiver-other-program'));
 });
 
 test('draft or retired activities cannot be shared into MyCity Feed',async()=>{

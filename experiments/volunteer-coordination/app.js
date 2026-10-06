@@ -3,7 +3,7 @@ import { homeHero, homeActionQueue, homeCalendar } from './issuer-home-view.js';
 import { bindIssuerHome } from './issuer-home-controller.js';
 import { renderPlanning } from './planning-view.js';
 import { bindPlanning } from './planning-controller.js';
-import { assignDocument, deleteDocument, ensureDocuments, isLiabilityWaiver, saveDocument, updateDocument } from './documents-model.js';
+import { assignDocument, deleteDocument, ensureDocuments, isLiabilityWaiver, liabilityWaiversForActivity, saveDocument, updateDocument } from './documents-model.js';
 import { loadDocumentFile, removeDocumentFile, saveDocumentFile } from './documents-files.js';
 import { renderDocuments, renderDocumentList, renderDocumentDetail, renderDocumentForm, renderDocumentAssignment } from './documents-view.js';
 import { loadMyCityContext, saveOrganizationSettings, switchMyCityIdentity, renderConnectedSettings } from './connected-settings.js';
@@ -548,7 +548,6 @@ function preferencesDialog() {
 }
 const templates = [['event', 'leaf', 'One-Time Activity', 'One scheduled occasion, with its own team and handoff.'], ['shift', 'calendar', 'Recurring Activity', 'Repeat the activity on dated occasions people choose individually.'], ['project', 'book', 'Program Task', 'A scoped deliverable within a program, with dependencies and a reviewer.']];
 const programTemplates = [['event', 'leaf', 'One-Time Program Activity', 'One scheduled occasion that belongs to this program.'], ['shift', 'calendar', 'Recurring Program Activity', 'Repeat on dated occasions within this program; volunteers choose each date.']];
-const waiverAvailableFor = (document,programId='') => isLiabilityWaiver(document)&&(document.allVolunteerActivities||(programId&&(document.programIds||[]).includes(programId)));
 function createDialog(type, programId = '') {
   if (!orgMode()) return;
   const selectedProgram = programId ? state.programWorkspace.programs.find(p => p.id === programId && p.status !== 'complete') : null;
@@ -565,7 +564,7 @@ function createDialog(type, programId = '') {
   if (['event', 'shift'].includes(type)) {
     const organization = state.recruitment?.organizations?.find(item => item.id === HOME_ORG);
     const locationDefault = organization?.location || 'Organization location';
-    const waiverDocuments = (state.documentLibrary?.items || []).filter(document=>waiverAvailableFor(document,program.id));
+    const waiverDocuments = liabilityWaiversForActivity(state,program.id);
     const waiverOptions = waiverDocuments.length
       ? waiverDocuments.map(document => `<option value="${e(document.id)}">${e(document.title)} · ${e(document.updatedAt || 'Current')}</option>`).join('')
       : '<option value="" disabled>No liability waiver is available in Documents</option>';
@@ -600,7 +599,7 @@ function editProgramActivityDialog(activityId,programId) {
   const rangeMinutes=range?((Number(range[3])%12+(range[5].toUpperCase()==='PM'?12:0))*60+Number(range[4]))-((Number(range[1])%12+(range[5].toUpperCase()==='PM'?12:0))*60+Number(range[2])):0;
   const inferredDuration=({30:'30 minutes',45:'45 minutes',60:'1 hour',90:'1.5 hours',120:'2 hours',240:'4 hours'})[rangeMinutes];
   const currentDuration=durations.includes(activity.duration)?activity.duration:inferredDuration||'1 hour';
-  const waiverDocuments=(state.documentLibrary?.items||[]).filter(document=>waiverAvailableFor(document,program.id)||document.id===activity.waiverDocumentId);
+  const waiverDocuments=liabilityWaiversForActivity(state,program.id,activity.waiverDocumentId);
   const waiverOptions=waiverDocuments.length?waiverDocuments.map(document=>`<option value="${e(document.id)}" ${document.id===activity.waiverDocumentId?'selected':''}>${e(document.title)} · ${e(document.updatedAt||'Current')}</option>`).join(''):'<option value="" disabled>No liability waiver is available in Documents</option>';
   const required=new Set(activity.roles.flatMap(role=>role.requires||[]));
   const preparation=Object.entries(REQUIREMENTS).map(([key,requirement])=>`<label class="checkbox-label"><input type="checkbox" name="requires" value="${key}" ${required.has(key)?'checked':''}>${e(requirement.title)}</label>`).join('');

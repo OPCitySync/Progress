@@ -5,6 +5,14 @@ export const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024;
 const clean = value => String(value ?? '').trim();
 export const isLiabilityWaiver = document => document?.documentType === 'liability-waiver' || /waiver|liability|participation agreement/i.test(`${document?.title || ''} ${document?.category || ''} ${document?.summary || ''}`);
 
+export function liabilityWaiversForActivity(state, programId = '', selectedId = '') {
+  return (state.documentLibrary?.items || []).filter(document => {
+    if (!isLiabilityWaiver(document)) return false;
+    const programIds = Array.isArray(document.programIds) ? document.programIds : document.programId ? [document.programId] : [];
+    return document.id === selectedId || document.allVolunteerActivities || programIds.length === 0 || Boolean(programId && programIds.includes(programId));
+  });
+}
+
 function migrateProgramResources(state) {
   for (const program of state.programWorkspace?.programs || []) {
     for (const resource of program.resources || []) {
