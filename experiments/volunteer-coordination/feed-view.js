@@ -2,7 +2,7 @@ import { today } from './passport-model.js';
 import { availableActivity } from './program-model.js';
 import { feedActor, heartCount, participantQueueItems, selectFeedPosts } from './feed-model.js';
 import { HOME_ORG } from './recruitment-model.js';
-import { homeActionQueue } from './issuer-home-view.js';
+import { homeQueue } from './issuer-home-model.js';
 import { renderEmbeddedPublicProfile } from './profile-view.js';
 
 function postCard(ctx, post) {
@@ -45,20 +45,32 @@ export function renderFeed(ctx) {
   const publicActivities = state.activities.filter(a => a.visibility === 'public' && availableActivity(state,a));
   const myCommitments = state.commitments.filter(c => c.personId === ui.person && c.status === 'confirmed').map(c => state.activities.find(a => a.id === c.activityId)).filter(a => a?.date && a.date >= today()).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 2);
   const participantQueue = coordinator ? '' : volunteerActionQueue(ctx);
-  const issuerQueue = coordinator ? `<div class="city-issuer-action-queue">${homeActionQueue(ctx)}</div>` : '';
+  const issuerQueue = coordinator ? issuerFeedActionQueue(ctx) : '';
   const events = items => items.map(a => `<button class="city-calendar-item" data-action="activity" data-id="${e(a.id)}"><span class="city-date"><strong>${dateLabel(a.date, { day: 'numeric' })}</strong><small>${dateLabel(a.date, { month: 'short' })}</small></span><span><strong>${e(a.title)}</strong><small>${e(a.time)}</small></span>${icon('chevron')}</button>`).join('');
   const feedContent=`<h1 class="sr-only">MyCity Feed</h1>
-      <div class="city-feed-control-stack ${participantQueue ? 'has-action-queue' : ''}"><div class="city-toolbar city-toolbar-issuer"><div class="tabs" aria-label="MyCity Feed filters">${feedFilters.map(([key, label]) => button(label, 'feedFilter', `data-filter="${key}" aria-pressed="${!ui.feedSaved && ui.feedFilter === key && !ui.item}"`, `tab ${!ui.feedSaved && ui.feedFilter === key && !ui.item ? 'active' : ''}`)).join('')}</div><div class="city-tools">${toolbarSearch}${button(icon('bookmark') + `<span>${bookmarkLabel}${savedCount ? ' ' + savedCount : ''}</span>`, 'feedSaved', `aria-pressed="${ui.feedSaved}" aria-label="${ui.feedSaved ? 'Show all MyCity posts' : 'Show bookmarked posts'}"`, `btn small ${ui.feedSaved ? 'primary' : 'secondary'}`)}${coordinator ? button(icon('plus') + 'Post', 'feedCompose', '', 'btn small primary') : ''}</div></div>${participantQueue}</div>
-      ${issuerQueue}
+      ${coordinator ? issuerFloatingActions(ctx) : ''}
+      <div class="city-feed-control-stack ${participantQueue ? 'has-action-queue' : ''} ${coordinator ? 'has-issuer-queue' : ''}"><div class="city-toolbar city-toolbar-issuer"><div class="tabs" aria-label="MyCity Feed filters">${feedFilters.map(([key, label]) => button(label, 'feedFilter', `data-filter="${key}" aria-pressed="${!ui.feedSaved && ui.feedFilter === key && !ui.item}"`, `tab ${!ui.feedSaved && ui.feedFilter === key && !ui.item ? 'active' : ''}`)).join('')}</div><div class="city-tools">${toolbarSearch}${button(icon('bookmark') + `<span>${bookmarkLabel}${savedCount ? ' ' + savedCount : ''}</span>`, 'feedSaved', `aria-pressed="${ui.feedSaved}" aria-label="${ui.feedSaved ? 'Show all MyCity posts' : 'Show bookmarked posts'}"`, `btn small ${ui.feedSaved ? 'primary' : 'secondary'}`)}${coordinator ? button(icon('plus') + 'Post', 'feedCompose', '', 'btn small primary') : ''}</div></div>${participantQueue}${issuerQueue}</div>
       ${ui.item ? `<div class="city-feed-caption">${button('← Back to all updates', 'feedAll', '', 'text-button')}<span>Post permalink</span></div>` : coordinator ? `<div class="city-search-row"><label class="search-box">${icon('search')}<input id="feed-search" aria-label="Search city updates" placeholder="Search your city’s updates…" value="${e(ui.feedQuery)}"></label><span id="feed-result-count">${results.count} ${results.count === 1 ? 'update' : 'updates'}${ui.feedSaved ? ' saved' : ''}</span></div>` : ''}
       <div id="feed-posts">${results.html}</div>`;
   return `<div class="city-layout ${coordinator ? 'city-layout-issuer' : ''}">${coordinator ? issuerFeedAside(ctx) : volunteerFeedAside(ctx)}<section class="city-stream" aria-label="${coordinator&&ui.feedPublicProfile?'Public Profile':'MyCity Feed'}">
       ${coordinator&&ui.feedPublicProfile?renderEmbeddedPublicProfile(ctx):feedContent}
     </section><aside class="city-rail" aria-label="City context">
-      ${coordinator ? issuerQuickActions(ctx) : ''}
       ${!coordinator && myCommitments.length ? `<section class="panel city-rail-card"><div class="section-heading"><div><span class="eyebrow">MY CALENDAR</span><h2>Your next plans</h2></div>${icon('calendar')}</div>${events(myCommitments)}${button('My Volunteering ' + icon('arrow'), 'nav', 'data-page="applications"', 'text-button')}</section>` : ''}
       ${coordinator ? cityPulseCard(ctx, publicActivities, true) : `<section class="panel city-rail-card city-neighbors"><span class="eyebrow">GET TO KNOW YOUR CITY</span><h2>Local organizations</h2>${state.recruitment.organizations.slice(0,3).map(org=>`<button class="city-neighbor" data-action="rcOrg" data-id="${e(org.id)}">${ctx.avatar({name:org.name,color:'sage'},'small')}<span><strong>${e(org.name)}</strong><small>${e(org.location)}</small></span>${icon('chevron')}</button>`).join('')}${button('Discover organizations →','nav','data-page="discover"','text-button')}</section>${cityPulseCard(ctx, publicActivities, true)}`}
     </aside></div>`;
+}
+
+function issuerFeedActionQueue(ctx) {
+  const {state,e,icon,button}=ctx,items=homeQueue(state),visible=items.slice(0,4);
+  const attrs=item=>Object.entries(item.attrs).map(([key,value])=>`data-${key}="${e(value)}"`).join(' ');
+  const rows=visible.map(item=>`<article class="city-issuer-queue-row"><div class="city-issuer-queue-copy"><strong>${e(item.title)}</strong><p>${e(item.detail)}</p></div><div class="city-issuer-queue-actions"><button type="button" class="btn secondary small" data-home-action="acknowledge" data-key="${e(item.key)}" aria-label="Acknowledge: ${e(item.title)}">Acknowledge</button>${button(e(item.label)+icon('arrow'),item.action,attrs(item),'btn primary small')}</div></article>`).join('');
+  const contents=items.length?rows:`<div class="city-issuer-queue-empty">${icon('check')}<div><strong>You’re all caught up.</strong><p>New decisions and follow-ups will appear here.</p></div></div>`;
+  return `<section class="city-feed-issuer-queue" aria-label="Action Queue"><header><h2>Action Queue <span>${items.length}</span></h2><button type="button" class="icon-button" data-home-action="history" aria-label="Open action history">${icon('history')}</button></header><div class="city-issuer-queue-list">${contents}</div>${items.length>visible.length?`<a class="city-issuer-queue-more" href="#/coordinator/home">+${items.length-visible.length} more ${items.length-visible.length===1?'action':'actions'} in Overview</a>`:''}</section>`;
+}
+
+function issuerFloatingActions(ctx) {
+  const {icon,button}=ctx;
+  return `<nav class="city-feed-floating-actions" aria-label="Organization quick actions"><span>${icon('spark')} Quick actions</span><div>${button(icon('plus')+'Schedule Activity','create','','btn')}${button(icon('plus')+'Create a Role','rcCreateRole','','btn')}${button(icon('plus')+'Invite Volunteers','invite','','btn')}${button(icon('people')+'Staff','nav','data-page="planning"','btn')}${button(icon('calendar')+'Calendar','nav','data-page="home"','btn')}</div></nav>`;
 }
 
 function volunteerActionQueue(ctx) {
@@ -98,13 +110,8 @@ function issuerFeedAside(ctx) {
   const members=state.people.filter(person=>person.relationship==='member').length;
   const programs=state.programWorkspace.programs.filter(program=>program.status!=='complete').length;
   const profileOpen=!!ctx.ui.feedPublicProfile;
-  const profileLabel=profileOpen?`${icon('feed')}<span><strong>Return to Feed</strong><small>See what’s happening in your city</small></span>${icon('chevron')}`:`${icon('external')}<span><strong>View Public Profile</strong><small>See what your community sees</small></span>${icon('chevron')}`;
-  return `<aside class="city-personal city-personal-issuer" aria-label="Your organization space"><section class="panel city-person-card city-rail-lock"><div class="city-person-cover"><span>${icon('leaf')}</span></div><div class="city-person-identity">${avatar({name:organizationName,color:'sage'},'large')}<h2>${e(organizationName)}</h2><span>${e(organizationLocation)}</span><p>${e(organization.mission)}</p>${button(profileLabel,'feedPublicProfile',`data-view="${profileOpen?'feed':'profile'}" aria-pressed="${profileOpen}"`,`city-public-profile-button ${profileOpen?'is-active':''}`)}</div><div class="city-person-links"><a href="#/coordinator/programs">${icon('work')}<span>Volunteer programs</span><strong>${programs}</strong></a><a href="#/coordinator/people">${icon('people')}<span>Volunteer roster</span><strong>${members}</strong></a><a href="#/coordinator/messages">${icon('message')}<span>Messages</span>${icon('chevron')}</a></div></section></aside>`;
-}
-
-function issuerQuickActions(ctx) {
-  const {icon,button}=ctx;
-  return `<section class="panel city-rail-card city-quick-actions"><div class="section-heading"><div><span class="eyebrow">QUICK ACTIONS</span><h2>Move work forward.</h2></div>${icon('spark')}</div><div class="city-quick-action-grid">${button(icon('plus')+'Schedule Activity','create','','btn')}${button(icon('plus')+'Create a Role','rcCreateRole','','btn')}${button(icon('plus')+'Invite Volunteers','invite','','btn')}${button(icon('people')+'Staff','nav','data-page="planning"','btn')}</div>${button(icon('calendar')+'Open Calendar','nav','data-page="home"','city-calendar-link')}</section>`;
+  const profileLabel=profileOpen?`${icon('feed')}<span>Return to MyCity Feed</span>${icon('chevron')}`:`${icon('external')}<span>View Public Profile</span>${icon('chevron')}`;
+  return `<aside class="city-personal city-personal-issuer" aria-label="Your organization space"><section class="panel city-person-card"><div class="city-person-cover"><span>${icon('leaf')}</span></div><div class="city-person-identity">${avatar({name:organizationName,color:'sage'},'large')}<h2>${e(organizationName)}</h2><span>${e(organizationLocation)}</span><p>${e(organization.mission)}</p></div><div class="city-person-links">${button(profileLabel,'feedPublicProfile',`data-view="${profileOpen?'feed':'profile'}" aria-pressed="${profileOpen}"`,`city-profile-inline ${profileOpen?'is-active':''}`)}<a href="#/coordinator/programs">${icon('work')}<span>Volunteer programs</span><strong>${programs}</strong></a><a href="#/coordinator/people">${icon('people')}<span>Volunteer roster</span><strong>${members}</strong></a><a href="#/coordinator/messages">${icon('message')}<span>Messages</span>${icon('chevron')}</a></div></section><a class="panel city-network-card city-rail-lock" href="#/coordinator/discover"><span class="city-network-symbol">${icon('external')}</span><span><small>YOUR CITY NETWORK</small><strong>Discover City Network</strong><em>Find organizations working across ${e(organizationLocation||'your city')}.</em></span>${icon('arrow')}</a></aside>`;
 }
 
 function volunteerFeedAside(ctx) {

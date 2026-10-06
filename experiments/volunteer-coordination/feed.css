@@ -60,35 +60,50 @@
 @media(max-width:560px){.city-feed-action-queue>header{align-items:center;flex-direction:row;gap:10px}.city-feed-action-queue article{align-items:flex-start;flex-wrap:wrap}.city-feed-action-queue article>div:first-child{flex-basis:100%}.participant-queue-actions{width:100%;justify-content:flex-end}.city-feed-action-queue article strong{white-space:normal}}
 
 /* The issuer Feed is also its home: identity, public presence, and operations stay in one frame. */
-.city-public-profile-button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;min-height:52px;padding:10px 11px;border:1px solid #c98c29;border-radius:10px;background:linear-gradient(135deg,#e3a43a,#ca8423);box-shadow:0 5px 13px #b8751f26;color:#fff;text-align:left}
-.city-public-profile-button>.icon{width:15px;height:15px;flex:none}
-.city-public-profile-button>span{display:flex;min-width:0;flex-direction:column;gap:2px}
-.city-public-profile-button strong{font-size:10px;line-height:1.3}
-.city-public-profile-button small{overflow:hidden;color:#fff9;font-size:8px;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
-.city-public-profile-button:hover,.city-public-profile-button.is-active{border-color:#15151e;background:linear-gradient(135deg,#15151e,#34343f);color:#fff}
-.city-public-profile-button:focus-visible{outline:2px solid #dd9e33;outline-offset:3px}
+.city-profile-inline{display:flex;align-items:center;gap:9px;width:100%;padding:12px 5px;border-radius:6px;background:transparent;color:#555560;font-size:10px;text-align:left}
+.city-profile-inline>span{flex:1}
+.city-profile-inline>.icon{width:15px;height:15px;flex:none}
+.city-profile-inline:hover,.city-profile-inline.is-active{background:#fbf1df;color:#15151e}
+.city-profile-inline:focus-visible{outline:2px solid #dd9e33;outline-offset:2px}
+.city-network-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:11px;padding:15px 14px;border-radius:13px;color:#30303a;text-decoration:none}
+.city-network-card:hover{border-color:#dbb56f;background:#fffaf1;transform:translateY(-1px)}
+.city-network-card>.icon{width:14px;height:14px;color:#9a6d24}
+.city-network-symbol{display:grid;place-items:center;width:35px;height:35px;border-radius:11px;background:#f6ead5;color:#93651f}
+.city-network-symbol .icon{width:16px;height:16px}
+.city-network-card small,.city-network-card strong,.city-network-card em{display:block}
+.city-network-card small{margin-bottom:3px;color:#9a7a43;font-size:7px;font-weight:850;letter-spacing:.1em}
+.city-network-card strong{font-size:10px;line-height:1.4}
+.city-network-card em{overflow:hidden;margin-top:3px;color:#77747b;font-size:8px;font-style:normal;line-height:1.45;text-overflow:ellipsis}
 
-.city-issuer-action-queue .home-action-queue{margin:0 0 20px;border-color:#dedee4;border-radius:15px;box-shadow:0 7px 24px #25252d08;background:#f7f7f9}
-.city-issuer-action-queue .home-panel-heading{padding:12px 16px;background:#f6ead5;border-bottom-color:#e8dcc6}
-.city-issuer-action-queue .home-panel-heading h2{margin:0;font-size:16px;letter-spacing:-.025em}
-.city-issuer-action-queue .home-panel-heading .button-row{gap:6px;margin:0}
-.city-issuer-action-queue .home-panel-heading .icon-button{width:29px;height:29px;min-height:29px;padding:5px;border-color:#ddceb3;background:#fff;color:#6d5833}
-.city-issuer-action-queue .home-count{height:20px;min-width:20px;background:#fff;color:#80591e;font-size:9px}
-.city-issuer-action-queue .home-queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;min-height:52px;padding:9px 16px;gap:12px;background:#fff}
-.city-issuer-action-queue .home-queue-copy strong{font-size:11px;line-height:1.4}
-.city-issuer-action-queue .home-queue-actions{flex-direction:row;gap:6px}
-.city-issuer-action-queue .home-queue-actions .btn{min-width:0;min-height:29px;padding:5px 8px;font-size:9px;white-space:nowrap}
-.city-issuer-action-queue .home-queue-empty-compact{min-height:58px;padding:10px 16px;background:#fff}
+.city-feed-floating-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 11px}
+.city-feed-floating-actions>span{display:flex;align-items:center;gap:6px;color:#817c82;font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.city-feed-floating-actions>span .icon{width:13px;height:13px;color:#b27925}
+.city-feed-floating-actions>div{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.city-feed-floating-actions .btn{display:flex;align-items:center;gap:5px;min-height:31px;padding:6px 9px;border:1px solid #dfdde0;border-radius:9px;background:#fff;box-shadow:0 3px 10px #15151e08;color:#55525a;font-size:8px;font-weight:750}
+.city-feed-floating-actions .btn:first-child{border-color:#dfc28f;background:#fbf1df;color:#81591e}
+.city-feed-floating-actions .btn:hover{border-color:#d6b16e;background:#fffaf1;color:#15151e;transform:translateY(-1px)}
+.city-feed-floating-actions .icon{width:12px;height:12px}
 
-.city-quick-actions .section-heading{margin-bottom:13px}
-.city-quick-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.city-quick-action-grid .btn{display:flex;align-items:center;justify-content:flex-start;gap:6px;min-width:0;min-height:46px;padding:8px;border:1px solid #e5e2de;border-radius:9px;background:#faf9f7;color:#4f4d55;font-size:8px;font-weight:750;line-height:1.35;text-align:left;white-space:normal}
-.city-quick-action-grid .btn:first-child{border-color:#dfc28f;background:#fbf1df;color:#835a1d}
-.city-quick-action-grid .btn:hover{border-color:#d6bd91;background:#fbf4e7;color:#704b15}
-.city-quick-action-grid .icon{width:13px;height:13px;flex:none}
-.city-calendar-link{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:34px;margin-top:10px;padding:7px 9px;border:1px solid #d8d5d1;border-radius:8px;background:#fff;color:#55525a;font-size:9px;font-weight:800}
-.city-calendar-link:hover{border-color:#cda762;background:#fbf5ea;color:#79541b}
-.city-calendar-link .icon{width:13px;height:13px}
+.city-feed-control-stack.has-issuer-queue .city-toolbar{border-radius:13px 13px 0 0;border-bottom-color:#4a4a55}
+.city-feed-issuer-queue{overflow:hidden;border:1px solid #dfd3bd;border-top:3px solid #dd9e33;border-radius:0 0 13px 13px;background:#fff}
+.city-feed-issuer-queue>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 13px;background:#f6ead5;border-bottom:1px solid #e7d9c0}
+.city-feed-issuer-queue>header h2{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;letter-spacing:-.02em}
+.city-feed-issuer-queue>header h2 span{display:grid;place-items:center;min-width:19px;height:19px;padding-inline:5px;border-radius:999px;background:#fff;color:#7e581e;font-size:8px}
+.city-feed-issuer-queue>header .icon-button{width:27px;height:27px;min-height:27px;padding:5px;border:1px solid #ddceb3;background:#fff;color:#6d5833}
+.city-feed-issuer-queue>header .icon-button .icon{width:13px;height:13px}
+.city-issuer-queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;min-height:54px;padding:8px 13px;border-bottom:1px solid #eee9df;background:#fff}
+.city-issuer-queue-row:last-child{border-bottom:0}
+.city-issuer-queue-copy{min-width:0}
+.city-issuer-queue-copy strong{display:block;overflow:hidden;color:#2f2f38;font-size:10px;font-weight:700;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.city-issuer-queue-copy p{overflow:hidden;margin:3px 0 0;color:#77737a;font-size:8px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
+.city-issuer-queue-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+.city-issuer-queue-actions .btn{min-height:28px;padding:5px 8px;font-size:8px;white-space:nowrap}
+.city-issuer-queue-actions .icon{width:11px;height:11px;margin-left:3px}
+.city-issuer-queue-empty{display:flex;align-items:center;gap:10px;padding:11px 13px;color:#69666c}
+.city-issuer-queue-empty>.icon{width:18px;height:18px;color:#70915e}
+.city-issuer-queue-empty strong{font-size:10px}.city-issuer-queue-empty p{margin:2px 0 0;font-size:8px}
+.city-issuer-queue-more{display:block;padding:7px 13px;border-top:1px solid #eee3d1;background:#fbfaf7;color:#8a6b38;font-size:8px;text-align:center}
+.city-issuer-queue-more:hover{text-decoration:underline}
 
 .city-embedded-profile{min-width:0}
 .city-embedded-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding:10px 13px;border:1px solid #e4e1dc;border-radius:12px;background:#fff}
@@ -110,8 +125,9 @@
 .city-embedded-profile .detail-section{border-radius:14px}
 
 @media(max-width:1100px){.city-layout.city-layout-issuer{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-personal{display:grid;position:static}.city-layout-issuer .city-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.city-layout-issuer .city-person-card{max-width:none}.city-layout-issuer .city-person-identity p{min-height:0}}
-@media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}.city-quick-action-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}.city-issuer-action-queue .home-queue-row{grid-template-columns:1fr}.city-issuer-action-queue .home-queue-actions{justify-content:flex-end}.city-quick-action-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}.city-feed-floating-actions{align-items:flex-start;flex-direction:column}.city-feed-floating-actions>div{justify-content:flex-start}}
+@media(max-width:560px){.city-issuer-queue-row{grid-template-columns:1fr}.city-issuer-queue-copy strong,.city-issuer-queue-copy p{white-space:normal}.city-issuer-queue-actions{justify-content:flex-end}.city-feed-floating-actions .btn{font-size:7px;padding-inline:7px}}
+@media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}}
 
 /* Side rails scroll normally until their final card reaches the app header. */
 @media(min-width:1001px){

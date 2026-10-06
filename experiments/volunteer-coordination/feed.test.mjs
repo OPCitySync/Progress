@@ -135,14 +135,25 @@ test('issuer feed combines public presence, quick work, and the live action queu
   const feed = renderFeed(context);
   assert.match(feed, /View Public Profile/);
   assert.match(feed, /data-action="feedPublicProfile"/);
-  assert.match(feed, /class="city-public-profile-button/);
+  assert.match(feed, /class="city-profile-inline/);
+  assert.match(feed, /Discover City Network/);
+  assert.match(feed, /href="#\/coordinator\/discover"/);
   assert.match(feed, /Action Queue/);
-  assert.match(feed, /city-issuer-action-queue/);
-  assert.match(feed, /QUICK ACTIONS/);
+  assert.match(feed, /city-feed-issuer-queue/);
+  assert.match(feed, /city-issuer-queue-copy/);
+  assert.match(feed, /city-feed-control-stack[^\"]*has-issuer-queue/);
+  assert.match(feed, /data-home-action="history"/);
+  assert.doesNotMatch(feed, /data-home-action="collapse"/);
+  assert.match(feed, /city-feed-floating-actions/);
+  assert.match(feed, /Quick actions/);
   assert.match(feed, /Schedule Activity/);
   assert.match(feed, /Create a Role/);
   assert.match(feed, /Invite Volunteers/);
-  assert.match(feed, /Open Calendar/);
+  assert.match(feed, />Staff</);
+  assert.match(feed, />Calendar</);
+  assert.doesNotMatch(feed, /city-quick-actions/);
+  assert.ok(feed.indexOf('city-feed-floating-actions') < feed.indexOf('city-toolbar city-toolbar-issuer'));
+  assert.ok(feed.indexOf('city-toolbar city-toolbar-issuer') < feed.indexOf('city-feed-issuer-queue'));
   assert.match(feed, /id="feed-posts"/);
 
   const originalLocation = globalThis.location;
@@ -156,7 +167,9 @@ test('issuer feed combines public presence, quick work, and the live action queu
     assert.match(profile, /Back to MyCity Feed/);
     assert.match(profile, /data-view="feed"/);
     assert.doesNotMatch(profile, /id="feed-posts"/);
-    assert.match(profile, /QUICK ACTIONS/);
+    assert.match(profile, /Discover City Network/);
+    assert.match(profile, /city-profile-inline is-active/);
+    assert.doesNotMatch(profile, /city-feed-floating-actions/);
 
     const connectedShell = structuredClone(state);
     connectedShell.recruitment.organizations = [];
