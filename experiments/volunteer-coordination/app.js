@@ -46,7 +46,7 @@ try {
 } catch { state = newState(); }
 state = ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state)))))));
 try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
-const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, passportSort: 'name', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
+const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, passportSort: 'name', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedPublicProfile: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
 try { const savedPerson = sessionStorage.getItem(storageKey + '-persona'); if (state.people.some(p => p.id === savedPerson)) ui.person = savedPerson; } catch {}
 try { const savedOrg = sessionStorage.getItem(storageKey + '-recruit-org'); if (state.recruitment.organizations.some(o => o.id === savedOrg)) ui.recruitOrg = savedOrg; } catch {}
 const app = document.querySelector('#app');
@@ -773,16 +773,17 @@ document.addEventListener('click', async event => {
     case 'ppExport': { if (orgMode()) break; const json = JSON.stringify(passportExport(state, ui.person), null, 2); ui.passportExportUrl = URL.createObjectURL(new Blob([json], { type: 'application/json' })); showDialog('Your portable copy', `<div class="dialog-body"><p>This full export includes your contact details, records and sharing history. Keep it private.</p><label>Passport JSON<textarea readonly id="passport-export" rows="10">${e(json)}</textarea></label><p class="microcopy">If your browser does not save the file, copy this JSON into a text file named my-volunteer-passport.json.</p></div><div class="dialog-footer">${button('Copy JSON', 'ppCopyExport', '', 'btn secondary')}<a class="btn primary" href="${e(ui.passportExportUrl)}" download="my-volunteer-passport.json">Save JSON file</a></div>`, true); break; }
     case 'ppCopyExport': { const input = document.querySelector('#passport-export'); try { await navigator.clipboard.writeText(input.value); toast('Passport JSON copied. Keep your copy private.'); } catch { input.select(); toast('Select and copy your passport JSON.'); } break; }
     case 'close': closeDialog(); break;
-    case 'nav': navigate(d.page); break;
+    case 'nav': if(d.page==='feed')ui.feedPublicProfile=false; navigate(d.page); break;
     case 'mode': { if(ui.page==='profile'&&d.mode==='volunteer'){ui.mode='volunteer';navigate('org-profile',ui.recruitOrg);break;} const page = ['program','programs','feed', 'passport','discover','org-profile','position','application'].includes(ui.page) ? ui.page : 'home'; const item = ['program','feed','org-profile','position','application'].includes(page) ? ui.item : d.mode === 'coordinator' && page === 'passport' ? ui.person : undefined; ui.mode = d.mode; if (page === 'application' && orgMode()) ui.recruitOrg = state.recruitment.applications.find(a => a.id === item)?.orgId || HOME_ORG; if (page === 'position' && orgMode()) ui.recruitOrg = state.recruitment.positions.find(p => p.id === item)?.orgId || HOME_ORG; if (page === 'passport' && orgMode() && sharedPassport(state, ui.person)) passportAction({ type: 'view', personId: ui.person }); navigate(page, item); break; }
     case 'feedCompose': feedComposer(); break;
-    case 'feedFilter': ui.feedFilter = d.filter; ui.feedSaved = false; navigate(orgMode() ? 'feed' : 'home'); break;
+    case 'feedPublicProfile': ui.feedPublicProfile=d.view==='profile';render();window.scrollTo({top:0,behavior:'smooth'});break;
+    case 'feedFilter': ui.feedPublicProfile=false; ui.feedFilter = d.filter; ui.feedSaved = false; navigate(orgMode() ? 'feed' : 'home'); break;
     case 'feedQueueToggle': ui.feedQueueCollapsed = !ui.feedQueueCollapsed; render(); document.querySelector('[data-action="feedQueueToggle"]')?.focus(); break;
     case 'feedQueueAcknowledge': if (feedAction({ type: 'acknowledgeQueue', key: d.key })) document.querySelector('#participant-queue-title')?.focus(); break;
     case 'feedQueueHistory': showDialog('Action history', renderVolunteerActionHistory(feedContext()), true); break;
     case 'feedQueueRestore': if (feedAction({ type: 'restoreQueue', key: d.key })) showDialog('Action history', renderVolunteerActionHistory(feedContext()), true); break;
-    case 'feedSaved': ui.feedSaved = !ui.feedSaved; navigate(orgMode() ? 'feed' : 'home'); break;
-    case 'feedAll': ui.feedSaved = false; ui.feedFilter = 'all'; ui.feedQuery = ''; navigate(orgMode() ? 'feed' : 'home'); break;
+    case 'feedSaved': ui.feedPublicProfile=false; ui.feedSaved = !ui.feedSaved; navigate(orgMode() ? 'feed' : 'home'); break;
+    case 'feedAll': ui.feedPublicProfile=false; ui.feedSaved = false; ui.feedFilter = 'all'; ui.feedQuery = ''; navigate(orgMode() ? 'feed' : 'home'); break;
     case 'feedLike': feedAction({ type: 'like', postId: d.id }); break;
     case 'feedBookmark': feedAction({ type: 'bookmark', postId: d.id }); break;
     case 'feedShare': await shareFeedPost(d.id); break;

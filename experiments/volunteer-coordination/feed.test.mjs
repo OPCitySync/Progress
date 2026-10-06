@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import { createInitialState } from './model.js';
 import { ensureFeed, heartCount, participantQueueItems, selectFeedPosts, transitionFeed } from './feed-model.js';
 import { ensureRecruitment } from './recruitment-model.js';
+import { ensurePrograms } from './program-model.js';
+import { ensureProfiles } from './profile-model.js';
+import { ensureIssuerHome } from './issuer-home-model.js';
 import { renderFeed, renderVolunteerActionHistory } from './feed-view.js';
+
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+const icon = name => `<i data-icon="${name}"></i>`;
+const button = (label, action, attrs = '', className = 'btn') => `<button class="${className}" data-action="${action}" ${attrs}>${label}</button>`;
+const badge = label => `<span>${escapeHtml(label)}</span>`;
+const avatar = person => `<span>${escapeHtml(person.name)}</span>`;
+const confirmedCount = (source, activityId) => source.commitments.filter(commitment => commitment.activityId === activityId && commitment.status === 'confirmed').length;
 
 test('adding the feed to existing saved state preserves all coordination edits', () => {
   const old = createInitialState(); delete old.feed;
@@ -79,15 +89,10 @@ test('bookmarks are private to each sample persona and filter/search compose', (
 test('participant feed places actionable work below the toolbar and City Pulse below local organizations', () => {
   const state = ensureRecruitment(createInitialState());
   const ui = { mode: 'volunteer', person: 'alex', item: '', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false };
-  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-  const icon = name => `<i data-icon="${name}"></i>`;
-  const button = (label, action, attrs = '', className = 'btn') => `<button class="${className}" data-action="${action}" ${attrs}>${label}</button>`;
-  const badge = label => `<span>${escapeHtml(label)}</span>`;
-  const avatar = person => `<span>${escapeHtml(person.name)}</span>`;
   const html = renderFeed({
     state, ui, e: escapeHtml, icon, button, badge, avatar, dateLabel: value => value,
     currentPerson: () => state.people.find(person => person.id === ui.person),
-    confirmedCount: (source, activityId) => source.commitments.filter(commitment => commitment.activityId === activityId && commitment.status === 'confirmed').length,
+    confirmedCount,
   });
   assert.match(html, /city-feed-control-stack has-action-queue/);
   assert.match(html, /Action Queue/);
@@ -108,11 +113,61 @@ test('participant feed places actionable work below the toolbar and City Pulse b
   const collapsed = renderFeed({
     state, ui, e: escapeHtml, icon, button, badge, avatar, dateLabel: value => value,
     currentPerson: () => state.people.find(person => person.id === ui.person),
-    confirmedCount: (source, activityId) => source.commitments.filter(commitment => commitment.activityId === activityId && commitment.status === 'confirmed').length,
+    confirmedCount,
   });
   assert.match(collapsed, /aria-expanded="false"/);
   assert.doesNotMatch(collapsed, /id="participant-action-queue-items"/);
   assert.doesNotMatch(collapsed, /Review invitation/);
+});
+
+test('issuer feed combines public presence, quick work, and the live action queue', () => {
+  const state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(createInitialState()))));
+  const ui = {
+    mode: 'coordinator', person: 'alex', item: '', recruitOrg: 'berkeley-neighbors',
+    feedFilter: 'all', feedSaved: false, feedQuery: '', feedPublicProfile: false,
+    home: { anchor: '2026-10-06', period: 'month', day: '', selectedEntry: '', queueCollapsed: false, queueAll: false },
+  };
+  const context = {
+    state, ui, e: escapeHtml, icon, button, badge, avatar, dateLabel: value => value,
+    currentPerson: () => state.people.find(person => person.id === ui.person), confirmedCount,
+    platformContext: null, integratedPlatform: false, assetBase: '',
+  };
+  const feed = renderFeed(context);
+  assert.match(feed, /View Public Profile/);
+  assert.match(feed, /data-action="feedPublicProfile"/);
+  assert.match(feed, /class="city-public-profile-button/);
+  assert.match(feed, /Action Queue/);
+  assert.match(feed, /city-issuer-action-queue/);
+  assert.match(feed, /QUICK ACTIONS/);
+  assert.match(feed, /Schedule Activity/);
+  assert.match(feed, /Create a Role/);
+  assert.match(feed, /Invite Volunteers/);
+  assert.match(feed, /Open Calendar/);
+  assert.match(feed, /id="feed-posts"/);
+
+  const originalLocation = globalThis.location;
+  globalThis.location = { origin: 'http://localhost:4320' };
+  try {
+    ui.feedPublicProfile = true;
+    const profile = renderFeed(context);
+    assert.match(profile, /Embedded public profile/);
+    assert.match(profile, /PUBLIC VIEW/);
+    assert.match(profile, /Berkeley Neighbors/);
+    assert.match(profile, /Back to MyCity Feed/);
+    assert.match(profile, /data-view="feed"/);
+    assert.doesNotMatch(profile, /id="feed-posts"/);
+    assert.match(profile, /QUICK ACTIONS/);
+
+    const connectedShell = structuredClone(state);
+    connectedShell.recruitment.organizations = [];
+    const emptyProfile = renderFeed({ ...context, state: connectedShell, integratedPlatform: true, platformContext: { cityName: 'Berkeley', organization: { name: 'Riverside Food Bank' } } });
+    assert.match(emptyProfile, /Riverside Food Bank/);
+    assert.match(emptyProfile, /Your public profile is ready to be shaped/);
+    assert.doesNotMatch(emptyProfile, /Organization not found/);
+  } finally {
+    if (originalLocation === undefined) delete globalThis.location;
+    else globalThis.location = originalLocation;
+  }
 });
 
 test('participant action history explains acknowledgement and restores an item', () => {
