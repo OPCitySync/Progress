@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createInitialState, transition } from './model.js';
 import { ensureRecruitment, HOME_ORG } from './recruitment-model.js';
 import { ensureIssuerHome, homeQueue, calendarRange, moveCalendar, calendarEntries, entriesOnDay, transitionIssuerHome } from './issuer-home-model.js';
-import { homeActionQueue } from './issuer-home-view.js';
+import { homeHero, homeActionQueue } from './issuer-home-view.js';
 const initial=()=>ensureIssuerHome(ensureRecruitment(createInitialState()));
 const apply=(state,action)=>transitionIssuerHome(state,{actor:'coordinator',...action},'2026-09-26').state;
 
@@ -27,6 +27,27 @@ test('issuer action history uses the shared history icon beside collapse',()=>{
   assert.match(html,/data-home-action="history"/);
   assert.match(html,/data-icon="history"/);
   assert.doesNotMatch(html,/data-icon="book"/);
+});
+test('issuer action queue remains attached to the header when no actions are waiting',()=>{
+  const state=initial();
+  state.activities=[];state.commitments=[];state.people=[];state.recruitment.applications=[];state.programWorkspace.programs=[];
+  const html=homeActionQueue({state,ui:{home:{queueAll:false,queueCollapsed:false}},e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`});
+  assert.match(html,/Action Queue/);
+  assert.match(html,/home-count">0/);
+  assert.match(html,/You’re all caught up/);
+});
+test('issuer home hero exposes the experimental shortcuts with real application actions',()=>{
+  const html=homeHero({organizationName:'Riverside Food Bank',dateLabel:()=> 'Monday, October 5, 2026',e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`});
+  assert.match(html,/>Riverside Food Bank</);
+  assert.match(html,/data-page="feed"/);
+  assert.match(html,/data-action="create"/);
+  assert.match(html,/data-action="rcCreateRole"/);
+  assert.match(html,/data-action="invite"/);
+  assert.match(html,/data-page="planning"/);
+  assert.match(html,/Schedule Activity/);
+  assert.match(html,/Create a Role/);
+  assert.match(html,/Invite Volunteers/);
+  assert.match(html,/>Staff</);
 });
 test('staffing need resurfaces when confirmed coverage changes; invitations alone do not fill places',()=>{
   const s=initial(),item=homeQueue(s,'2026-09-26').find(x=>x.key.startsWith('staffing:garden:'));

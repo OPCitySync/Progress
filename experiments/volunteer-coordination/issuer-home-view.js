@@ -6,14 +6,19 @@ const control=(label,action,attrs='',cls='btn secondary small')=>`<button class=
 const tone = entry => entry.kind==='note'?entry.tone:({event:'sage',shift:'sand',project:'lilac'})[entry.kind] || 'sage';
 const kindLabel = entry => entry.kind==='note'?'Organization note':ACTIVITY_TYPES[entry.kind];
 const format = (ctx,date,options) => ctx.dateLabel(date,options);
+export function homeHero(ctx) {
+  const {e,icon,button,dateLabel,organizationName}=ctx;
+  const currentDate=dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  return `<section class="issuer-home-hero"><div class="issuer-home-hero-copy"><p class="eyebrow">${icon('calendar')} ${e(currentDate)}</p><h1>${e(organizationName||'Organization')}</h1><p>Coordinate your organization’s people, commitments, and community presence.</p></div><div class="issuer-home-hero-actions"><div class="issuer-home-feed-action">${button(icon('feed')+'MyCity Feed','nav','data-page="feed"','issuer-home-quick-action issuer-home-feed-button')}</div><div class="issuer-home-quick-actions">${button(icon('plus')+'Schedule Activity','create','','issuer-home-quick-action issuer-home-primary-action')}${button(icon('plus')+'Create a Role','rcCreateRole','','issuer-home-quick-action')}${button(icon('plus')+'Invite Volunteers','invite','','issuer-home-quick-action')}${button(icon('people')+'Staff','nav','data-page="planning"','issuer-home-quick-action')}</div></div></section>`;
+}
 function queueRow(ctx,item) {
   const {e,icon,button}=ctx;
   return `<article class="home-queue-row"><div class="home-queue-copy"><strong>${e(item.title)}</strong></div><div class="home-queue-actions">${control('Acknowledge','acknowledge',`data-key="${e(item.key)}" aria-label="Acknowledge: ${e(item.title)}"`,'btn secondary small')}${button(e(item.label)+icon('arrow'),item.action,Object.entries(item.attrs).map(([key,value])=>`data-${key}="${e(value)}"`).join(' '),'btn primary small')}</div></article>`;
 }
 export function homeActionQueue(ctx) {
   const {ui,e,icon}=ctx,q=homeQueue(ctx.state),visible=ui.home.queueAll?q:q.slice(0,6);
-  if (!q.length) return '';
-  return `<section class="panel home-action-queue" aria-label="Action Queue"><header class="home-panel-heading"><div><h2 tabindex="-1" id="home-queue-title">Action Queue <span class="home-count">${q.length}</span></h2></div><div class="button-row">${control(icon('history'),'history','aria-label="Open action history"','icon-button')}${control(icon('down'),'collapse',`aria-expanded="${!ui.home.queueCollapsed}" aria-controls="home-queue-items" aria-label="${ui.home.queueCollapsed?'Expand':'Collapse'} Action Queue"`,'icon-button')}</div></header>${ui.home.queueCollapsed?'':`<div id="home-queue-items">${visible.map(item=>queueRow(ctx,item)).join('')}${q.length>6?`<div class="home-queue-more">${control(ui.home.queueAll?'Show fewer':`Show all ${q.length} actions`,'queueAll','','text-button')}</div>`:''}</div>`}</section>`;
+  const contents=q.length?`${visible.map(item=>queueRow(ctx,item)).join('')}${q.length>6?`<div class="home-queue-more">${control(ui.home.queueAll?'Show fewer':`Show all ${q.length} actions`,'queueAll','','text-button')}</div>`:''}`:`<div class="home-queue-empty home-queue-empty-compact">${icon('check')}<div><strong>You’re all caught up.</strong><p>New decisions and follow-ups will appear here.</p></div></div>`;
+  return `<section class="panel home-action-queue" aria-label="Action Queue"><header class="home-panel-heading"><div><h2 tabindex="-1" id="home-queue-title">Action Queue <span class="home-count">${q.length}</span></h2></div><div class="button-row">${control(icon('history'),'history','aria-label="Open action history"','icon-button')}${control(icon('down'),'collapse',`aria-expanded="${!ui.home.queueCollapsed}" aria-controls="home-queue-items" aria-label="${ui.home.queueCollapsed?'Expand':'Collapse'} Action Queue"`,'icon-button')}</div></header>${ui.home.queueCollapsed?'':`<div id="home-queue-items">${contents}</div>`}</section>`;
 }
 function dayEntry(ctx,entry) {
   const {e,icon,button,ui}=ctx;

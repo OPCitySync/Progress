@@ -1,5 +1,5 @@
 import { ensureIssuerHome } from './issuer-home-model.js';
-import { homeActionQueue, homeCalendar } from './issuer-home-view.js';
+import { homeHero, homeActionQueue, homeCalendar } from './issuer-home-view.js';
 import { bindIssuerHome } from './issuer-home-controller.js';
 import { renderPlanning } from './planning-view.js';
 import { bindPlanning } from './planning-controller.js';
@@ -224,22 +224,9 @@ function coverage(a) {
   return a.roles.map(r => { const count = confirmedCount(state, a.id, r.id); const pending = state.commitments.filter(c => c.activityId === a.id && c.roleId === r.id && c.status === 'proposed').length; return `<div class="coverage-role"><div><span>${e(r.name)}</span><strong>${count}<span> / ${r.capacity}</span></strong></div><div class="progress-track"><span style="width:${Math.min(100, count / r.capacity * 100)}%" class="${count >= r.capacity ? 'full' : ''}"></span></div><small>${count >= r.capacity ? 'Fully covered' : `${r.capacity - count} ${r.capacity - count === 1 ? 'place' : 'places'} to fill`}${pending ? ` · ${pending} invitation pending` : ''}</small></div>`; }).join('');
 }
 function illustration() { return `<svg class="hero-art" viewBox="0 0 260 170" aria-hidden="true"><circle cx="170" cy="65" r="52" fill="#d9e8ac"/><path d="M25 152c34-51 76-76 117-42 35-41 75-26 105 42" fill="#78947b"/><path d="M89 139c3-38 2-70-10-93m11 42c-30 0-44-18-35-30 24 0 36 18 35 30m0 24c30-1 49-20 39-33-25 0-37 20-39 33" fill="#dfeabc"/><path d="M178 144V76m0 27c-24 0-35-12-31-25 22 1 32 13 31 25m0 18c28-3 39-16 34-29-24 1-32 18-34 29" fill="#b8cfa0"/><path d="m24 32 5-13 5 13 13 5-13 5-5 13-5-13-13-5Z" fill="#b8cfa0"/><path d="m228 54 3-8 3 8 8 3-8 3-3 8-3-8-8-3Z" fill="#b8cfa0"/></svg>`; }
-let heroClockTimer;
-function updateHeroClock() {
-  clearTimeout(heroClockTimer);
-  const clock = app.querySelector('[data-home-clock]');
-  if (!clock) return;
-  const now = new Date();
-  const time = [now.getHours() % 12 || 12, now.getMinutes(), now.getSeconds()]
-    .map(part => String(part).padStart(2, '0')).join(':');
-  clock.textContent = time;
-  const date = app.querySelector('[data-home-date]');
-  if (date) date.textContent = dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  clock.parentElement.setAttribute('aria-label', `Current local time: ${time}`);
-  heroClockTimer = setTimeout(updateHeroClock, 1000 - now.getMilliseconds());
-}
 function dashboard() {
-  return `<div class="issuer-home-hub"><section class="issuer-home-hero"><div class="issuer-home-hero-copy"><p class="eyebrow">${e(workspaceLabel())}</p><h1>Keep today’s work moving.</h1><p data-home-date>${e(dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</p></div><div class="issuer-home-hero-clock" role="timer" aria-live="off" aria-label="Current local time"><span data-home-clock></span></div><div class="issuer-home-hero-actions">${button(icon('plus') + 'Schedule Activity', 'create', '', 'issuer-home-schedule-action')}</div></section>${homeActionQueue(feedContext())}</div>${homeCalendar(feedContext())}`;
+  const context=feedContext();
+  return `<div class="issuer-home-hub">${homeHero({...context,organizationName:workspaceLabel()})}${homeActionQueue(context)}</div>${homeCalendar(context)}`;
 }
 
 function peopleRows() {
@@ -315,7 +302,6 @@ function render() {
   app.classList.add('issuer-shell');
   app.classList.toggle('volunteer-shell',!orgMode());
   app.innerHTML = `<div class="workspace-main">${orgMode()?issuerNavigation({...feedContext(),contextOrg:recruitmentContextOrg(),coordinatorName:coordinatorName()}):volunteerNavigation(feedContext())}<main id="main-content" tabindex="-1">${readinessAlert}${content}<footer class="page-footer"><span>Built around people. Made for showing up.</span><span>MyCity · Coordination exploration</span></footer></main></div>`;
-  updateHeroClock();
 }
 
 function openProfileDialog(type, field) {
