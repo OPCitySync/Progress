@@ -1014,6 +1014,9 @@ export async function checkClaimGate(
   const shift = (await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1))[0]
   if (!shift) return { ok: false, reason: 'error', error: 'Shift not found.' }
   if (shift.status !== 'open') return { ok: false, reason: 'error', error: 'This shift is closed.' }
+  if (shift.startsAt && shift.startsAt <= Date.now()) {
+    return { ok: false, reason: 'error', error: 'Sign-ups close when the shift begins.' }
+  }
   if (shift.visibility === 'private') return { ok: false, reason: 'error', error: 'This is a private shift. The organization manages its roster directly.' }
   if (shift.enrollmentMode === 'organization_managed') return { ok: false, reason: 'error', error: 'This shift is managed by the organization. Contact them to be added.' }
 
@@ -1039,13 +1042,26 @@ export async function checkClaimGate(
   if (staffAccess) {
     return { ok: false, reason: 'error', error: 'You have staff access to this organization, so you cannot claim one of its volunteer shifts.' }
   }
-  if(task.isOnboarding!==1){
+  const intake = await getIntake(task.id)
+  // An ordinary open-claim activity is the lightweight public pathway: the
+  // account, its activity-specific waivers, capacity, and any credentials are
+  // enough. A published role/application keeps its organization approval gate.
+  const isDirectPublicActivity = task.isOnboarding !== 1
+    && shift.visibility === 'public'
+    && shift.enrollmentMode === 'open_claims'
+    && !intake?.applicationRequired
+  if(task.isOnboarding!==1 && !isDirectPublicActivity){
     const error=await programAccessError(task.orgId,scopeOf(task.programId),userId)
     if(error)return {ok:false,reason:'error',error}
   }
 
-  const cityGate = await checkCityParticipationGate({ userId, taskId: task.id, cityId: task.cityId })
-  if ((await getIntake(task.id))?.applicationRequired) {
+  const cityGate = await checkCityParticipationGate({
+    userId,
+    taskId: task.id,
+    cityId: task.cityId,
+    allowNewParticipant: isDirectPublicActivity,
+  })
+  if (intake?.applicationRequired) {
     const intakeGate = await intakeReservationGate(task.id, userId)
     if (!intakeGate.ok) return { ok: false, reason: 'error', error: intakeGate.error }
   }

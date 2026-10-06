@@ -91,13 +91,18 @@ export default async function PublicOpportunityPage({ params }: { params: { id: 
         ) : (
           <Card className="divide-y divide-ink-100 p-0">
             {shiftRows.map(({ shift, slotsLeft }) => (
-              <div key={shift.id} className="flex items-center justify-between gap-3 px-6 py-4">
+              <div key={shift.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
                 <p className="text-sm font-medium text-ink-800">{whenLabel(shift)}</p>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-ink-400">
                     {slotsLeft} of {shift.capacity} open
                   </span>
                   {statusBadge(shift.status)}
+                  {shift.visibility === 'public' && shift.enrollmentMode === 'open_claims' ? (
+                    <Link href={`/activities/${shift.id}`} className="text-xs font-semibold text-brand-700 hover:text-brand-600">
+                      Public sign-up page →
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ))}

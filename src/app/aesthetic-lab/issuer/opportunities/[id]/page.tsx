@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
-import { CalendarDays, Plus, UsersRound } from 'lucide-react'
+import { CalendarDays, ExternalLink, Plus, UsersRound } from 'lucide-react'
 import { and, eq } from 'drizzle-orm'
 import { requireRole } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
@@ -76,7 +76,7 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
   const sessions = await getShiftsWithCounts(task.id)
   const redirectTo = `/aesthetic-lab/issuer/opportunities/${task.id}`
   const now = Date.now()
-  const publicSessions = sessions.filter(({ shift }) => shift.status === 'open' && (!shift.endsAt || shift.endsAt >= now))
+  const publicSessions = sessions.filter(({ shift }) => shift.status === 'open' && shift.visibility === 'public' && shift.enrollmentMode === 'open_claims' && (!shift.endsAt || shift.endsAt >= now))
   const canPublish = task.status === 'open'
 
   return (
@@ -129,7 +129,8 @@ export default async function ManageLabOpportunityPage({ params, searchParams }:
               <div className={styles.manageEventCardLead}><h2>Sessions connected to this event</h2><p>Review live, closed, and completed dates without leaving the event workspace.</p></div>
               {sessions.length ? <div className={styles.opportunitySessionList}>{sessions.map(({ shift, taken, slotsLeft }) => {
                 const isLive = shift.status === 'open' && canPublish && (!shift.endsAt || shift.endsAt >= now)
-                return <article className={styles.labChoice} key={shift.id}><div><p><strong><CalendarDays size={15} /> {formatSessionDate(shift.startsAt)}</strong></p><small>{shift.label || 'Scheduled session'} · {taken} reserved · {isLive ? `${slotsLeft} open` : 'closed or completed'}</small></div><div className={styles.opportunitySessionMeta}><span className={isLive ? styles.opportunityStatusOpen : styles.opportunityStatusClosed}>{isLive ? 'Published' : 'Closed'}</span><em><UsersRound size={15} /> {shift.capacity}</em></div></article>
+                const hasPublicPage = shift.visibility === 'public' && shift.enrollmentMode === 'open_claims'
+                return <article className={styles.labChoice} key={shift.id}><div><p><strong><CalendarDays size={15} /> {formatSessionDate(shift.startsAt)}</strong></p><small>{shift.label || 'Scheduled session'} · {taken} reserved · {isLive ? `${slotsLeft} open` : 'closed or completed'}</small></div><div className={styles.opportunitySessionMeta}><span className={isLive ? styles.opportunityStatusOpen : styles.opportunityStatusClosed}>{isLive ? 'Published' : 'Closed'}</span><em><UsersRound size={15} /> {shift.capacity}</em>{hasPublicPage ? <Link className={`${styles.labLinkButton} ${styles.labLinkButtonSecondary}`} href={`/activities/${shift.id}`} target="_blank" rel="noreferrer">Public signup page <ExternalLink size={13} /></Link> : null}</div></article>
               })}</div> : <div className={styles.opportunityEmptySchedule}><CalendarDays size={20} /><div><b>No session is published yet.</b><p>Save the event details now and publish a date below whenever volunteers can sign up.</p></div></div>}
             </div>
           </section>

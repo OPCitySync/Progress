@@ -31,11 +31,6 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 }
 
-function signupHref(slug: string, taskId?: string) {
-  const next = taskId ? `/aesthetic-lab/opportunities/${taskId}` : `/orgs/${slug}`
-  return `/signup?type=participant&next=${encodeURIComponent(next)}`
-}
-
 export default async function OrgProfilePage({
   params,
   searchParams,
@@ -46,7 +41,6 @@ export default async function OrgProfilePage({
   const data = await getPublicProfileBySlug(params.slug)
   if (!data) notFound()
   const { org, profile } = data
-  const slug = org.slug ?? ''
   const session = await getSession()
   const isSignedIn = !!session
   const isParticipant = session?.role === 'participant'
@@ -88,8 +82,9 @@ export default async function OrgProfilePage({
     const brand = 'inline-flex items-center justify-center rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600'
     const secondary = 'inline-flex items-center justify-center rounded-xl border border-ink-300 px-4 py-2 text-sm font-semibold text-ink-700 hover:bg-ink-50'
 
-    if (!isSignedIn) return <Link href={signupHref(slug, task.id)} className={gold}>View opportunity</Link>
-    if (!isParticipant) return <Link href={`/aesthetic-lab/opportunities/${task.id}`} className={secondary}>View</Link>
+    const publicActivityHref = task.nextShiftId ? `/activities/${task.nextShiftId}` : `/opportunities/${task.id}`
+    if (!isSignedIn) return <Link href={publicActivityHref} className={gold}>View activity</Link>
+    if (!isParticipant) return <Link href={publicActivityHref} className={secondary}>View</Link>
     const st = claimMap.get(task.id)
     if (st && st !== 'unclaimed') {
       const label = st === 'verified' ? 'Completed' : st === 'submitted' ? 'Submitted' : "You're signed up"
@@ -98,7 +93,7 @@ export default async function OrgProfilePage({
     if (task.status !== 'open' || task.totalOpenSlots === 0) {
       return <span className="text-sm text-ink-400">No open shifts</span>
     }
-    return <Link href={`/aesthetic-lab/opportunities/${task.id}`} className={brand}>Sign up</Link>
+    return <Link href={publicActivityHref} className={brand}>Sign up</Link>
   }
 
   const renderApplicationCta = (application: PublicApplication) => {

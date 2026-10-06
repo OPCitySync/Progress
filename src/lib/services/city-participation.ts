@@ -23,6 +23,8 @@ export async function checkCityParticipationGate(input: {
   userId: string
   taskId: string
   cityId: string
+  /** A deliberately public, open-claim activity is itself a valid first civic action. */
+  allowNewParticipant?: boolean
 }): Promise<PolicyResult> {
   const participation = await getCityParticipantStatus(input.userId, input.cityId)
   if (!participation) {
@@ -35,6 +37,7 @@ export async function checkCityParticipationGate(input: {
     return { ok: false, error: `You’re temporarily barred from participating in this city until ${until}.` }
   }
   if (participation.status === 'active') return { ok: true }
+  if (input.allowNewParticipant) return { ok: true }
 
   if (!(await isOnboardingTask(input.taskId))) {
     const task=(await db.select().from(tasks).where(eq(tasks.id,input.taskId)).limit(1))[0]
