@@ -195,6 +195,7 @@ test('issuer Home opens the Feed and uses its subheader for operational actions'
     currentPerson: () => state.people.find(person => person.id === ui.person),
   });
   assert.equal(ISSUER_SECTIONS[0].page, 'feed');
+  assert.equal(ISSUER_SECTIONS.some(section => section.id === 'profile'), false);
   assert.match(html, /href="#\/coordinator\/feed"[^>]*aria-label="MyCity home"/);
   assert.match(html, /class="issuer-quickbar"/);
   assert.match(html, /data-action="create"[^>]*>.*Schedule Activity/);
@@ -205,6 +206,7 @@ test('issuer Home opens the Feed and uses its subheader for operational actions'
   assert.doesNotMatch(html, />Overview</);
   assert.doesNotMatch(html, />MyCity Feed</);
   assert.doesNotMatch(html, />City Network</);
+  assert.doesNotMatch(html, />Public Profile</);
 });
 
 test('participant action history explains acknowledgement and restores an item', () => {

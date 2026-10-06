@@ -25,11 +25,13 @@ import { renderConversations, renderCommunicationComposer } from './communicatio
 import { STORAGE_KEY, REQUIREMENTS, createEmptyState, createInitialState, transition, missingRequirements, confirmedCount, activeCommitment, assignmentModeOf, activityWaiverConsent, parseCSV } from './model.js';
 
 // The connected application and standalone prototype can share an origin in
-// local development, but the application must never load prototype fixtures.
+// local development. Sample fixtures require the explicit local preview mode.
 const dataMode = document.querySelector('meta[name="citysync-data-mode"]')?.content;
-const integratedPlatform = dataMode === 'integrated-platform' || dataMode === 'integrated-preview-sample-data';
-const storageKey = integratedPlatform
-  ? `${STORAGE_KEY}-mycity-connected-v1` : STORAGE_KEY;
+const previewSampleData = dataMode === 'integrated-preview-sample-data';
+const integratedPlatform = dataMode === 'integrated-platform' || previewSampleData;
+const storageKey = previewSampleData
+  ? `${STORAGE_KEY}-mycity-sample-v1`
+  : integratedPlatform ? `${STORAGE_KEY}-mycity-connected-v1` : STORAGE_KEY;
 let connectedContext = null;
 let connectedContextError = '';
 let connectedResume = null;
@@ -38,7 +40,7 @@ let connectedResumeLoading = false;
 
 let state;
 const bootstrapParticipant = location.hash.replace(/^#\/?/, '').split('/')[0] === 'volunteer';
-const newState = () => integratedPlatform ? createEmptyState({ participant: bootstrapParticipant }) : createInitialState();
+const newState = () => previewSampleData ? createInitialState() : integratedPlatform ? createEmptyState({ participant: bootstrapParticipant }) : createInitialState();
 try {
   if (integratedPlatform) localStorage.removeItem(`${STORAGE_KEY}-mycity-branch`);
   const saved = JSON.parse(localStorage.getItem(storageKey));
@@ -430,7 +432,7 @@ function passportAction(action) {
   }
 }
 function feedContext() {
-  return { state, ui, e, icon, avatar, button, badge, dateLabel, confirmedCount, currentPerson, errorOutput, connectedPlatform: location.pathname.startsWith('/coordination') || location.pathname.startsWith('/mycity'), assetBase: location.pathname === '/' ? '' : location.pathname, integratedPlatform, platformContext: connectedContext, platformResume: connectedResume, platformResumeError: connectedResumeError, platformResumeLoading: connectedResumeLoading };
+  return { state, ui, e, icon, avatar, button, badge, dateLabel, confirmedCount, currentPerson, errorOutput, connectedPlatform: location.pathname.startsWith('/coordination') || location.pathname.startsWith('/mycity'), assetBase: location.pathname === '/' ? '' : location.pathname, integratedPlatform, previewSampleData, platformContext: connectedContext, platformResume: connectedResume, platformResumeError: connectedResumeError, platformResumeLoading: connectedResumeLoading };
 }
 function feedComposer() {
   if (!orgMode()) return;

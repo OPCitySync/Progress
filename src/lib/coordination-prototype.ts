@@ -21,7 +21,12 @@ export function coordinationPrototypeEnabled() {
 }
 
 export function coordinationIntegratedEnabled() {
-  return process.env.CITYSYNC_COORDINATION_UI === 'integrated'
+  return process.env.CITYSYNC_COORDINATION_UI === 'integrated' || coordinationIntegratedSampleEnabled()
+}
+
+/** Local-only connected shell with browser fixtures for visual and workflow review. */
+export function coordinationIntegratedSampleEnabled() {
+  return process.env.CITYSYNC_COORDINATION_UI === 'integrated-sample' && !process.env.VERCEL
 }
 
 export async function coordinationAsset(path: string, mount = '/coordination') {

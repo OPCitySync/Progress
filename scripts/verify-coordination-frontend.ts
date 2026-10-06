@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { posix } from 'node:path'
-import { COORDINATION_ASSETS, coordinationAsset, coordinationIntegratedEnabled, coordinationPrototypeEnabled } from '../src/lib/coordination-prototype'
+import { COORDINATION_ASSETS, coordinationAsset, coordinationIntegratedEnabled, coordinationIntegratedSampleEnabled, coordinationPrototypeEnabled } from '../src/lib/coordination-prototype'
 
 async function main() {
   for (const name of COORDINATION_ASSETS) {
@@ -47,9 +47,15 @@ async function main() {
     process.env.CITYSYNC_COORDINATION_UI = 'integrated'
     assert.equal(coordinationPrototypeEnabled(), false)
     assert.equal(coordinationIntegratedEnabled(), true)
+    assert.equal(coordinationIntegratedSampleEnabled(), false)
+    process.env.CITYSYNC_COORDINATION_UI = 'integrated-sample'
+    assert.equal(coordinationIntegratedEnabled(), true)
+    assert.equal(coordinationIntegratedSampleEnabled(), true)
     process.env.VERCEL = '1'
     assert.equal(coordinationPrototypeEnabled(), false)
     assert.equal(coordinationIntegratedEnabled(), false)
+    assert.equal(coordinationIntegratedSampleEnabled(), false)
+    process.env.CITYSYNC_COORDINATION_UI = 'integrated'
     process.env.VERCEL_ENV = 'preview'
     assert.equal(coordinationIntegratedEnabled(), true)
   } finally {
