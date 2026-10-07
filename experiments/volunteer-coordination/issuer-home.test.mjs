@@ -52,13 +52,14 @@ test('issuer home hero exposes the experimental shortcuts with real application 
   assert.doesNotMatch(html,/Invite Volunteers/);
 });
 test('organization command center renders connected dashboard modules from application state',()=>{
-  const state=ensurePrograms(initial()),ui={home:{dashboardModule:'activities',activityId:'',volunteerId:'',programId:'',programActivityId:''}};
+  const state=ensurePrograms(initial()),ui={home:{dashboardModule:'activities',activityId:'',programId:'',programActivityId:''}};
   const html=homeCommandCenter({state,ui,platformContext:null,e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`,avatar:person=>`<span class="avatar">${person.name}</span>`,badge:label=>`<span class="badge">${label}</span>`,dateLabel:value=>value,confirmedCount:()=>0},{organizationName:'Riverside Food Bank'});
   assert.match(html,/Riverside Food Bank/);
   assert.match(html,/data-home-action="module" data-module="activities"/);
   assert.match(html,/Passport Portal/);
   assert.match(html,/Organizational Documents/);
   assert.match(html,/Volunteer Programs/);
+  assert.doesNotMatch(html,/data-module="volunteers"/);
   assert.match(html,/Upcoming Activities/);
   assert.match(html,/data-action="create"/);
   assert.match(html,/data-page="feed"/);

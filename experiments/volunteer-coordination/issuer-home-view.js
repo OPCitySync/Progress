@@ -1,5 +1,5 @@
 import { homeQueue, calendarEntries, calendarRange, entriesOnDay } from './issuer-home-model.js';
-import { publicVolunteerPassport, sharedPassport, today } from './passport-model.js';
+import { publicVolunteerPassport, today } from './passport-model.js';
 import { ACTIVITY_TYPES, programActivities } from './program-model.js';
 import { HOME_ORG } from './recruitment-model.js';
 
@@ -16,7 +16,6 @@ export function homeHero(ctx) {
 const dashboardModules = [
   ['activities','calendar','Upcoming Activities','Schedule and staffing'],
   ['passports','book','Passport Portal','Discover available people'],
-  ['volunteers','people','Volunteers','Roster and onboarding'],
   ['documents','reports','Organizational Documents','Shared requirements'],
   ['programs','work','Volunteer Programs','Initiatives and progress'],
 ];
@@ -61,15 +60,6 @@ function homePassportsModule(ctx) {
   return `<section class="panel issuer-command-panel">${homePanelHeader('Passport Portal',button('Open Passport Portal '+icon('arrow'),'nav','data-page="passport"','btn secondary small'))}${people.length?`<div class="issuer-command-passport-grid">${people.slice(0,8).map(({person,passport})=>`<article class="issuer-command-passport-card"><div>${avatar(person,'large')}${badge('Open','sage')}</div><h3>${e(person.name)}</h3><p>${e(passport.skills||person.role||'Open to finding a useful way to contribute.')}</p><small>${icon('clock')} ${e(passport.availability||'Availability not shared')}</small><div class="issuer-command-card-actions">${button('View Passport','ppPublic',`data-person="${e(person.id)}"`,'btn secondary small')}${button(icon('plus')+'Connect','ppInvite',`data-person="${e(person.id)}"`,'btn primary small')}</div></article>`).join('')}</div>`:homeEmpty(ctx,'No open Passports right now.','Volunteers appear here when they share their MyPassport with the City Network.')}</section>`;
 }
 
-function homeVolunteersModule(ctx) {
-  const {state,ui,e,icon,avatar,button,badge}=ctx,h=ui.home,people=state.people.filter(person=>!['former','paused'].includes(person.relationship));
-  const selected=people.find(person=>person.id===h.volunteerId)||people[0];
-  if(!selected)return `<section class="panel issuer-command-panel">${homePanelHeader('Volunteers',button(icon('plus')+'Add Volunteers','addPeople','','btn primary small'))}${homeEmpty(ctx,'Your roster is ready for its first person.','Invite a volunteer or import an existing roster.',button('Add Volunteers','addPeople','','btn primary small'))}</section>`;
-  const shared=sharedPassport(state,selected.id),publicView=publicVolunteerPassport(state,selected.id),profile=shared?.about||publicView||state.passports.profiles[selected.id]||{},records=shared?.records||publicView?.records||[];
-  const requirementEntries=Object.entries(selected.requirements||{}).filter(([,complete])=>complete).slice(0,4);
-  return `<section class="panel issuer-command-panel">${homePanelHeader('Volunteers',button(icon('plus')+'Add Volunteers','addPeople','','btn primary small'))}<div class="issuer-command-volunteer-layout"><div class="issuer-command-volunteer-list">${people.map(person=>`<button type="button" class="issuer-command-volunteer-row ${person.id===selected.id?'is-selected':''}" data-home-action="volunteer" data-id="${e(person.id)}">${avatar(person,'small')}<span><strong>${e(person.name)}</strong><small>${e(person.role||'Volunteer')}</small></span>${badge(person.relationship==='member'?'Ready':person.relationship==='joining'?'Onboarding':person.relationship,'neutral')}${icon('chevron')}</button>`).join('')}</div><aside class="issuer-command-passport-preview"><div class="issuer-command-passport-heading">${avatar(selected,'large')}<div><small>VOLUNTEER PASSPORT</small><h3>${e(selected.name)}</h3><p>${icon('pin')} ${e(profile.city||'City not shared')}</p></div>${button('Open record '+icon('arrow'),'person',`data-id="${e(selected.id)}"`,'btn secondary small')}</div><div class="issuer-command-passport-facts"><div><small>AVAILABILITY</small><strong>${e(selected.availability||'Not shared')}</strong></div><div><small>PASSPORT RECORDS</small><strong>${records.length}</strong></div><div><small>LANGUAGES</small><strong>${e(profile.languages||'Not shared')}</strong></div></div><section><small>SKILLS &amp; EXPERIENCE</small><p>${e(profile.skills||selected.role||'No skills have been added to this Passport.')}</p></section><section><small>VOLUNTEER EXPERIENCE</small>${records.slice(0,3).map(record=>`<p>${icon('check')} ${e(record.title)} <em>${e(record.issuer||'Self-reported')}</em></p>`).join('')||'<p>No Passport records are visible to this organization.</p>'}</section><section><small>READY TO SERVE</small>${requirementEntries.map(([key])=>`<p>${icon('check')} ${e(key.replaceAll('-',' '))}</p>`).join('')||'<p>Preparation requirements have not been completed.</p>'}</section><div class="issuer-command-actions">${button(icon('message')+'Message','nav','data-page="messages"','btn secondary small')}${button('Manage Volunteer','person',`data-id="${e(selected.id)}"`,'btn primary small')}</div></aside></div></section>`;
-}
-
 function homeDocumentsModule(ctx) {
   const {state,e,icon,button}=ctx,documents=(state.documentLibrary?.items||[]).slice().sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
   return `<section class="panel issuer-command-panel">${homePanelHeader('Organizational Documents',button(icon('plus')+'Add Document','docAdd','','btn primary small'))}${documents.length?`<div class="issuer-command-document-list">${documents.slice(0,10).map(document=>`<article><span>${icon(document.documentType==='liability-waiver'?'book':'reports')}</span><div><h3>${e(document.title)}</h3><p>${e(document.category||'Resource')} · Updated ${e(document.updatedAt||'recently')}</p></div><em>${e(document.allVolunteerActivities?'All volunteer activities':document.programId?'Assigned to program':'Organization library')}</em>${button('View Document','docOpen',`data-id="${e(document.id)}"`,'btn secondary small')}</article>`).join('')}</div>`:homeEmpty(ctx,'Your document library is empty.','Add guides, waivers, agreements, and organizational resources.',button('Add Document','docAdd','','btn primary small'))}</section>`;
@@ -85,7 +75,7 @@ function homeProgramsModule(ctx) {
 }
 
 function homeModule(ctx) {
-  return ({activities:homeActivitiesModule,passports:homePassportsModule,volunteers:homeVolunteersModule,documents:homeDocumentsModule,programs:homeProgramsModule})[ctx.ui.home.dashboardModule||'activities'](ctx);
+  return ({activities:homeActivitiesModule,passports:homePassportsModule,documents:homeDocumentsModule,programs:homeProgramsModule})[ctx.ui.home.dashboardModule||'activities'](ctx);
 }
 
 export function homeCommandCenter(ctx,{organizationName}={}) {

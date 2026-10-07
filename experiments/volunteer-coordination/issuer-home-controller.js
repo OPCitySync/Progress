@@ -15,7 +15,6 @@ export function bindIssuerHome({context,render,commit,showDialog,closeDialog,nav
     switch(d.homeAction) {
       case 'module':h.dashboardModule=d.module;h.programActivityId='';render();document.querySelector(`[data-home-action="module"][data-module="${d.module}"]`)?.focus();break;
       case 'activity':h.activityId=d.id;render();break;
-      case 'volunteer':h.volunteerId=d.id;render();break;
       case 'program':h.programId=d.id;h.programActivityId='';render();break;
       case 'programActivity':h.programActivityId=d.id;render();break;
       case 'programBack':h.programActivityId='';render();break;
