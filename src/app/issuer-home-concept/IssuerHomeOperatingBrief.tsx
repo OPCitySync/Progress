@@ -5,7 +5,7 @@ import {
   ArrowLeft, ArrowUpRight, BriefcaseBusiness, CalendarDays, Check,
   ChevronDown, ChevronRight, Clock3, Download, FileCheck2, FileText, Files,
   Globe2, IdCard, Leaf, MapPin, MessageSquareText, MoreHorizontal, Search,
-  Send, ShieldCheck, UserPlus, Users,
+  Plus, Radio, Send, ShieldCheck, UserPlus, Users,
 } from 'lucide-react'
 import styles from './IssuerHomeConcept.module.css'
 
@@ -99,6 +99,32 @@ function ProfileRail() {
   </aside>
 }
 
+function OverviewHero() {
+  const currentDate = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date())
+
+  return <section className={styles.overviewHero} aria-label="Organization overview">
+    <div className={styles.overviewHeroCopy}>
+      <p><CalendarDays size={13} /> {currentDate}</p>
+      <h1>{organizationName}</h1>
+      <span>Coordinate your organization’s people, commitments, and community presence.</span>
+    </div>
+    <div className={styles.overviewHeroActions}>
+      <button type="button" className={styles.overviewFeedButton}><Radio size={14} /> MyCity Feed</button>
+      <div>
+        <button type="button" className={styles.overviewPrimaryAction}><Plus size={14} /> Schedule Activity</button>
+        <button type="button"><Plus size={14} /> Create a Role</button>
+        <button type="button"><Plus size={14} /> Invite Volunteers</button>
+        <button type="button"><Users size={14} /> Staff</button>
+      </div>
+    </div>
+  </section>
+}
+
 function RosterList({ people }: { people: RosterMember[] }) {
   return <div className={styles.rosterList}>{people.map(person => <div className={styles.rosterPerson} key={`${person.name}-${person.assignment}`}><span className={styles.rosterAvatar}>{person.initials}</span><span><strong>{person.name}</strong><small>{person.assignment}</small></span><em className={person.status === 'Pending' ? styles.pendingRoster : ''}>{person.status}</em></div>)}</div>
 }
@@ -145,5 +171,5 @@ function PanelHeader({ title, children }: { title: string; children?: ReactNode 
 
 export default function IssuerHomeOperatingBrief() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('activities')
-  return <main className={styles.page}><header className={styles.appHeader}><div className={styles.appHeaderInner}><div className={styles.brandLockup}><img src="/brand/mycity-logo-gold-blue-on-white.svg" alt="mycity" /><span /><div><small>COORDINATION STUDIO</small><b>Organization Home Concept</b></div></div><nav className={styles.topNav} aria-label="Organization sections"><button type="button" className={styles.activeTopNav}>Home</button><button type="button">Workspace</button><button type="button">Volunteers</button></nav><div className={styles.headerContext}><button type="button" className={styles.messageButton}><MessageSquareText size={15} /> Messages <span>3</span></button><button type="button" className={styles.profileButton} aria-label={`${organizationName} profile`}><span>BN</span><ChevronDown size={14} /></button></div></div></header><div className={styles.quickBar}><div><button type="button" className={styles.activeQuick}>Home</button><button type="button">+ Schedule Activity</button><button type="button">+ Create a Role</button><button type="button">+ Invite Volunteers</button><button type="button">Staff</button><button type="button">Calendar</button></div></div><div className={styles.shell}><div className={styles.commandLayout}><ProfileRail /><section className={styles.dashboard} aria-label="Organization command center"><div className={styles.moduleGrid} role="tablist" aria-label="Dashboard areas">{modules.map(module => { const Icon = module.icon; const selected = activeModule === module.id; return <button type="button" role="tab" aria-selected={selected} key={module.id} onClick={() => setActiveModule(module.id)} className={`${styles.moduleButton} ${selected ? styles.activeModule : ''}`}><span className={styles.moduleIcon}><Icon size={18} /></span><span><strong>{module.label}</strong><small>{module.note}</small></span><ChevronRight size={15} /></button> })}</div><div key={activeModule} className={styles.moduleContent}>{activeModule === 'activities' ? <ActivitiesPanel /> : activeModule === 'passports' ? <PassportPanel /> : activeModule === 'volunteers' ? <VolunteersPanel /> : activeModule === 'documents' ? <DocumentsPanel /> : <ProgramsPanel />}</div></section></div></div></main>
+  return <main className={styles.page}><header className={styles.appHeader}><div className={styles.appHeaderInner}><div className={styles.brandLockup}><img src="/brand/mycity-logo-gold-blue-on-white.svg" alt="mycity" /><span /><div><small>COORDINATION STUDIO</small><b>Organization Home Concept</b></div></div><nav className={styles.topNav} aria-label="Organization sections"><button type="button" className={styles.activeTopNav}>Home</button><button type="button">Workspace</button><button type="button">Volunteers</button></nav><div className={styles.headerContext}><button type="button" className={styles.messageButton}><MessageSquareText size={15} /> Messages <span>3</span></button><button type="button" className={styles.profileButton} aria-label={`${organizationName} profile`}><span>BN</span><ChevronDown size={14} /></button></div></div></header><div className={styles.quickBar}><div><button type="button" className={styles.activeQuick}>Home</button><button type="button">+ Schedule Activity</button><button type="button">+ Create a Role</button><button type="button">+ Invite Volunteers</button><button type="button">Staff</button><button type="button">Calendar</button></div></div><div className={styles.shell}><OverviewHero /><div className={styles.commandLayout}><ProfileRail /><section className={styles.dashboard} aria-label="Organization command center"><div className={styles.moduleGrid} role="tablist" aria-label="Dashboard areas">{modules.map(module => { const Icon = module.icon; const selected = activeModule === module.id; return <button type="button" role="tab" aria-selected={selected} key={module.id} onClick={() => setActiveModule(module.id)} className={`${styles.moduleButton} ${selected ? styles.activeModule : ''}`}><span className={styles.moduleIcon}><Icon size={18} /></span><span><strong>{module.label}</strong><small>{module.note}</small></span><ChevronRight size={15} /></button> })}</div><div key={activeModule} className={styles.moduleContent}>{activeModule === 'activities' ? <ActivitiesPanel /> : activeModule === 'passports' ? <PassportPanel /> : activeModule === 'volunteers' ? <VolunteersPanel /> : activeModule === 'documents' ? <DocumentsPanel /> : <ProgramsPanel />}</div></section></div></div></main>
 }
