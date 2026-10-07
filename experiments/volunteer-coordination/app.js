@@ -507,6 +507,12 @@ function assignmentDialog(activityId) {
   const a = state.activities.find(a => a.id === activityId); const eligible = state.people.filter(p => p.relationship === 'member' && !activeCommitment(state, p.id, a.id));
   showDialog('Invite someone to help', `<form data-form="assign" data-activity="${e(a.id)}"><div class="dialog-body"><p class="dialog-intro">${e(a.title)} · ${dateLabel(a.date)}<br>The volunteer accepts before this counts as confirmed coverage.</p><label>Role<select name="roleId" id="assign-role">${a.roles.map(r => `<option value="${e(r.id)}">${e(r.name)} · ${r.capacity - confirmedCount(state, a.id, r.id)} places open</option>`).join('')}</select></label><label>Volunteer<select name="personId" required>${eligible.map(p => `<option value="${e(p.id)}">${e(p.name)} · ${e(p.availability)}</option>`).join('')}</select></label><p class="microcopy">Any missing preparation must be completed before they accept. Availability is a preference, not a promise.</p>${!eligible.length ? '<div class="callout sand">Everyone on the team already has a commitment, invitation, or waitlist place for this activity.</div>' : ''}${errorOutput()}</div><div class="dialog-footer">${button('Cancel', 'close', '', 'btn secondary')}<button class="btn primary" type="submit" ${!eligible.length ? 'disabled' : ''}>Propose assignment</button></div></form>`);
 }
+function shiftAssignmentDialog(activityId) {
+  const a=state.activities.find(activity=>activity.id===activityId);
+  if(!a||assignmentModeOf(a)!=='manual')return toast('This activity uses volunteer self-signup instead of organization assignment.');
+  const eligible=state.people.filter(person=>person.relationship==='member'&&!activeCommitment(state,person.id,a.id));
+  showDialog('Assign Shift',`<form data-form="assignShift" data-activity="${e(a.id)}"><div class="dialog-body"><p class="dialog-intro">${e(a.title)} · ${dateLabel(a.date)}<br>Select volunteers, then save once. Each person will receive an invitation notification and can accept or decline.</p><label>Role<select name="roleId" required>${a.roles.map(role=>`<option value="${e(role.id)}">${e(role.name)} · ${role.capacity-confirmedCount(state,a.id,role.id)} places open</option>`).join('')}</select></label><fieldset class="shift-assignment-list"><legend>Volunteers</legend>${eligible.map(person=>`<label class="shift-assignment-person"><input type="checkbox" name="personIds" value="${e(person.id)}"><span>${avatar(person,'small')}<span><strong>${e(person.name)}</strong><small>${e(person.availability||'Availability not shared')}</small></span></span></label>`).join('')||'<p class="shift-assignment-empty">Everyone on the active roster already has a commitment, invitation, or waitlist place for this activity.</p>'}</fieldset><p class="microcopy">Assignments count toward staffing after each volunteer accepts. Saving does not change their roster membership or preparation records.</p>${errorOutput()}</div><div class="dialog-footer">${button('Cancel','close','','btn secondary')}<button class="btn primary" type="submit" ${eligible.length?'':'disabled'}>Save Assignments</button></div></form>`,true);
+}
 function signupDialog(activityId, roleId) {
   const a = state.activities.find(a => a.id === activityId); const p = currentPerson(); const role = a.roles.find(r => r.id === roleId) || a.roles[0]; const mode = assignmentModeOf(a); const missing = missingRequirements(p, role, state, a.date > today() ? a.date : today(), a); const blocking = mode === 'public' ? missing.filter(key => key !== 'waiver') : missing; const full = confirmedCount(state, a.id, role.id) >= role.capacity;
   if (mode === 'manual') { toast('This activity is assigned by the organization. A volunteer must receive and accept an invitation.'); return; }
@@ -810,6 +816,7 @@ document.addEventListener('click', async event => {
     case 'join': recruitmentAction({ type: 'startInviteLink', personId: ui.person }, 'application'); break;
     case 'requirement': requirementDialog(d.person, d.key); break;
     case 'assign': assignmentDialog(d.id); break;
+    case 'assignShift': shiftAssignmentDialog(d.id); break;
     case 'signup': signupDialog(d.id); break;
     case 'respond': if (d.accept === 'yes') responseDialog(d.id); else act({ type: 'respond', commitmentId: d.id, accept: false }); break;
     case 'cancel': cancellationDialog(d.id); break;
@@ -992,6 +999,7 @@ document.addEventListener('submit', async event => {
     }
     case 'requirement': { const previous = ui.dialog; if (act({ type: 'requirement', personId: d.person, key: d.key, actor: ui.mode })) { if (previous?.type === 'signup') signupDialog(previous.id, previous.roleId); else if (previous?.type === 'response') responseDialog(previous.id); else if (previous?.type === 'person') personDialog(previous.id); } break; }
     case 'assign': act({ type: 'commit', activityId: d.activity, ...values, status: 'proposed', actor: ui.mode }); break;
+    case 'assignShift': act({type:'assignShift',activityId:d.activity,roleId:values.roleId,personIds:fields.getAll('personIds'),actor:ui.mode}); break;
     case 'signup': act({ type: 'commit', activityId: d.activity, roleId: d.role, personId: ui.person, status: d.full === 'true' ? 'waitlisted' : 'confirmed', actor: ui.mode, signerName: values.signerName, waiverAccepted: fields.has('waiverAccepted') }); break;
     case 'respondActivity': act({ type: 'respond', commitmentId: d.id, accept: true, signerName: values.signerName, waiverAccepted: fields.has('waiverAccepted') }); break;
     case 'cancel': act({ type: 'cancel', commitmentId: d.id, note: values.note }); break;

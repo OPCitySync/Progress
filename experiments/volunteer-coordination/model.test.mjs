@@ -80,6 +80,21 @@ test('assignment mode controls who can create an activity commitment', () => {
   assert.equal(invitation.status, 'proposed');
 });
 
+test('organization shift assignment saves multiple invitations atomically and notifies each volunteer', () => {
+  const original = createInitialState();
+  assert.throws(() => apply(original, { type: 'assignShift', activityId: 'pantry', roleId: 'packing', personIds: ['alex'], actor: 'coordinator' }), /self-signup/);
+  assert.throws(() => apply(original, { type: 'assignShift', activityId: 'website', roleId: 'design', personIds: ['alex'], actor: 'volunteer' }), /Only the organization/);
+  assert.throws(() => apply(original, { type: 'assignShift', activityId: 'website', roleId: 'design', personIds: ['alex', 'jules'], actor: 'coordinator' }), /already a commitment/);
+  assert.equal(activeCommitment(original, 'alex', 'website'), undefined);
+  const result = transition(original, { type: 'assignShift', activityId: 'website', roleId: 'design', personIds: ['alex', 'priya'], actor: 'coordinator' });
+  assert.match(result.notice, /2 shift assignments saved/);
+  for (const personId of ['alex', 'priya']) {
+    assert.equal(activeCommitment(result.state, personId, 'website').status, 'proposed');
+    assert.ok(result.state.notifications.some(item => item.personId === personId && item.activityId === 'website' && item.text.includes('invited')));
+  }
+  assert.equal(confirmedCount(result.state, 'website'), confirmedCount(original, 'website'));
+});
+
 test('late cancellation, waitlist offer, and volunteer acceptance preserve membership and capacity', () => {
   let state = createInitialState();
   state = apply(state, { type: 'cancel', commitmentId: 'c1', note: 'Unexpected conflict' });

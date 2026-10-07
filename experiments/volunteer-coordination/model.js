@@ -144,6 +144,17 @@ export function transition(current, action) {
   } else if (action.type === 'preferences') {
     Object.assign(getPerson(action.personId), { availability: action.availability.trim(), preference: action.preference.trim() });
     notice = 'Preferences shared with your coordinator. No shifts were booked.';
+  } else if (action.type === 'assignShift') {
+    if (action.actor !== 'coordinator') throw Error('Only the organization can assign volunteers to a shift.');
+    const a = getActivity(action.activityId);
+    if (assignmentModeOf(a) !== 'manual') throw Error('This activity uses volunteer self-signup instead of organization assignment.');
+    const personIds = [...new Set(Array.isArray(action.personIds) ? action.personIds : [])];
+    if (!personIds.length) throw Error('Select at least one volunteer.');
+    let assignedState = state;
+    for (const personId of personIds) {
+      assignedState = transition(assignedState, { type: 'commit', actor: 'coordinator', activityId: a.id, personId, roleId: action.roleId, status: 'proposed' }).state;
+    }
+    return { state: ensurePassport(assignedState), notice: `${personIds.length} shift ${personIds.length === 1 ? 'assignment' : 'assignments'} saved. ${personIds.length === 1 ? 'A notification was' : 'Notifications were'} sent.` };
   } else if (action.type === 'commit') {
     const a = getActivity(action.activityId); const p = getPerson(action.personId); const role = a.roles.find(r => r.id === action.roleId);
     const assignmentMode = assignmentModeOf(a);

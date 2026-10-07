@@ -70,6 +70,19 @@ test('organization command center renders connected dashboard modules from appli
   assert.doesNotMatch(html,/home-action-queue/);
   assert.doesNotMatch(html,/home-calendar/);
 });
+test('Assign Shift appears only for activities assigned by the organization',()=>{
+  const state=ensurePrograms(initial()),activity=state.activities.find(item=>item.id==='pantry');
+  Object.assign(activity,{assignmentMode:'manual',visibility:'members',enrollment:'managed'});
+  const ui={home:{dashboardModule:'activities',activityId:activity.id,programId:'',programActivityId:''}};
+  const context={state,ui,platformContext:null,e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`,avatar:person=>`<span class="avatar">${person.name}</span>`,badge:label=>`<span class="badge">${label}</span>`,dateLabel:value=>value,confirmedCount:()=>0};
+  let html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
+  assert.match(html,/data-action="assignShift"/);
+  assert.match(html,/Assign Shift/);
+  assert.doesNotMatch(html,/Manage Roster/);
+  activity.assignmentMode='roster';activity.enrollment='self';
+  html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
+  assert.doesNotMatch(html,/data-action="assignShift"/);
+});
 test('Volunteer Programs prioritizes the program list and reveals activity details only after selection',()=>{
   const state=ensurePrograms(initial()),program=state.programWorkspace.programs.find(item=>item.status!=='archived');
   const activity=state.activities.find(item=>item.programId===program.id&&item.date);
