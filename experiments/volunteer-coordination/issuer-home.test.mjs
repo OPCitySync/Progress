@@ -79,7 +79,13 @@ test('Assign Shift appears only for activities assigned by the organization',()=
   assert.match(html,/data-action="assignShift"/);
   assert.match(html,/Assign Shift/);
   assert.doesNotMatch(html,/Manage Roster/);
-  activity.assignmentMode='roster';activity.enrollment='self';
+  context.state=transition(state,{type:'assignShift',activityId:activity.id,roleId:'packing',personIds:['jules'],actor:'coordinator'}).state;
+  html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
+  assert.match(html,/SHIFT TEAM/);
+  assert.match(html,/Jules Okafor/);
+  assert.match(html,/Invitation sent/);
+  const assignedActivity=context.state.activities.find(item=>item.id===activity.id);
+  assignedActivity.assignmentMode='roster';assignedActivity.enrollment='self';
   html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
   assert.doesNotMatch(html,/data-action="assignShift"/);
 });
