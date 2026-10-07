@@ -186,7 +186,7 @@ test('issuer feed combines public presence, quick work, and the live action queu
   }
 });
 
-test('issuer Home section preserves the Feed and links to the separate organization dashboard', () => {
+test('issuer Home opens the command center without a duplicated quick-action subheader', () => {
   const state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(createInitialState()))));
   const ui = { mode: 'coordinator', page: 'feed', person: 'alex' };
   const html = issuerNavigation({
@@ -194,23 +194,19 @@ test('issuer Home section preserves the Feed and links to the separate organizat
     connectedPlatform: false, coordinatorName: 'Coordinator', platformContext: null,
     currentPerson: () => state.people.find(person => person.id === ui.person),
   });
-  assert.equal(ISSUER_SECTIONS[0].page, 'feed');
+  assert.equal(ISSUER_SECTIONS[0].page, 'home');
   assert.equal(ISSUER_SECTIONS.some(section => section.id === 'profile'), false);
-  assert.match(html, /href="#\/coordinator\/feed"[^>]*aria-label="MyCity home"/);
-  assert.match(html, /class="issuer-quickbar"/);
-  assert.match(html, /href="#\/coordinator\/home"[^>]*>.*Home/);
-  assert.match(html, /data-action="create"[^>]*>.*Schedule Activity/);
-  assert.match(html, /data-action="rcCreateRole"[^>]*>.*Create a Role/);
-  assert.match(html, /data-action="invite"[^>]*>.*Invite Volunteers/);
-  assert.match(html, /data-page="planning"[^>]*>.*Staff/);
-  assert.match(html, /data-page="calendar"[^>]*>.*Calendar/);
+  assert.match(html, /href="#\/coordinator\/home"[^>]*aria-label="MyCity home"/);
+  assert.doesNotMatch(html, /class="issuer-quickbar"/);
+  assert.doesNotMatch(html, /Schedule Activity/);
+  assert.doesNotMatch(html, /Invite Volunteers/);
   assert.doesNotMatch(html, />Overview</);
   assert.doesNotMatch(html, />MyCity Feed</);
   assert.doesNotMatch(html, />City Network</);
   assert.doesNotMatch(html, />Public Profile</);
 });
 
-test('organization dashboard is marked as the current quickbar destination', () => {
+test('organization command center is the current primary Home destination', () => {
   const state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(createInitialState()))));
   const ui = { mode: 'coordinator', page: 'home', person: 'alex' };
   const html = issuerNavigation({
@@ -218,7 +214,8 @@ test('organization dashboard is marked as the current quickbar destination', () 
     connectedPlatform: false, coordinatorName: 'Coordinator', platformContext: null,
     currentPerson: () => state.people.find(person => person.id === ui.person),
   });
-  assert.match(html, /href="#\/coordinator\/home" class="issuer-quickbar-action issuer-quickbar-home is-current" aria-current="page"/);
+  assert.match(html, /href="#\/coordinator\/home" class="issuer-section-link is-active" aria-current="true"/);
+  assert.doesNotMatch(html, /issuer-quickbar/);
 });
 
 test('participant action history explains acknowledgement and restores an item', () => {

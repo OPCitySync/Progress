@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, transition } from './model.js';
 import { ensureRecruitment, HOME_ORG } from './recruitment-model.js';
+import { ensurePrograms } from './program-model.js';
 import { ensureIssuerHome, homeQueue, calendarRange, moveCalendar, calendarEntries, entriesOnDay, transitionIssuerHome } from './issuer-home-model.js';
-import { homeHero, homeActionQueue } from './issuer-home-view.js';
+import { homeHero, homeActionQueue, homeCommandCenter } from './issuer-home-view.js';
 const initial=()=>ensureIssuerHome(ensureRecruitment(createInitialState()));
 const apply=(state,action)=>transitionIssuerHome(state,{actor:'coordinator',...action},'2026-09-26').state;
 
@@ -42,12 +43,28 @@ test('issuer home hero exposes the experimental shortcuts with real application 
   assert.match(html,/data-page="feed"/);
   assert.match(html,/data-action="create"/);
   assert.match(html,/data-action="rcCreateRole"/);
-  assert.match(html,/data-action="invite"/);
+  assert.match(html,/data-page="calendar"/);
   assert.match(html,/data-page="planning"/);
   assert.match(html,/Schedule Activity/);
   assert.match(html,/Create a Role/);
-  assert.match(html,/Invite Volunteers/);
+  assert.match(html,/>Calendar</);
   assert.match(html,/>Staff</);
+  assert.doesNotMatch(html,/Invite Volunteers/);
+});
+test('organization command center renders connected dashboard modules from application state',()=>{
+  const state=ensurePrograms(initial()),ui={home:{dashboardModule:'activities',activityId:'',volunteerId:'',programId:'',programActivityId:''}};
+  const html=homeCommandCenter({state,ui,platformContext:null,e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`,avatar:person=>`<span class="avatar">${person.name}</span>`,badge:label=>`<span class="badge">${label}</span>`,dateLabel:value=>value,confirmedCount:()=>0},{organizationName:'Riverside Food Bank'});
+  assert.match(html,/Riverside Food Bank/);
+  assert.match(html,/data-home-action="module" data-module="activities"/);
+  assert.match(html,/Passport Portal/);
+  assert.match(html,/Organizational Documents/);
+  assert.match(html,/Volunteer Programs/);
+  assert.match(html,/Upcoming Activities/);
+  assert.match(html,/data-action="create"/);
+  assert.match(html,/data-page="feed"/);
+  assert.match(html,/data-page="calendar"/);
+  assert.doesNotMatch(html,/home-action-queue/);
+  assert.doesNotMatch(html,/home-calendar/);
 });
 test('staffing need resurfaces when confirmed coverage changes; invitations alone do not fill places',()=>{
   const s=initial(),item=homeQueue(s,'2026-09-26').find(x=>x.key.startsWith('staffing:garden:'));

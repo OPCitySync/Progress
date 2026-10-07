@@ -4,7 +4,7 @@ import { today } from './passport-model.js';
 import { planningMonday } from './planning-model.js';
 
 export function bindIssuerHome({context,render,commit,showDialog,closeDialog,navigate,toast}) {
-  const active=()=>context().ui.mode==='coordinator'&&['calendar','feed'].includes(context().ui.page);
+  const active=()=>context().ui.mode==='coordinator'&&['home','calendar'].includes(context().ui.page);
   function apply(action) {
     try {commit(transitionIssuerHome(context().state,{...action,actor:context().ui.mode}));return true;}
     catch(error){const output=document.querySelector('#dialog[open] .form-error');if(output){output.textContent=error.message;output.focus();}else toast(error.message);return false;}
@@ -13,6 +13,12 @@ export function bindIssuerHome({context,render,commit,showDialog,closeDialog,nav
     const b=event.target.closest('[data-home-action]');if(!b||b.disabled||!active())return;
     const {ui,state}=context(),h=ui.home,d=b.dataset;
     switch(d.homeAction) {
+      case 'module':h.dashboardModule=d.module;h.programActivityId='';render();document.querySelector(`[data-home-action="module"][data-module="${d.module}"]`)?.focus();break;
+      case 'activity':h.activityId=d.id;render();break;
+      case 'volunteer':h.volunteerId=d.id;render();break;
+      case 'program':h.programId=d.id;h.programActivityId='';render();break;
+      case 'programActivity':h.programActivityId=d.id;render();break;
+      case 'programBack':h.programActivityId='';render();break;
       case 'collapse':h.queueCollapsed=!h.queueCollapsed;render();document.querySelector('[data-home-action="collapse"]')?.focus();break;
       case 'queueAll':h.queueAll=!h.queueAll;render();document.querySelector('#home-queue-title')?.focus();break;
       case 'acknowledge':if(apply({type:'acknowledge',key:d.key}))document.querySelector('#home-queue-title')?.focus();break;
