@@ -64,11 +64,28 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/data-action="create"/);
   assert.match(html,/data-page="feed"/);
   assert.match(html,/data-page="calendar"/);
-  assert.match(html,/class="issuer-command-queue"/);
-  assert.match(html,/aria-label="Action Queue"/);
+  assert.doesNotMatch(html,/issuer-command-queue/);
+  assert.doesNotMatch(html,/aria-label="Action Queue"/);
   assert.doesNotMatch(html,/ORGANIZATION STATUS/);
   assert.doesNotMatch(html,/home-action-queue/);
   assert.doesNotMatch(html,/home-calendar/);
+});
+test('Volunteer Programs prioritizes the program list and reveals activity details only after selection',()=>{
+  const state=ensurePrograms(initial()),program=state.programWorkspace.programs.find(item=>item.status!=='archived');
+  const activity=state.activities.find(item=>item.programId===program.id&&item.date);
+  const context={state,ui:{home:{dashboardModule:'programs',activityId:'',programId:program.id,programActivityId:''}},platformContext:null,e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`,avatar:person=>`<span class="avatar">${person.name}</span>`,badge:label=>`<span class="badge">${label}</span>`,dateLabel:value=>value,confirmedCount:()=>0};
+  let html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
+  assert.match(html,/issuer-command-program-list/);
+  assert.match(html,/Scheduled Activities/);
+  assert.doesNotMatch(html,/SELECTED PROGRAM/);
+  assert.doesNotMatch(html,/issuer-command-program-number/);
+  assert.doesNotMatch(html,/issuer-command-program-lead/);
+  if(activity){
+    context.ui.home.programActivityId=activity.id;
+    html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
+    assert.doesNotMatch(html,/issuer-command-program-list/);
+    assert.match(html,/ACTIVITY DETAILS/);
+  }
 });
 test('staffing need resurfaces when confirmed coverage changes; invitations alone do not fill places',()=>{
   const s=initial(),item=homeQueue(s,'2026-09-26').find(x=>x.key.startsWith('staffing:garden:'));
