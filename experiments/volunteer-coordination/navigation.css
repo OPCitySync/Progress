@@ -10,6 +10,9 @@
 .issuer-quickbar-action{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:7px 12px;border:1px solid #d7ddd6;border-radius:8px;background:#fff;color:#4c5550;font-size:11px;font-weight:600;white-space:nowrap;box-shadow:0 2px 5px #173b2c0a}
 .issuer-quickbar-action .icon{width:14px;height:14px}
 .issuer-quickbar-action:hover{border-color:#bda16f;background:#fffaf1;color:#15151e}
+.issuer-quickbar-home{margin-right:5px}
+.issuer-quickbar-home.is-current{border-color:#294f40;background:#294f40;color:#fff;box-shadow:0 2px 7px #173b2c25}
+.issuer-quickbar-home.is-current:hover{border-color:#1e4032;background:#1e4032;color:#fff}
 .issuer-quickbar-action.is-primary{border-color:#d7b97e;background:#fbf0dc;color:#77531c}
 .issuer-quickbar-action:focus-visible{outline:2px solid #294f40;outline-offset:2px}
 @media(max-width:760px){.issuer-quickbar{justify-content:flex-start;padding-block:8px}.issuer-quickbar-action{font-size:10px;padding-inline:10px}}

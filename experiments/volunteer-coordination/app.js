@@ -1,5 +1,5 @@
 import { ensureIssuerHome } from './issuer-home-model.js';
-import { homeCalendar } from './issuer-home-view.js';
+import { homeHero, homeActionQueue, homeCalendar } from './issuer-home-view.js';
 import { bindIssuerHome } from './issuer-home-controller.js';
 import { renderPlanning } from './planning-view.js';
 import { bindPlanning } from './planning-controller.js';
@@ -173,10 +173,6 @@ function readRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
   if (parts[0] === 'join') { ui.mode = 'volunteer'; ui.person = 'robin'; ui.page = 'organization'; ui.item = ''; }
   else { ui.mode = parts[0] === 'volunteer' ? 'volunteer' : 'coordinator'; ui.page = parts[1] || 'home'; ui.item = parts[2]; }
-  if (ui.mode === 'coordinator' && ui.page === 'home') {
-    ui.page = 'feed'; ui.item = '';
-    history.replaceState(null, '', `${location.pathname}${location.search}#/coordinator/feed`);
-  }
   if (ui.mode === 'coordinator' && ['work', 'schedule'].includes(ui.page)) {
     ui.page = 'planning'; ui.item = '';
     history.replaceState(null, '', `${location.pathname}${location.search}#/coordinator/planning`);
@@ -231,6 +227,10 @@ function coverage(a) {
 }
 function illustration() { return `<svg class="hero-art" viewBox="0 0 260 170" aria-hidden="true"><circle cx="170" cy="65" r="52" fill="#d9e8ac"/><path d="M25 152c34-51 76-76 117-42 35-41 75-26 105 42" fill="#78947b"/><path d="M89 139c3-38 2-70-10-93m11 42c-30 0-44-18-35-30 24 0 36 18 35 30m0 24c30-1 49-20 39-33-25 0-37 20-39 33" fill="#dfeabc"/><path d="M178 144V76m0 27c-24 0-35-12-31-25 22 1 32 13 31 25m0 18c28-3 39-16 34-29-24 1-32 18-34 29" fill="#b8cfa0"/><path d="m24 32 5-13 5 13 13 5-13 5-5 13-5-13-13-5Z" fill="#b8cfa0"/><path d="m228 54 3-8 3 8 8 3-8 3-3 8-3-8-8-3Z" fill="#b8cfa0"/></svg>`; }
 function dashboard() {
+  const context=feedContext();
+  return `<div class="issuer-home-hub">${homeHero({...context,organizationName:workspaceLabel()})}${homeActionQueue(context)}</div>${homeCalendar(context)}`;
+}
+function calendarPage() {
   return homeCalendar(feedContext());
 }
 
@@ -300,8 +300,8 @@ function render() {
   state = ensureIssuerHome(ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(state))))));
   const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'calendar', 'passport', 'feed', 'people', 'messages', 'activity', ...(integratedPlatform ? ['settings'] : [])] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'resume', 'feed', 'work', 'organization', 'messages', 'activity'];
   if (!allowed.includes(ui.page)) ui.page = 'home';
-  const content = ui.page === 'settings' && integratedPlatform ? renderConnectedSettings(connectedContext, connectedContextError, e) : ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ui.page === 'passport' ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'calendar' ? dashboard() : ui.page === 'home' ? renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
-  const issuerOverview = orgMode() && ui.page === 'calendar';
+  const content = ui.page === 'settings' && integratedPlatform ? renderConnectedSettings(connectedContext, connectedContextError, e) : ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ui.page === 'passport' ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'calendar' ? calendarPage() : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
+  const issuerOverview = orgMode() && ui.page === 'home';
   const issues = !issuerOverview && ['home', 'applications', 'activity'].includes(ui.page) ? readinessIssues(state).filter(c => (orgMode() || c.personId === ui.person) && (ui.page !== 'activity' || c.activityId === ui.item)) : [];
   const readinessAlert = issues.length ? `<div class="callout sand"><strong>Preparation needs another look</strong><p>These commitments are still confirmed, but required preparation is no longer valid through the activity date. Agree on the next step with ${orgMode() ? 'the volunteer' : 'your coordinator'}.</p>${issues.map(c => `<div class="button-row"><span>${orgMode() ? e(state.people.find(p => p.id === c.personId).name) + ' · ' : ''}${e(state.activities.find(a => a.id === c.activityId).title)}</span>${button('Review plan', 'activity', `data-id="${e(c.activityId)}"`, 'text-button')}</div>`).join('')}</div>` : '';
   app.classList.add('issuer-shell');

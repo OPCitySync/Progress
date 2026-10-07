@@ -186,7 +186,7 @@ test('issuer feed combines public presence, quick work, and the live action queu
   }
 });
 
-test('issuer Home opens the Feed and uses its subheader for operational actions', () => {
+test('issuer Home section preserves the Feed and links to the separate organization dashboard', () => {
   const state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(createInitialState()))));
   const ui = { mode: 'coordinator', page: 'feed', person: 'alex' };
   const html = issuerNavigation({
@@ -198,6 +198,7 @@ test('issuer Home opens the Feed and uses its subheader for operational actions'
   assert.equal(ISSUER_SECTIONS.some(section => section.id === 'profile'), false);
   assert.match(html, /href="#\/coordinator\/feed"[^>]*aria-label="MyCity home"/);
   assert.match(html, /class="issuer-quickbar"/);
+  assert.match(html, /href="#\/coordinator\/home"[^>]*>.*Home/);
   assert.match(html, /data-action="create"[^>]*>.*Schedule Activity/);
   assert.match(html, /data-action="rcCreateRole"[^>]*>.*Create a Role/);
   assert.match(html, /data-action="invite"[^>]*>.*Invite Volunteers/);
@@ -207,6 +208,17 @@ test('issuer Home opens the Feed and uses its subheader for operational actions'
   assert.doesNotMatch(html, />MyCity Feed</);
   assert.doesNotMatch(html, />City Network</);
   assert.doesNotMatch(html, />Public Profile</);
+});
+
+test('organization dashboard is marked as the current quickbar destination', () => {
+  const state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(createInitialState()))));
+  const ui = { mode: 'coordinator', page: 'home', person: 'alex' };
+  const html = issuerNavigation({
+    state, ui, e: escapeHtml, icon, button, avatar, assetBase: '', integratedPlatform: false,
+    connectedPlatform: false, coordinatorName: 'Coordinator', platformContext: null,
+    currentPerson: () => state.people.find(person => person.id === ui.person),
+  });
+  assert.match(html, /href="#\/coordinator\/home" class="issuer-quickbar-action issuer-quickbar-home is-current" aria-current="page"/);
 });
 
 test('participant action history explains acknowledgement and restores an item', () => {
