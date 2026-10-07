@@ -59,6 +59,9 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/Passport Portal/);
   assert.match(html,/Organizational Documents/);
   assert.match(html,/Volunteer Programs/);
+  assert.ok(html.indexOf('Upcoming Activities')<html.indexOf('Volunteer Programs'));
+  assert.ok(html.indexOf('Volunteer Programs')<html.indexOf('Organizational Documents'));
+  assert.ok(html.indexOf('Organizational Documents')<html.indexOf('Passport Portal'));
   assert.doesNotMatch(html,/data-module="volunteers"/);
   assert.match(html,/Upcoming Activities/);
   assert.match(html,/data-action="create"/);

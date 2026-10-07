@@ -16,9 +16,9 @@ export function homeHero(ctx) {
 
 const dashboardModules = [
   ['activities','calendar','Upcoming Activities','Schedule and staffing'],
-  ['passports','book','Passport Portal','Discover available people'],
-  ['documents','reports','Organizational Documents','Shared requirements'],
   ['programs','work','Volunteer Programs','Initiatives and progress'],
+  ['documents','reports','Organizational Documents','Shared requirements'],
+  ['passports','book','Passport Portal','Discover available people'],
 ];
 const activeCommitments = (state,activityId) => state.commitments.filter(commitment=>commitment.activityId===activityId&&['confirmed','verified'].includes(commitment.status));
 const rosterCommitments = (state,activityId) => state.commitments.filter(commitment=>commitment.activityId===activityId&&['proposed','confirmed','verified'].includes(commitment.status));
