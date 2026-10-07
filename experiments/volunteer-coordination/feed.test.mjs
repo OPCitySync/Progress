@@ -195,8 +195,14 @@ test('issuer Home opens the command center without a duplicated quick-action sub
     currentPerson: () => state.people.find(person => person.id === ui.person),
   });
   assert.equal(ISSUER_SECTIONS[0].page, 'home');
+  assert.deepEqual(ISSUER_SECTIONS.map(section => [section.label, section.page]), [
+    ['Home', 'home'],
+    ['Volunteers', 'people'],
+    ['MyCity', 'feed'],
+  ]);
   assert.equal(ISSUER_SECTIONS.some(section => section.id === 'profile'), false);
   assert.match(html, /href="#\/coordinator\/home"[^>]*aria-label="MyCity home"/);
+  assert.match(html, /href="#\/coordinator\/feed" class="issuer-section-link is-active" aria-current="true"[^>]*>.*?<span>MyCity<\/span>/s);
   assert.doesNotMatch(html, /class="issuer-quickbar"/);
   assert.doesNotMatch(html, /Schedule Activity/);
   assert.doesNotMatch(html, /Invite Volunteers/);
@@ -216,6 +222,22 @@ test('organization command center is the current primary Home destination', () =
   });
   assert.match(html, /href="#\/coordinator\/home" class="issuer-section-link is-active" aria-current="true"/);
   assert.doesNotMatch(html, /issuer-quickbar/);
+});
+
+test('workspace pages keep their local tabs under the three-section application header', () => {
+  const state = ensureIssuerHome(ensureProfiles(ensurePrograms(ensureRecruitment(createInitialState()))));
+  const ui = { mode: 'coordinator', page: 'documents', person: 'alex' };
+  const html = issuerNavigation({
+    state, ui, e: escapeHtml, icon, button, avatar, assetBase: '', integratedPlatform: false,
+    connectedPlatform: false, coordinatorName: 'Coordinator', platformContext: null,
+    currentPerson: () => state.people.find(person => person.id === ui.person),
+  });
+  assert.match(html, /href="#\/coordinator\/home" class="issuer-section-link is-active" aria-current="true"/);
+  assert.match(html, /aria-label="Workspace navigation"/);
+  assert.match(html, />Programs<\/a>/);
+  assert.match(html, />Documents<\/a>/);
+  assert.match(html, />Planning<\/a>/);
+  assert.doesNotMatch(html, /<span>Workspace<\/span>/);
 });
 
 test('participant action history explains acknowledgement and restores an item', () => {
