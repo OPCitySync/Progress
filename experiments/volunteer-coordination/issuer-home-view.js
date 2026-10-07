@@ -22,6 +22,13 @@ const dashboardModules = [
 ];
 const activeCommitments = (state,activityId) => state.commitments.filter(commitment=>commitment.activityId===activityId&&['confirmed','verified'].includes(commitment.status));
 const organizationRecord = ctx => ctx.state.recruitment.organizations.find(organization=>organization.id===HOME_ORG)||ctx.state.recruitment.organizations[0]||{name:'Organization',location:'',mission:'',color:'sage'};
+const queueAttrs = (ctx,item) => Object.entries(item.attrs).map(([key,value])=>`data-${key}="${ctx.e(value)}"`).join(' ');
+
+function homeProfileQueue(ctx) {
+  const {state,e,icon,button}=ctx,items=homeQueue(state);
+  if(!items.length)return '';
+  return `<section class="issuer-command-queue" aria-label="Action Queue"><header><span>${icon('check')} Action Queue</span><strong>${items.length}</strong></header><div class="issuer-command-queue-list">${items.map(item=>`<article><span class="issuer-command-queue-icon">${icon(item.kind==='people'?'people':item.kind==='staffing'?'calendar':item.kind==='review'?'check':'clock')}</span><strong>${e(item.title)}</strong>${button(icon('chevron'),item.action,`${queueAttrs(ctx,item)} aria-label="${e(item.label)}: ${e(item.title)}" title="${e(item.label)}"`,'issuer-command-queue-action')}</article>`).join('')}</div></section>`;
+}
 
 function homeProfileRail(ctx) {
   const {state,e,icon,avatar,button}=ctx,organization=organizationRecord(ctx);
@@ -29,7 +36,7 @@ function homeProfileRail(ctx) {
   const location=ctx.platformContext?.cityName||organization.location||'Your city';
   const programs=state.programWorkspace.programs.filter(program=>program.status!=='archived').length;
   const volunteers=state.people.filter(person=>!['former','paused'].includes(person.relationship)).length;
-  return `<aside class="issuer-command-rail" aria-label="Organization profile"><section class="panel issuer-command-profile"><div class="issuer-command-cover"><span>${icon('leaf')}</span></div><div class="issuer-command-identity">${avatar({name,color:organization.color||'sage'},'large')}<h2>${e(name)}</h2><span>${icon('pin')} ${e(location)}</span><p>${e(organization.mission||'Build community through meaningful volunteer participation.')}</p></div><nav class="issuer-command-profile-links" aria-label="Organization shortcuts">${button(`${icon('external')}<span>View Public Profile</span>${icon('chevron')}`,'pfViewPublic','','issuer-command-profile-link')}<a href="#/coordinator/programs">${icon('work')}<span>Volunteer programs</span><strong>${programs}</strong></a><a href="#/coordinator/people">${icon('people')}<span>Volunteer roster</span><strong>${volunteers}</strong></a><a href="#/coordinator/messages">${icon('message')}<span>Messages</span>${icon('chevron')}</a></nav></section><section class="panel issuer-command-status"><span><i></i> ORGANIZATION STATUS</span><strong>${state.activities.some(activity=>!activity.archived)?'Your work is moving.':'Ready when your team is.'}</strong><p>${homeQueue(state).length?`${homeQueue(state).length} items currently need attention.`:'There are no unresolved action items.'}</p></section></aside>`;
+  return `<aside class="issuer-command-rail" aria-label="Organization profile"><section class="panel issuer-command-profile"><div class="issuer-command-cover"><span>${icon('leaf')}</span></div><div class="issuer-command-identity">${avatar({name,color:organization.color||'sage'},'large')}<h2>${e(name)}</h2><span>${icon('pin')} ${e(location)}</span><p>${e(organization.mission||'Build community through meaningful volunteer participation.')}</p></div><nav class="issuer-command-profile-links" aria-label="Organization shortcuts">${button(`${icon('external')}<span>View Public Profile</span>${icon('chevron')}`,'pfViewPublic','','issuer-command-profile-link')}<a href="#/coordinator/programs">${icon('work')}<span>Volunteer programs</span><strong>${programs}</strong></a><a href="#/coordinator/people">${icon('people')}<span>Volunteer roster</span><strong>${volunteers}</strong></a><a href="#/coordinator/messages">${icon('message')}<span>Messages</span>${icon('chevron')}</a></nav>${homeProfileQueue(ctx)}</section></aside>`;
 }
 
 function homePanelHeader(title,action='') { return `<header class="issuer-command-panel-header"><h2>${title}</h2>${action}</header>`; }

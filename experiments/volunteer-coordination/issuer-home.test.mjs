@@ -63,6 +63,9 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/data-action="create"/);
   assert.match(html,/data-page="feed"/);
   assert.match(html,/data-page="calendar"/);
+  assert.match(html,/class="issuer-command-queue"/);
+  assert.match(html,/aria-label="Action Queue"/);
+  assert.doesNotMatch(html,/ORGANIZATION STATUS/);
   assert.doesNotMatch(html,/home-action-queue/);
   assert.doesNotMatch(html,/home-calendar/);
 });
