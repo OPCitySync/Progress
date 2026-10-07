@@ -178,7 +178,7 @@
 .issuer-command-activity-row i{font-style:normal}
 .issuer-command-activity-row em{padding:5px 7px;border-radius:7px;background:#e7f1e9;color:#4d7457;font-size:8px;font-style:normal;font-weight:800;white-space:nowrap}
 .issuer-command-activity-row>.icon{width:13px;height:13px;color:#a4a1a6}
-.issuer-command-detail{display:flex;min-width:0;flex-direction:column;padding:20px;border-left:1px solid #e8e6e2;background:#f7f7f5}
+.issuer-command-detail{position:relative;display:flex;min-width:0;overflow:hidden;flex-direction:column;padding:20px;border-left:1px solid #e8e6e2;background:#f7f7f5}
 .issuer-command-detail-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .issuer-command-detail-title>span{color:#95661f;font-size:8px;font-weight:900;letter-spacing:.12em}
 .issuer-command-detail-title>strong{display:grid;place-items:center;min-width:25px;height:24px;border-radius:7px;background:#e7eadf;color:#3f5b49;font-size:9px}
@@ -192,6 +192,24 @@
 .issuer-command-roster-empty,.issuer-command-list-empty{padding:22px 0;color:#8c888e;font-size:9px}
 .issuer-command-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:17px}
 .issuer-command-actions .btn{flex:1;min-width:max-content}
+.issuer-command-chat{position:absolute;z-index:3;inset:0;display:flex;min-height:100%;flex-direction:column;background:#fff;box-shadow:0 -16px 40px #15151e18;animation:issuer-command-chat-up .22s ease-out}
+.issuer-command-chat>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 16px;border-bottom:1px solid #e7e4df;background:#fbfaf7}
+.issuer-command-chat>header span{color:#95661f;font-size:7px;font-weight:900;letter-spacing:.13em}
+.issuer-command-chat>header h3{margin:4px 0 0;font-size:12px}
+.issuer-command-chat>header .icon-button{width:29px;height:29px;padding:7px}
+.issuer-command-chat-messages{display:flex;min-height:0;flex:1;flex-direction:column;gap:2px;overflow:auto;padding:9px 16px}
+.issuer-command-chat-messages article{display:grid;grid-template-columns:29px minmax(0,1fr);gap:8px;padding:9px 0}
+.issuer-command-chat-messages article>.avatar{width:29px;height:29px;font-size:8px}
+.issuer-command-chat-messages article strong{font-size:9px}
+.issuer-command-chat-messages article strong small{margin-left:5px;color:#9a969c;font-size:7px;font-weight:500}
+.issuer-command-chat-messages article p{margin:4px 0 0;color:#656169;font-size:9px;line-height:1.55;overflow-wrap:anywhere}
+.issuer-command-chat-empty{display:grid;flex:1;place-items:center;align-content:center;gap:9px;color:#918d94;text-align:center}
+.issuer-command-chat-empty .icon{width:22px;height:22px;color:#b28b50}
+.issuer-command-chat-empty p{margin:0;font-size:9px}
+.issuer-command-chat>form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;padding:11px 13px;border-top:1px solid #e7e4df;background:#fbfaf7}
+.issuer-command-chat>form input{min-width:0;padding:9px 10px;border-color:#dfdcd7;background:#fff;font-size:9px}
+.issuer-command-chat>form .btn{padding-inline:12px}
+@keyframes issuer-command-chat-up{from{opacity:0;transform:translateY(28%)}to{opacity:1;transform:none}}
 .issuer-command-passport-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:17px}
 .issuer-command-passport-card{min-width:0;padding:16px;border:1px solid #e4e1dc;border-radius:13px;background:#fff}
 .issuer-command-passport-card>div:first-child{display:flex;align-items:flex-start;justify-content:space-between}
@@ -237,7 +255,7 @@
 .issuer-command-program-activity>span:nth-child(2) small{color:#959197;font-size:7.5px}
 .issuer-command-program-activity em{color:#66805d;font-size:7.5px;font-style:normal;white-space:nowrap}
 .issuer-command-program-activity>.icon{width:12px;height:12px;color:#aaa6ac}
-.issuer-command-program-detail{display:flex;min-width:0;flex-direction:column;padding:24px;background:#f8f7f4}
+.issuer-command-program-detail{position:relative;display:flex;min-width:0;overflow:hidden;flex-direction:column;padding:24px;background:#f8f7f4}
 .issuer-command-program-detail>small{color:#95661f;font-size:8px;font-weight:900;letter-spacing:.12em}
 .issuer-command-program-detail>h3{margin:7px 0 8px;font-size:19px;letter-spacing:-.03em}
 .issuer-command-program-detail>p{display:flex;align-items:center;gap:6px;margin:5px 0;color:#77737a;font-size:9px;line-height:1.6}
