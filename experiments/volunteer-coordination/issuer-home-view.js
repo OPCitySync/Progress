@@ -1,7 +1,6 @@
 import { homeQueue, calendarEntries, calendarRange, entriesOnDay } from './issuer-home-model.js';
 import { publicVolunteerPassport, today } from './passport-model.js';
 import { ACTIVITY_TYPES, programActivities } from './program-model.js';
-import { HOME_ORG } from './recruitment-model.js';
 import { assignmentModeOf } from './model.js';
 
 const control=(label,action,attrs='',cls='btn secondary small')=>`<button class="${cls}" data-home-action="${action}" ${attrs}>${label}</button>`;
@@ -22,16 +21,6 @@ const dashboardModules = [
 ];
 const activeCommitments = (state,activityId) => state.commitments.filter(commitment=>commitment.activityId===activityId&&['confirmed','verified'].includes(commitment.status));
 const rosterCommitments = (state,activityId) => state.commitments.filter(commitment=>commitment.activityId===activityId&&['proposed','confirmed','verified'].includes(commitment.status));
-const organizationRecord = ctx => ctx.state.recruitment.organizations.find(organization=>organization.id===HOME_ORG)||ctx.state.recruitment.organizations[0]||{name:'Organization',location:'',mission:'',color:'sage'};
-
-function homeProfileRail(ctx) {
-  const {state,e,icon,avatar,button}=ctx,organization=organizationRecord(ctx);
-  const name=ctx.platformContext?.organization?.name||organization.name;
-  const location=ctx.platformContext?.cityName||organization.location||'Your city';
-  const programs=state.programWorkspace.programs.filter(program=>program.status!=='archived').length;
-  const volunteers=state.people.filter(person=>!['former','paused'].includes(person.relationship)).length;
-  return `<aside class="issuer-command-rail" aria-label="Organization profile"><section class="panel issuer-command-profile"><div class="issuer-command-cover"><span>${icon('leaf')}</span></div><div class="issuer-command-identity">${avatar({name,color:organization.color||'sage'},'large')}<h2>${e(name)}</h2><span>${icon('pin')} ${e(location)}</span><p>${e(organization.mission||'Build community through meaningful volunteer participation.')}</p></div><nav class="issuer-command-profile-links" aria-label="Organization shortcuts">${button(`${icon('external')}<span>View Public Profile</span>${icon('chevron')}`,'pfViewPublic','','issuer-command-profile-link')}<a href="#/coordinator/programs">${icon('work')}<span>Volunteer programs</span><strong>${programs}</strong></a><a href="#/coordinator/people">${icon('people')}<span>Volunteer roster</span><strong>${volunteers}</strong></a><a href="#/coordinator/messages">${icon('message')}<span>Messages</span>${icon('chevron')}</a></nav></section></aside>`;
-}
 
 function homePanelHeader(title,action='') { return `<header class="issuer-command-panel-header"><h2>${title}</h2>${action}</header>`; }
 function homeEmpty(ctx,title,copy,action='') { return `<div class="issuer-command-empty">${ctx.icon('spark')}<h3>${title}</h3><p>${copy}</p>${action}</div>`; }
@@ -83,7 +72,7 @@ function homeModule(ctx) {
 
 export function homeCommandCenter(ctx,{organizationName}={}) {
   const {ui,icon}=ctx,module=ui.home.dashboardModule||'activities';
-  return `<div class="issuer-command-center">${homeHero({...ctx,organizationName})}<div class="issuer-command-layout">${homeProfileRail(ctx)}<section class="issuer-command-dashboard" aria-label="Organization command center"><div class="issuer-command-modules" role="tablist" aria-label="Dashboard areas">${dashboardModules.map(([id,glyph,label,note])=>`<button type="button" role="tab" aria-selected="${module===id}" class="issuer-command-module ${module===id?'is-active':''}" data-home-action="module" data-module="${id}"><span>${icon(glyph)}</span><span><strong>${label}</strong><small>${note}</small></span>${icon('chevron')}</button>`).join('')}</div><div class="issuer-command-content">${homeModule(ctx)}</div></section></div></div>`;
+  return `<div class="issuer-command-center">${homeHero({...ctx,organizationName})}<div class="issuer-command-layout"><section class="issuer-command-dashboard" aria-label="Organization command center"><div class="issuer-command-modules" role="tablist" aria-label="Dashboard areas">${dashboardModules.map(([id,glyph,label,note])=>`<button type="button" role="tab" aria-selected="${module===id}" class="issuer-command-module ${module===id?'is-active':''}" data-home-action="module" data-module="${id}"><span>${icon(glyph)}</span><span><strong>${label}</strong><small>${note}</small></span>${icon('chevron')}</button>`).join('')}</div><div class="issuer-command-content">${homeModule(ctx)}</div></section></div></div>`;
 }
 function queueRow(ctx,item) {
   const {e,icon,button}=ctx;

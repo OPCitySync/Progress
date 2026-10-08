@@ -68,6 +68,8 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/data-action="create"/);
   assert.match(html,/data-page="feed"/);
   assert.match(html,/data-page="calendar"/);
+  assert.doesNotMatch(html,/aria-label="Organization profile"/);
+  assert.doesNotMatch(html,/issuer-command-profile/);
   assert.doesNotMatch(html,/issuer-command-queue/);
   assert.doesNotMatch(html,/aria-label="Action Queue"/);
   assert.doesNotMatch(html,/ORGANIZATION STATUS/);
