@@ -109,6 +109,8 @@ test('Volunteer Programs prioritizes the program list and reveals activity detai
   let html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
   assert.match(html,/issuer-command-program-list/);
   assert.match(html,/Scheduled Activities/);
+  assert.match(html,new RegExp(`data-action="pgOpen" data-id="${program.id}"`));
+  assert.match(html,/Manage Program/);
   assert.doesNotMatch(html,/SELECTED PROGRAM/);
   assert.doesNotMatch(html,/issuer-command-program-number/);
   assert.doesNotMatch(html,/issuer-command-program-lead/);

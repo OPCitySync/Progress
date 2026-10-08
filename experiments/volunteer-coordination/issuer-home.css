@@ -255,6 +255,9 @@
 .issuer-command-program-activity>span:nth-child(2) small{color:#959197;font-size:7.5px}
 .issuer-command-program-activity em{color:#66805d;font-size:7.5px;font-style:normal;white-space:nowrap}
 .issuer-command-program-activity>.icon{width:12px;height:12px;color:#aaa6ac}
+.issuer-command-program-footer{display:flex;justify-content:flex-end;margin-top:12px;padding:14px 4px 2px;border-top:1px solid #ebe8e2}
+.issuer-command-program-footer .btn{gap:7px}
+.issuer-command-program-footer .icon{width:12px;height:12px}
 .issuer-command-program-detail{position:relative;display:flex;min-width:0;overflow:hidden;flex-direction:column;padding:24px;background:#f8f7f4}
 .issuer-command-program-detail>small{color:#95661f;font-size:8px;font-weight:900;letter-spacing:.12em}
 .issuer-command-program-detail>h3{margin:7px 0 8px;font-size:19px;letter-spacing:-.03em}
