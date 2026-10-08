@@ -1,4 +1,5 @@
 import { availableActivity } from './program-model.js';
+import { onboardingSteps } from './recruitment-model.js';
 const ORG_ID = 'berkeley-neighbors';
 export const feedActor = (mode, personId) => mode === 'coordinator' ? 'coordinator' : personId;
 export function createFeedState() {
@@ -36,6 +37,11 @@ export function participantQueueItems(state, personId, includeAcknowledged = fal
     onboarding: ['Onboarding', 'Continue your volunteer requirements', 'Continue'],
   };
   for (const application of (state.recruitment?.applications || []).filter(item => item.personId === personId && applicationLabels[item.status])) {
+    const screening=application.status==='onboarding'&&onboardingSteps(state,application).find(step=>step.completionType==='screening'&&!step.done&&step.owner==='volunteer');
+    if(screening) {
+      add(`screening:${application.id}:${screening.key}:${screening.phase}`,'Background screening',screening.title,'rcApplication',{id:application.id},screening.phase==='volunteer-action-required'?'Complete follow-up':'Open provider steps');
+      continue;
+    }
     const [kind, fallback, label] = applicationLabels[application.status];
     add(`application:${application.id}:${application.status}:${application.updatedAt || application.submittedAt || application.createdAt || ''}`, kind, application.position?.title || fallback, 'rcApplication', { id: application.id }, label);
   }

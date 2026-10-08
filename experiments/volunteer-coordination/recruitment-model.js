@@ -1,4 +1,4 @@
-import { requirementReady, today } from './passport-model.js';
+import { recordPrivateScreeningCredential, requirementReady, today } from './passport-model.js';
 
 export const HOME_ORG = 'berkeley-neighbors';
 export const APPLICATION_LABELS = { draft: 'Draft', submitted: 'Submitted', reviewing: 'In review', 'needs-info': 'Your reply needed', waitlisted: 'Waitlisted', offered: 'Offer to consider', onboarding: 'Getting ready', active: 'On the team', declined: 'Not this time', withdrawn: 'Withdrawn', 'offer-declined': 'Offer declined' };
@@ -8,7 +8,11 @@ const assert = (condition, message) => { if (!condition) throw Error(message); }
 const clean = (value, max = 1200) => String(value || '').trim().slice(0, max);
 const dateValid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 export const addDays = (date, days) => { const d = new Date(date + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0,10); };
-export const REQUIREMENT_COMPLETION_TYPES = ['read','sign','provide','organization'];
+export const REQUIREMENT_COMPLETION_TYPES = ['read','sign','provide','organization','screening'];
+export const SCREENING_PROVIDERS = {
+  checkr: 'Checkr', sterling: 'Sterling Volunteers', 'ca-live-scan': 'California DOJ/FBI Live Scan', external: 'Other provider',
+};
+export const SCREENING_START_METHODS = ['organization-invite','volunteer-link','live-scan'];
 const BASE_VOLUNTEER_REQUIREMENTS = [
   { id: 'welcome', title: 'Read our Welcome', detail: 'Review how the organization works, who to contact, where to arrive, and how to ask for help.', owner: 'volunteer', completionType: 'welcome', documentId: '' },
   { id: 'waiver', title: 'Participation Agreement', detail: 'Review the expectations, support, expenses, and how either side can raise a concern.', owner: 'volunteer', completionType: 'sign', documentId: 'sample-liability-waiver' },
@@ -19,6 +23,8 @@ const BASE_VOLUNTEER_REQUIREMENTS = [
 ];
 export const volunteerRequirements = (state, orgId = HOME_ORG) => state.recruitment?.requirementLibrary?.[orgId] || [];
 export const volunteerRequirement = (state, orgId, requirementId) => volunteerRequirements(state, orgId).find(requirement => requirement.id === requirementId);
+const validHttpUrl = value => { try { return new URL(value).protocol === 'https:'; } catch { return false; } };
+const screeningExpiry = (date, months) => { const d = new Date(date + 'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + Number(months || 12)); return d.toISOString().slice(0,10); };
 
 export function ensureRecruitment(state) {
   if (!state.recruitment && state.allowSampleData === false) state.recruitment = {
@@ -53,7 +59,16 @@ export function ensureRecruitment(state) {
       const base = BASE_VOLUNTEER_REQUIREMENTS.find(item => item.id === requirement.id);
       requirement.completionType ||= base?.completionType || (requirement.owner === 'coordinator' ? 'organization' : 'read');
       requirement.documentId ??= base?.documentId || '';
-      requirement.owner = requirement.completionType === 'organization' ? 'coordinator' : 'volunteer';
+      requirement.owner = requirement.completionType === 'screening' ? 'shared' : requirement.completionType === 'organization' ? 'coordinator' : 'volunteer';
+      if (requirement.completionType === 'screening') {
+        requirement.screeningProvider ||= 'external';
+        requirement.providerName ||= SCREENING_PROVIDERS[requirement.screeningProvider] || 'External provider';
+        requirement.startMethod ||= requirement.screeningProvider === 'ca-live-scan' ? 'live-scan' : 'organization-invite';
+        requirement.volunteerUrl ||= requirement.screeningProvider === 'ca-live-scan' ? 'https://oag.ca.gov/fingerprints/locations' : '';
+        requirement.organizationUrl ||= '';
+        requirement.payer ||= 'organization';
+        requirement.validMonths ||= 12;
+      }
     }
     const defaultRoleId = organization.id === HOME_ORG ? 'general-volunteer' : `general-volunteer-${organization.id}`;
     if (!state.recruitment.positions.some(position => position.id === defaultRoleId)) {
@@ -75,6 +90,7 @@ export function ensureRecruitment(state) {
   }
   for (const application of state.recruitment.applications) {
     application.source ||= 'public';
+    application.screenings ||= {};
     application.position.requirementDefinitions ||= application.position.requirements.map(requirementId => structuredClone(volunteerRequirement(state, application.orgId, requirementId) || { id: requirementId, title: requirementId, detail: 'Complete this role requirement with the organization.', owner: 'coordinator' }));
   }
   return state;
@@ -94,6 +110,16 @@ export function onboardingSteps(state, application) {
     const document = requirement.documentId && state.documentLibrary?.items?.find(item => item.id === requirement.documentId);
     const signature = application.completed?.[key]?.signature;
     const signedCurrentVersion = requirement.completionType === 'sign' && Boolean(document && signature?.documentId === document.id && signature.documentUpdatedAt === document.updatedAt);
+    if (requirement.completionType === 'screening') {
+      const attempt = application.screenings?.[key] || {};
+      const completed = application.completed?.[key]?.screening;
+      const active = completed?.status === 'satisfied' && (!completed.expiresAt || completed.expiresAt >= today());
+      const renewalInProgress = attempt.status && attempt.status !== 'satisfied';
+      const phase = active ? 'satisfied' : renewalInProgress ? attempt.status : completed?.expiresAt && completed.expiresAt < today() ? 'expired' : 'not-started';
+      const owner = ['awaiting-verification','invitation-needed','expired'].includes(phase) ? 'coordinator'
+        : phase === 'not-started' && requirement.startMethod === 'organization-invite' ? 'coordinator' : 'volunteer';
+      return { key, title: requirement.title, owner, detail: requirement.detail, completionType: 'screening', documentId: '', done: active, portable: false, phase, screening: structuredClone(requirement), attempt: structuredClone(attempt), completed: structuredClone(completed || null) };
+    }
     const done = requirement.completionType === 'sign' ? signedCurrentVersion : application.orgId === HOME_ORG ? requirementReady(state,p,key) : !!local[key];
     return { key, title: requirement.title, owner: requirement.owner, detail: requirement.detail, completionType: requirement.completionType || 'read', documentId: requirement.documentId || '', done, portable: key === 'food' && application.orgId === HOME_ORG && !p.requirements[key] && requirementReady(state,p,key) };
   });
@@ -163,15 +189,31 @@ export function transitionRecruitment(current, action, date = today()) {
     assert(!action.requirementId||requirement,'Volunteer requirement not found.');
     assert(requirement?.id!=='welcome','The welcome message is managed from its permanent requirement.');
     const completionType=action.completionType||requirement?.completionType||(action.owner==='coordinator'?'organization':'read');
-    const documentId=clean(action.documentId||'',200);
+    const documentId=completionType==='screening'?'':clean(action.documentId||'',200);
     assert(REQUIREMENT_COMPLETION_TYPES.includes(completionType),'Choose how this requirement is completed.');
     const document=documentId&&state.documentLibrary?.items?.find(item=>item.id===documentId);
     assert(!documentId||document,'Choose a document from this organization’s library.');
     assert(completionType!=='sign'||document,'Choose the document the volunteer needs to acknowledge or sign.');
-    const owner=completionType==='organization'?'coordinator':'volunteer';
+    const owner=completionType==='screening'?'shared':completionType==='organization'?'coordinator':'volunteer';
+    let screening={};
+    if(completionType==='screening') {
+      const screeningProvider=clean(action.screeningProvider,40);
+      const startMethod=clean(action.startMethod,40);
+      const providerName=screeningProvider==='external'?clean(action.providerName,120):SCREENING_PROVIDERS[screeningProvider];
+      const volunteerUrl=clean(action.volunteerUrl,500),organizationUrl=clean(action.organizationUrl,500);
+      const validMonths=Number(action.validMonths||12),payer=clean(action.payer,20);
+      assert(SCREENING_PROVIDERS[screeningProvider]&&providerName,'Choose and name the screening provider.');
+      assert(SCREENING_START_METHODS.includes(startMethod),'Choose how the screening begins.');
+      assert(['organization','volunteer'].includes(payer),'Choose who pays the provider.');
+      assert(Number.isInteger(validMonths)&&validMonths>=1&&validMonths<=60,'Choose a renewal period between 1 and 60 months.');
+      assert(!volunteerUrl||validHttpUrl(volunteerUrl),'Use a valid volunteer screening link.');
+      assert(!organizationUrl||validHttpUrl(organizationUrl),'Use a valid organization provider link.');
+      assert(startMethod!=='volunteer-link'||volunteerUrl,'Add the link volunteers use to begin screening.');
+      screening={screeningProvider,providerName,startMethod,volunteerUrl,organizationUrl,payer,validMonths};
+    }
     assert(!library.some(item=>item.id!==action.requirementId&&item.title.toLowerCase()===title.toLowerCase()),'A requirement with this name already exists.');
-    if(requirement)Object.assign(requirement,{title,detail,owner,completionType,documentId});
-    else {requirement={id:`custom-${uid()}`,title,detail,owner,completionType,documentId};library.push(requirement);}
+    if(requirement)Object.assign(requirement,{title,detail,owner,completionType,documentId,...screening});
+    else {requirement={id:`custom-${uid()}`,title,detail,owner,completionType,documentId,...screening};library.push(requirement);}
     const selected=new Set(Array.isArray(action.positionIds)?action.positionIds:action.positionIds?[action.positionIds]:[]);
     assert([...selected].every(positionId=>r.positions.some(position=>position.id===positionId&&position.orgId===action.orgId)),'Choose roles from this organization.');
     for(const position of r.positions.filter(position=>position.orgId===action.orgId)) {
@@ -280,9 +322,43 @@ export function transitionRecruitment(current, action, date = today()) {
       if(coordinator)a.firstResponseAt ||= date;
       a.messages.push({by:coordinator?a.contact:p.name,actor:action.actor,date,text:reply});
       if(!coordinator&&a.status==='needs-info')log('reviewing','Volunteer replied; coordinator has the next step.');notice='Message added to this application. No external email sent.';
+    } else if(action.type==='screeningInvite') {
+      assert(['onboarding','active'].includes(a.status),'Accept a role offer before beginning onboarding.');review();
+      const step=onboardingSteps(state,a).find(step=>step.key===action.key&&step.completionType==='screening');assert(step,'Background screening requirement not found.');
+      assert(['not-started','expired','volunteer-action-required'].includes(step.phase),'This screening invitation has already been sent or is awaiting review.');
+      const candidateUrl=clean(action.candidateUrl,500);assert(!candidateUrl||validHttpUrl(candidateUrl),'Use a valid volunteer invitation link.');
+      assert(action.invitationSent===true,'Confirm that the provider invitation or instructions were sent.');
+      a.screenings[action.key]={status:'awaiting-volunteer',candidateUrl,invitedAt:new Date().toISOString(),invitedBy:a.contact,note:clean(action.note,600)};
+      a.history.push({status:a.status,by:a.contact,date,note:`${step.title}: screening invitation sent.`});notice='Screening invitation recorded. The volunteer has the next step.';
+    } else if(action.type==='screeningDeclare') {
+      assert(['onboarding','active'].includes(a.status),'Accept a role offer before beginning onboarding.');own();
+      const step=onboardingSteps(state,a).find(step=>step.key===action.key&&step.completionType==='screening');assert(step,'Background screening requirement not found.');
+      assert(!step.done&&!['awaiting-verification','invitation-needed'].includes(step.phase),'This screening is not ready for the volunteer’s completion update.');
+      assert(!(step.phase==='not-started'&&step.screening.startMethod==='organization-invite'),'Wait for the organization to send the provider invitation.');
+      assert(action.completionConfirmed===true,'Confirm that you completed the provider’s process.');
+      a.screenings[action.key]={...a.screenings[action.key],status:'awaiting-verification',declaredAt:new Date().toISOString(),declaredBy:p.name,note:clean(action.note,600)};
+      a.history.push({status:a.status,by:p.name,date,note:`${step.title}: volunteer reported the external process complete.`});notice='Completion sent to the organization for verification.';
+    } else if(action.type==='screeningVerify') {
+      assert(['onboarding','active'].includes(a.status),'Accept a role offer before beginning onboarding.');review();
+      const step=onboardingSteps(state,a).find(step=>step.key===action.key&&step.completionType==='screening');assert(step,'Background screening requirement not found.');
+      assert(step.phase==='awaiting-verification','Wait for the volunteer to report completion before verifying this requirement.');
+      assert(action.providerReviewed===true,'Confirm that you reviewed the result in the authorized external system.');
+      const note=clean(action.note,600);assert(note,'Record the basis for satisfying this role requirement without copying report details.');
+      const expiresAt=clean(action.expiresAt,10)||screeningExpiry(date,step.screening.validMonths);assert(dateValid(expiresAt)&&expiresAt>=date,'Use a valid expiration date today or later.');
+      const screening={status:'satisfied',provider:step.screening.screeningProvider,providerName:step.screening.providerName,verifiedAt:date,expiresAt,reviewer:a.contact};
+      a.screenings[action.key]={...a.screenings[action.key],status:'satisfied',verifiedAt:new Date().toISOString(),verifiedBy:a.contact};
+      a.completed[action.key]={by:a.contact,date,note,screening};
+      recordPrivateScreeningCredential(state,{applicationId:a.id,requirementId:step.key,requirementTitle:step.title,personId:p.id,organizationId:a.orgId,organizationName:org.name,roleId:a.positionId,roleTitle:a.position.title,providerName:step.screening.providerName,verifiedAt:date,expiresAt,reviewer:a.contact});
+      a.history.push({status:a.status,by:a.contact,date,note:`${step.title}: requirement satisfied through ${step.screening.providerName}.`});notice='Background screening requirement satisfied. A private Passport credential was added.';
+    } else if(action.type==='screeningFollowup') {
+      assert(['onboarding','active'].includes(a.status),'Accept a role offer before beginning onboarding.');review();
+      const step=onboardingSteps(state,a).find(step=>step.key===action.key&&step.completionType==='screening');assert(step&&step.phase==='awaiting-verification','This screening is not awaiting review.');
+      const note=clean(action.note,600);assert(note,'Tell the volunteer what they need to do next.');
+      a.screenings[action.key]={...a.screenings[action.key],status:'volunteer-action-required',reviewedAt:new Date().toISOString(),reviewedBy:a.contact,note};
+      a.messages.push({by:a.contact,actor:'coordinator',date,text:`${step.title}: ${note}`});a.history.push({status:a.status,by:a.contact,date,note:`${step.title}: follow-up requested.`});notice='Follow-up requested. The volunteer has the next step.';
     } else if(action.type==='completeStep') {
       assert(['onboarding','active'].includes(a.status),'Accept a role offer before beginning onboarding.');
-      const step=onboardingSteps(state,a).find(s=>s.key===action.key);assert(step,'Unknown onboarding step.');assert(!step.done,'This step is already complete or covered by accepted evidence.');
+      const step=onboardingSteps(state,a).find(s=>s.key===action.key);assert(step,'Unknown onboarding step.');assert(step.completionType!=='screening','Use the background screening workflow for this requirement.');assert(!step.done,'This step is already complete or covered by accepted evidence.');
       if(step.owner==='coordinator')review();else own();
       assert(reply,'Record what was completed or discussed.');
       let signature;

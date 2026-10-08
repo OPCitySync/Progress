@@ -4,8 +4,10 @@ import { createInitialState, transition } from './model.js';
 import { ensurePrograms } from './program-model.js';
 import { ensureDocuments } from './documents-model.js';
 import { ensureRecruitment, transitionRecruitment, visibleApplications, onboardingSteps, occupiedPlaces, myApplication, positionOpen, volunteerRequirements } from './recruitment-model.js';
-import { transitionPassport } from './passport-model.js';
+import { transitionPassport, sharedPassport, publicVolunteerPassport, passportExport } from './passport-model.js';
 import { recruitmentDialog, renderRecruitment } from './recruitment-view.js';
+import { homeQueue } from './issuer-home-model.js';
+import { participantQueueItems } from './feed-model.js';
 
 const day='2026-09-23';
 const initial=()=>ensureDocuments(ensureRecruitment(createInitialState()));
@@ -173,6 +175,38 @@ test('requirements can use organization documents for reading, signature, provis
   const ctx={state:start,ui:{recruitOrg:'berkeley-neighbors'},e:value=>String(value??''),button:text=>text,errorOutput:()=>'',currentPerson:()=>start.people.find(person=>person.id==='robin')};
   const dialog=recruitmentDialog(ctx,'Requirement');
   for(const text of ['Read or view information','Acknowledge or sign a document','Provide information or a file','Organization confirms completion','Volunteer liability waiver'])assert.ok(dialog.content.includes(text));
+});
+test('external background screening coordinates provider work without storing or sharing the report',()=>{
+  let result=act(initial(),{type:'saveRequirement',actor:'coordinator',title:'Role background screening',detail:'Complete the external screening after accepting the role.',completionType:'screening',screeningProvider:'checkr',startMethod:'organization-invite',volunteerUrl:'',organizationUrl:'https://dashboard.checkr.com/',payer:'organization',validMonths:24,positionIds:['food-team']});
+  const requirement=volunteerRequirements(result.state,'berkeley-neighbors').find(item=>item.title==='Role background screening');
+  assert.equal(requirement.owner,'shared');assert.equal(requirement.providerName,'Checkr');assert.equal(requirement.documentId,'');
+  let application=apply(result.state);let state=review(application.state,application.id).state;state=act(state,{type:'acceptOffer',applicationId:application.id}).state;
+  let step=onboardingSteps(state,state.recruitment.applications.find(item=>item.id===application.id)).find(item=>item.key===requirement.id);
+  assert.equal(step.phase,'not-started');assert.equal(step.owner,'coordinator');
+  assert.match(homeQueue(state,day).find(item=>item.key.startsWith(`screening:${application.id}:`)).title,/Start Role background screening/);
+  assert.throws(()=>act(state,{type:'screeningDeclare',applicationId:application.id,key:requirement.id,completionConfirmed:true}),/Wait for the organization/);
+  state=act(state,{type:'screeningInvite',actor:'coordinator',applicationId:application.id,key:requirement.id,candidateUrl:'https://candidate.checkr.com/invite/abc',invitationSent:true,note:'Use the secure provider link.'}).state;
+  step=onboardingSteps(state,state.recruitment.applications.find(item=>item.id===application.id)).find(item=>item.key===requirement.id);assert.equal(step.owner,'volunteer');assert.equal(step.phase,'awaiting-volunteer');
+  assert.equal(participantQueueItems(state,'robin').find(item=>item.key.startsWith(`screening:${application.id}:`)).label,'Open provider steps');
+  state=act(state,{type:'screeningDeclare',applicationId:application.id,key:requirement.id,completionConfirmed:true,note:'Completed with the provider.'}).state;
+  step=onboardingSteps(state,state.recruitment.applications.find(item=>item.id===application.id)).find(item=>item.key===requirement.id);assert.equal(step.owner,'coordinator');assert.equal(step.phase,'awaiting-verification');
+  assert.equal(homeQueue(state,day).find(item=>item.key.startsWith(`screening:${application.id}:`)).label,'Review screening');
+  assert.throws(()=>act(state,{type:'screeningVerify',applicationId:application.id,key:requirement.id,providerReviewed:true,note:'Self-approved.'}),/workspace/);
+  state=act(state,{type:'screeningVerify',actor:'coordinator',applicationId:application.id,key:requirement.id,providerReviewed:true,note:'Meets the role policy.',expiresAt:'2028-09-23'}).state;
+  step=onboardingSteps(state,state.recruitment.applications.find(item=>item.id===application.id)).find(item=>item.key===requirement.id);assert.equal(step.done,true);assert.equal(step.phase,'satisfied');
+  const privateCredential=state.passports.screeningCredentials.find(item=>item.requirementId===requirement.id);assert.equal(privateCredential.personId,'robin');assert.equal(privateCredential.private,true);
+  assert.equal(JSON.stringify(publicVolunteerPassport(state,'robin')||{}).includes(requirement.title),false);
+  state.passports.profiles.robin.openForVolunteering=true;
+  state=transitionPassport(state,{type:'share',personId:'robin',actor:'robin',orgId:'berkeley-neighbors',sections:['about'],recordIds:[],purpose:'Role review',expires:'2026-10-23'},day).state;
+  assert.equal(JSON.stringify(sharedPassport(state,'robin','berkeley-neighbors',day)).includes(requirement.title),false);
+  assert.equal(passportExport(state,'robin').privateScreeningCredentials.some(item=>item.requirementId===requirement.id),true);
+  assert.equal(JSON.stringify(state).includes('SSN'),false);assert.equal(JSON.stringify(state).includes('background report'),false);
+});
+test('the Volunteer Requirement editor exposes the manual external screening configuration',()=>{
+  const state=initial();const ctx={state,ui:{recruitOrg:'berkeley-neighbors'},e:value=>String(value??''),button:text=>text,errorOutput:()=>'',currentPerson:()=>state.people.find(person=>person.id==='robin')};
+  const dialog=recruitmentDialog(ctx,'Requirement');
+  for(const text of ['External background screening','Screening provider','How screening begins','Who pays the provider?','Organization review portal','Keep sensitive data with the provider'])assert.match(dialog.content,new RegExp(text.replace(/[?]/g,'\\?')));
+  assert.doesNotMatch(dialog.content,/upload.+background report/i);
 });
 test('onboarding signatures bind the volunteer to the current document version',()=>{
   let {state,id}=onboarding();

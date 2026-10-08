@@ -859,6 +859,13 @@ document.addEventListener('change', async event => {
     });
     const message=form?.elements.message;if(message)message.required=type==='conversation';
   }
+  if (event.target.id === 'requirement-completion') {
+    const form=event.target.closest('form'),screening=event.target.value==='screening';
+    const screeningFields=form?.querySelector('[data-screening-fields]');
+    const documentField=form?.querySelector('[data-requirement-document]');
+    if(screeningFields)screeningFields.hidden=!screening;
+    if(documentField)documentField.hidden=screening;
+  }
   if (event.target.id === 'assisted-person') openRecruitmentDialog('Assist', { id: event.target.dataset.position, person: event.target.value });
   if (event.target.closest('[data-form="ppAdd"]')) updatePassportRecordForm();
   if (event.target.id === 'feed-image') await attachFeedImage(event.target);
@@ -973,6 +980,9 @@ document.addEventListener('submit', async event => {
     case 'rcOrg': recruitmentAction({ type: 'saveOrganization', ...values }); break;
     case 'rcDecision': recruitmentAction({ type: ['withdraw','declineOffer'].includes(d.decision) ? d.decision : 'review', applicationId: d.id, status: d.decision, ...values }); break;
     case 'rcStep': recruitmentAction({ type: 'completeStep', applicationId: d.id, key: d.key, ...values, documentAccepted: fields.has('documentAccepted') }); break;
+    case 'rcScreeningStart': recruitmentAction({ type: 'screeningInvite', applicationId: d.id, key: d.key, ...values, invitationSent: fields.has('invitationSent') }); break;
+    case 'rcScreeningDeclare': recruitmentAction({ type: 'screeningDeclare', applicationId: d.id, key: d.key, ...values, completionConfirmed: fields.has('completionConfirmed') }); break;
+    case 'rcScreeningVerify': recruitmentAction({ type: values.outcome==='followup'?'screeningFollowup':'screeningVerify', applicationId: d.id, key: d.key, ...values, providerReviewed: fields.has('providerReviewed') }); break;
     case 'rcMessage': recruitmentAction({ type: 'message', applicationId: d.id, ...values }); break;
     case 'resumeSave': passportAction({type:'resume', sections:fields.getAll('sections'),recordIds:fields.getAll('recordIds')}); break;
     case 'ppProfile': passportAction({ type: 'profile', ...values }); break;

@@ -12,6 +12,7 @@ const assertion = (condition, message) => { if (!condition) throw Error(message)
 export function ensurePassport(state) {
   if (!state.passports) state.passports = { version: 1, profiles: {}, records: [], grants: [], decisions: [], audit: [] };
   state.passports.resumes ||= {};
+  state.passports.screeningCredentials ||= [];
   for (const p of state.people) {
     if (!state.passports.profiles[p.id]) {
       state.passports.profiles[p.id] = { city: '', languages: '', skills: '', bio: '' };
@@ -97,10 +98,27 @@ export function passportExport(state, personId) {
   return { schema: 'citysync.volunteer-passport', schemaVersion: 1, exportedAt: new Date().toISOString(), prototype: true,
     owner: { name: p.name, email: p.email, ...state.passports.profiles[personId], availability: p.availability, preference: p.preference },
     records: structuredClone(state.passports.records.filter(r => r.personId === personId)),
+    privateScreeningCredentials: structuredClone(state.passports.screeningCredentials.filter(credential => credential.personId === personId)),
     resume: structuredClone(state.passports.resumes?.[personId] || { sections: [], recordIds: [] }),
     sharing: structuredClone(state.passports.grants.filter(g => g.personId === personId)),
     decisions: structuredClone(state.passports.decisions.filter(d => d.personId === personId)),
     history: structuredClone(state.passports.audit.filter(a => a.personId === personId)) };
+}
+
+export function recordPrivateScreeningCredential(state, credential) {
+  ensurePassport(state);
+  const store = state.passports.screeningCredentials;
+  const id = `screening-${credential.applicationId}-${credential.requirementId}`;
+  const next = { id, ...structuredClone(credential), private: true };
+  const current = store.findIndex(item => item.id === id);
+  if (current >= 0) store.splice(current, 1, next);
+  else store.unshift(next);
+  state.passports.audit.unshift({
+    id: uid(), personId: credential.personId, actor: credential.reviewer || 'coordinator', type: 'screening-credential',
+    detail: `${credential.requirementTitle} satisfied for ${credential.roleTitle}`,
+    at: new Date().toISOString(),
+  });
+  return next;
 }
 
 export function transitionPassport(current, action, date = today()) {

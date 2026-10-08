@@ -1,7 +1,7 @@
 import { confirmedCount, missingRequirements } from './model.js';
 import { today, readinessIssues } from './passport-model.js';
 import { blockersFor } from './program-model.js';
-import { HOME_ORG } from './recruitment-model.js';
+import { HOME_ORG, onboardingSteps } from './recruitment-model.js';
 import { planningDate, planningMonday } from './planning-model.js';
 
 export function ensureIssuerHome(state) {
@@ -17,6 +17,12 @@ export function homeQueue(state, date = today(), includeAcknowledged = false) {
   }
   for (const a of state.recruitment.applications.filter(a => a.orgId === HOME_ORG && a.submittedAt && ['submitted','reviewing','onboarding'].includes(a.status))) {
     const p = state.people.find(p => p.id === a.personId);
+    const screening = a.status === 'onboarding' && onboardingSteps(state,a).find(step => step.completionType === 'screening' && !step.done && step.owner === 'coordinator');
+    if(screening) {
+      const renewal=screening.phase==='expired';
+      add(`screening:${a.id}:${screening.key}:${screening.phase}`, 'people', `${screening.phase==='awaiting-verification'?'Verify':renewal?'Renew':'Start'} ${screening.title} · ${p?.name || 'volunteer'}`, `${a.position.title} · ${screening.screening.providerName}`, 'rcApplication', {id:a.id}, screening.phase==='awaiting-verification'?'Review screening':renewal?'Start renewal':'Start screening', 0);
+      continue;
+    }
     add(`application:${a.id}:${a.status}:${a.updatedAt || a.submittedAt}`, 'people', `${a.status === 'onboarding' ? 'Continue onboarding for' : 'Review application from'} ${p?.name || 'volunteer'}`, `${a.position.title}${a.replyBy ? ` · Reply target ${a.replyBy}` : ''}`, 'rcApplication', {id:a.id}, a.status === 'onboarding' ? 'Open welcome plan' : 'Review application', 0);
   }
   for (const c of readinessIssues(state,date)) {
