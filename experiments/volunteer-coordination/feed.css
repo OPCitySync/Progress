@@ -61,12 +61,11 @@
 @media(max-width:760px){.volunteer-shell .city-toolbar.city-toolbar-issuer{flex-wrap:wrap}.volunteer-shell .city-toolbar .city-tools{width:100%;flex:1 1 100%}.volunteer-shell .city-toolbar-search{flex:1 1 150px;width:auto}}
 @media(max-width:560px){.city-feed-action-queue>header{align-items:center;flex-direction:row;gap:10px}.city-feed-action-queue article{align-items:flex-start;flex-wrap:wrap}.city-feed-action-queue article>div:first-child{flex-basis:100%}.participant-queue-actions{width:100%;justify-content:flex-end}.city-feed-action-queue article strong{white-space:normal}}
 
-/* The issuer Feed is also its home: identity, public presence, and operations stay in one frame. */
-.city-profile-inline{display:flex;align-items:center;gap:9px;width:100%;padding:12px 5px;border-radius:6px;background:transparent;color:#555560;font-size:10px;text-align:left}
-.city-profile-inline>span{flex:1}
-.city-profile-inline>.icon{width:15px;height:15px;flex:none}
-.city-profile-inline:hover,.city-profile-inline.is-active{background:#fbf1df;color:#15151e}
-.city-profile-inline:focus-visible{outline:2px solid #dd9e33;outline-offset:2px}
+/* The issuer Feed is also its home: identity and public presence stay in one frame. */
+.city-profile-avatar{display:block;width:58px;height:58px;margin-top:-24px;padding:0;border:0;border-radius:50%;background:transparent;position:relative;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease}
+.city-profile-avatar>.avatar{width:58px;height:58px;border:4px solid #fff;font-size:16px}
+.city-profile-avatar:hover{transform:translateY(-2px);box-shadow:0 0 0 3px #dd9e3340}
+.city-profile-avatar:focus-visible{outline:3px solid #dd9e33;outline-offset:3px}
 .city-network-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:11px;padding:15px 14px;border-radius:13px;color:#30303a;text-decoration:none}
 .city-network-card:hover{border-color:#dbb56f;background:#fffaf1;transform:translateY(-1px)}
 .city-network-card>.icon{width:14px;height:14px;color:#9a6d24}
@@ -76,18 +75,6 @@
 .city-network-card small{margin-bottom:3px;color:#9a7a43;font-size:7px;font-weight:850;letter-spacing:.1em}
 .city-network-card strong{font-size:10px;line-height:1.4}
 .city-network-card em{overflow:hidden;margin-top:3px;color:#77747b;font-size:8px;font-style:normal;line-height:1.45;text-overflow:ellipsis}
-
-.city-feed-control-stack.has-issuer-queue .city-toolbar{border-radius:13px 13px 0 0;border-bottom-color:#4a4a55}
-.city-feed-issuer-queue{overflow:hidden;border:1px solid #dfd3bd;border-top:3px solid #dd9e33;border-radius:0 0 13px 13px;background:#fff}
-.city-issuer-queue-list{max-height:286px;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#d8c39e transparent;scrollbar-width:thin}
-.city-issuer-queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;min-height:54px;padding:8px 13px;border-bottom:1px solid #eee9df;background:#fff}
-.city-issuer-queue-row:last-child{border-bottom:0}
-.city-issuer-queue-copy{min-width:0}
-.city-issuer-queue-copy strong{display:block;overflow:hidden;color:#2f2f38;font-size:10px;font-weight:700;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
-.city-issuer-queue-copy p{overflow:hidden;margin:3px 0 0;color:#77737a;font-size:8px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
-.city-issuer-queue-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
-.city-issuer-queue-actions .btn{min-height:28px;padding:5px 8px;font-size:8px;white-space:nowrap}
-.city-issuer-queue-actions .icon{width:11px;height:11px;margin-left:3px}
 
 .city-embedded-profile{min-width:0}
 .city-embedded-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding:10px 13px;border:1px solid #e4e1dc;border-radius:12px;background:#fff}
@@ -110,7 +97,6 @@
 
 @media(max-width:1100px){.city-layout.city-layout-issuer{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-personal{display:grid;position:static}.city-layout-issuer .city-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.city-layout-issuer .city-person-card{max-width:none}.city-layout-issuer .city-person-identity p{min-height:0}}
 @media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}}
-@media(max-width:560px){.city-issuer-queue-row{grid-template-columns:1fr}.city-issuer-queue-copy strong,.city-issuer-queue-copy p{white-space:normal}.city-issuer-queue-actions{justify-content:flex-end}}
 @media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}}
 
 /* Side rails scroll normally until their final card reaches the app header. */
