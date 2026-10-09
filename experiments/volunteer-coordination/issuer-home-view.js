@@ -9,9 +9,9 @@ const tone = entry => entry.kind==='note'?entry.tone:({event:'sage',shift:'sand'
 const kindLabel = entry => entry.kind==='note'?'Organization note':ACTIVITY_TYPES[entry.kind];
 const format = (ctx,date,options) => ctx.dateLabel(date,options);
 export function homeHero(ctx) {
-  const {e,icon,button,dateLabel,organizationName}=ctx;
+  const {e,icon,dateLabel,organizationName}=ctx;
   const currentDate=dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  return `<section class="issuer-home-hero"><div class="issuer-home-hero-tools">${button(icon('people')+'Staff','nav','data-page="staff"','issuer-home-quick-action issuer-home-staff-action')}${button(icon('calendar')+'Calendar','nav','data-page="calendar"','issuer-home-quick-action')}</div><div class="issuer-home-hero-copy"><p class="eyebrow">${icon('calendar')} ${e(currentDate)}</p><h1>${e(organizationName||'Organization')}</h1><p>Coordinate your organization’s people, commitments, and community presence.</p></div>${homeHeroQueue(ctx)}</section>`;
+  return `<section class="issuer-home-hero"><div class="issuer-home-hero-tools"><a class="issuer-home-quick-action issuer-home-staff-action" href="#/coordinator/staff" data-action="nav" data-page="staff">${icon('people')}Staff</a><a class="issuer-home-quick-action" href="#/coordinator/calendar" data-action="nav" data-page="calendar">${icon('calendar')}Calendar</a></div><div class="issuer-home-hero-copy"><p class="eyebrow">${icon('calendar')} ${e(currentDate)}</p><h1>${e(organizationName||'Organization')}</h1><p>Coordinate your organization’s people, commitments, and community presence.</p></div>${homeHeroQueue(ctx)}</section>`;
 }
 
 function homeHeroQueue(ctx) {
@@ -19,7 +19,7 @@ function homeHeroQueue(ctx) {
   if(!state)return '';
   const items=homeQueue(state);
   if(!items.length)return '';
-  return `<section class="issuer-hero-action-queue" aria-label="Action Queue"><div class="issuer-hero-action-track" tabindex="0" aria-label="Scrollable action items">${items.map(item=>`<article class="issuer-hero-action-item"><strong title="${e(item.title)}">${e(item.title)}</strong>${button(e(item.label)+icon('arrow'),item.action,Object.entries(item.attrs).map(([key,value])=>`data-${key}="${e(value)}"`).join(' '),'issuer-hero-action-button')}</article>`).join('')}</div></section>`;
+  return `<section class="issuer-hero-action-queue" aria-label="Action Queue"><div class="issuer-hero-action-track" tabindex="0" aria-label="Scrollable action items">${items.map(item=>`<article class="issuer-hero-action-item"><strong title="${e(item.title)}">${e(item.title)}</strong>${button(e(item.label)+icon('arrow'),item.action,Object.entries(item.attrs).map(([key,value])=>`data-${key}="${e(value)}"`).join(' '),'issuer-hero-action-button')}</article>`).join('')}</div><div class="issuer-hero-action-nav" aria-label="Scroll action items">${control('←','queueScroll','data-direction="-1" aria-label="Scroll actions left"','issuer-hero-scroll-button')}${control('→','queueScroll','data-direction="1" aria-label="Scroll actions right"','issuer-hero-scroll-button')}</div></section>`;
 }
 
 const dashboardModules = [

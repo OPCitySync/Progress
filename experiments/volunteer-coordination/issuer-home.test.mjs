@@ -44,6 +44,8 @@ test('issuer home hero keeps only the focused organization shortcuts',()=>{
   assert.doesNotMatch(html,/data-action="create"/);
   assert.match(html,/data-page="calendar"/);
   assert.match(html,/data-page="staff"/);
+  assert.match(html,/href="#\/coordinator\/calendar"/);
+  assert.match(html,/href="#\/coordinator\/staff"/);
   assert.match(html,/data-action="nav" data-page="calendar"/);
   assert.match(html,/data-action="nav" data-page="staff"/);
   assert.doesNotMatch(html,/Schedule Activity/);
@@ -78,6 +80,8 @@ test('organization command center renders connected dashboard modules from appli
   assert.doesNotMatch(html,/issuer-command-queue-buffer/);
   assert.match(html,/issuer-hero-action-queue/);
   assert.match(html,/issuer-hero-action-track/);
+  assert.match(html,/data-home-action="queueScroll" data-direction="-1"/);
+  assert.match(html,/data-home-action="queueScroll" data-direction="1"/);
   assert.match(html,/aria-label="Action Queue"/);
   assert.doesNotMatch(html,/>Action Queue</);
   assert.doesNotMatch(html,/Scroll to review/);
