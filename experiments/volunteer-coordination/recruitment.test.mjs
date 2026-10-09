@@ -61,6 +61,19 @@ test('published terms are snapshotted and a later role change does not change an
   const {state,id}=apply(initial());state.recruitment.positions.find(p=>p.id==='food-team').requirements.push('driver');
   assert.deepEqual(state.recruitment.applications.find(a=>a.id===id).position.requirements,['welcome','waiver','food']);
 });
+test('signaling interest requires Passport consent and stays separate from applications and membership',()=>{
+  const start=initial();
+  assert.throws(()=>act(start,{type:'signalInterest',personId:'robin',positionId:'food-team'}),/Passport sharing/);
+  const shared=transitionPassport(start,{type:'share',actor:'robin',personId:'robin',orgId:'berkeley-neighbors',sections:['about','contact','preferences'],recordIds:[],expires:'2026-10-23',purpose:'Interest in Community food team volunteer'},day).state;
+  const result=act(shared,{type:'signalInterest',personId:'robin',positionId:'food-team'});
+  assert.equal(result.state.recruitment.roleInterests.length,1);
+  assert.equal(result.state.recruitment.roleInterests[0].positionId,'food-team');
+  assert.equal(result.state.recruitment.applications.length,0);
+  assert.equal(result.state.recruitment.memberships.length,0);
+  assert.equal(result.state.commitments.some(commitment=>commitment.personId==='robin'),false);
+  assert.equal(act(result.state,{type:'signalInterest',personId:'robin',positionId:'food-team'}).state.recruitment.roleInterests.length,1);
+  assert.throws(()=>act(shared,{type:'signalInterest',actor:'alex',personId:'robin',positionId:'food-team'}),/own interest/);
+});
 test('questions hand the next step to the applicant and a reply returns it to the reviewer',()=>{
   let {state,id}=apply(initial());state=review(state,id,'needs-info').state;assert.equal(state.recruitment.applications[0].status,'needs-info');assert.equal(state.recruitment.applications[0].firstResponseAt,day);
   state=act(state,{type:'message',applicationId:id,note:'Tuesday is best.'}).state;assert.equal(state.recruitment.applications[0].status,'reviewing');assert.equal(state.recruitment.applications[0].messages.length,2);
@@ -132,7 +145,7 @@ test('role draft, publication and scoped organization editing are functional',()
   const payload={type:'savePosition',actor:'coordinator',orgId:'tool-library',title:'Catalog helper',impact:'Easier borrowing.',tasks:'Update the catalog.',commitment:'One hour remotely.',experience:'No experience needed.',support:'Jordan helps.',mode:'Remote',pathway:'conversation',capacity:2,responseDays:5,requirements:['welcome'],question:'What interests you?'};
   let {state,id}=act(initial(),payload);assert.equal(state.recruitment.positions[0].status,'draft');assert.equal(positionOpen(state.recruitment.positions[0],day),false);
   state=act(state,{type:'positionStatus',actor:'coordinator',orgId:'tool-library',positionId:id,status:'open'}).state;assert.equal(positionOpen(state.recruitment.positions[0],day),true);
-  assert.throws(()=>act(state,{...payload,positionId:id}),/Published roles/);
+  state=act(state,{...payload,positionId:id,title:'Catalog guide'}).state;assert.equal(state.recruitment.positions.find(position=>position.id===id).title,'Catalog guide');assert.equal(state.recruitment.positions.find(position=>position.id===id).status,'open');
   assert.throws(()=>act(state,{type:'saveOrganization',actor:'robin',mission:'Overwrite'}),/workspace/);
 });
 test('organizations define reusable role requirements while submitted applications keep their original checklist',()=>{

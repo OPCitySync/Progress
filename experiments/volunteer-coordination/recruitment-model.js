@@ -1,4 +1,4 @@
-import { recordPrivateScreeningCredential, requirementReady, today } from './passport-model.js';
+import { recordPrivateScreeningCredential, requirementReady, sharedPassport, today } from './passport-model.js';
 
 export const HOME_ORG = 'berkeley-neighbors';
 export const APPLICATION_LABELS = { draft: 'Draft', submitted: 'Submitted', reviewing: 'In review', 'needs-info': 'Your reply needed', waitlisted: 'Waitlisted', offered: 'Offer to consider', onboarding: 'Getting ready', active: 'On the team', declined: 'Not this time', withdrawn: 'Withdrawn', 'offer-declined': 'Offer declined' };
@@ -28,7 +28,7 @@ const screeningExpiry = (date, months) => { const d = new Date(date + 'T12:00:00
 
 export function ensureRecruitment(state) {
   if (!state.recruitment && state.allowSampleData === false) state.recruitment = {
-    version: 1, organizations: [], positions: [], applications: [], memberships: [], preparation: {}, saved: {}, invitations: [], requirementLibrary: {}
+    version: 1, organizations: [], positions: [], applications: [], memberships: [], preparation: {}, saved: {}, invitations: [], roleInterests: [], requirementLibrary: {}
   };
   if (!state.recruitment) state.recruitment = {
     version: 1,
@@ -46,6 +46,7 @@ export function ensureRecruitment(state) {
     ], applications: [], memberships: [], preparation: {}, saved: {}
   };
   state.recruitment.invitations ||= [];
+  state.recruitment.roleInterests ||= [];
   for (const invitation of state.recruitment.invitations) invitation.kind ||= 'role';
   state.recruitment.requirementLibrary ||= {};
   for (const organization of state.recruitment.organizations) {
@@ -142,7 +143,7 @@ export function transitionRecruitment(current, action, date = today()) {
   if (action.type === 'savePosition') {
     reviewOrg(action.orgId);
     let position = action.positionId && r.positions.find(p => p.id === action.positionId);
-    if (position) { reviewOrg(position.orgId); assert(position.status === 'draft' || Boolean(position.programId), 'Published roles keep their terms. Create a new role for material changes.'); }
+    if (position) reviewOrg(position.orgId);
     const programRole = Boolean(action.programId);
     const requirements = [...new Set(['welcome', ...(action.requirements || (programRole&&position?position.requirements:[]))])];
     assert(requirements.every(key => volunteerRequirement(state, action.orgId, key)), 'Unknown onboarding step.');
@@ -280,6 +281,19 @@ export function transitionRecruitment(current, action, date = today()) {
       r.applications.unshift(application);
     }
     p.relationship='joining';p.reviewPending=true;resultId=application.id;notice='Your response was shared with the organization. They have the next step.';
+  } else if (action.type === 'signalInterest') {
+    const p=person(action.personId);
+    assert(!coordinator&&action.actor===p.id,'Only the volunteer can signal their own interest.');
+    const position=r.positions.find(item=>item.id===action.positionId);
+    assert(position&&position.orgId===action.orgId&&positionOpen(position,date)&&position.pathway!=='event','This role is not open for interest.');
+    assert(sharedPassport(state,p.id,position.orgId,date),'Confirm Passport sharing before signaling interest.');
+    let interest=r.roleInterests.find(item=>item.personId===p.id&&item.positionId===position.id&&item.status==='active');
+    if(!interest){
+      interest={id:uid(),personId:p.id,orgId:position.orgId,positionId:position.id,status:'active',createdAt:new Date().toISOString()};
+      r.roleInterests.unshift(interest);
+      state.activityLog?.unshift({text:`${p.name} signaled interest in ${position.title}`,time:'Just now'});
+    }
+    resultId=interest.id;notice=`Your interest in ${position.title} was shared with ${org.name}.`;
   } else if (action.type === 'saveApplication') {
     const p=person(action.personId); const position=r.positions.find(p=>p.id===action.positionId);
     assert(position && positionOpen(position,date) && position.pathway!=='event', 'This position is not accepting applications.');

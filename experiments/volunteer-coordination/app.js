@@ -18,7 +18,7 @@ import { renderStaff, staffDialog } from './staff-view.js';
 import { renderPrograms, programDialog, programActivityContext } from './program-view.js';
 import { ensureRecruitment, transitionRecruitment, HOME_ORG, volunteerRequirements, volunteerRequirement } from './recruitment-model.js';
 import { renderRecruitment, recruitmentDialog, discoveryResults } from './recruitment-view.js';
-import { ensurePassport, transitionPassport, requirementReady, sharedPassport, passportExport, today, readinessIssues } from './passport-model.js';
+import { ensurePassport, transitionPassport, requirementReady, sharedPassport, passportExport, today, daysFromNow, readinessIssues } from './passport-model.js';
 import { renderPassport, passportDialog, printablePassport } from './passport-view.js';
 import { ensureFeed, feedActor, transitionFeed } from './feed-model.js';
 import { renderFeed, renderFeedResults, renderFeedComposer, renderVolunteerActionHistory } from './feed-view.js';
@@ -50,7 +50,7 @@ try {
 } catch { state = newState(); }
 state = ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state))))))));
 try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
-const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false,dashboardModule:'activities',activityId:'',programId:'',programActivityId:'',chatActivityId:''}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, passportSort: 'name', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedPublicProfile: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
+const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false,dashboardModule:'activities',activityId:'',programId:'',programActivityId:'',recruitmentRoleId:'',chatActivityId:''}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, passportSort: 'name', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedPublicProfile: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
 try { const savedPerson = sessionStorage.getItem(storageKey + '-persona'); if (state.people.some(p => p.id === savedPerson)) ui.person = savedPerson; } catch {}
 try { const savedOrg = sessionStorage.getItem(storageKey + '-recruit-org'); if (state.recruitment.organizations.some(o => o.id === savedOrg)) ui.recruitOrg = savedOrg; } catch {}
 const app = document.querySelector('#app');
@@ -747,6 +747,7 @@ document.addEventListener('click', async event => {
     case 'rcCreateRole': openRecruitmentDialog('Role'); break;
     case 'rcRequirement': openRecruitmentDialog('Requirement', d); break;
     case 'rcEditRole': openRecruitmentDialog('Role', d); break;
+    case 'rcSignalInterest': openRecruitmentDialog('Interest', d); break;
     case 'rcDeleteRole': {
       const role=state.recruitment.positions.find(position=>position.id===d.id);
       if(!role)return;
@@ -999,6 +1000,22 @@ document.addEventListener('submit', async event => {
     case 'rcSearch': break;
     case 'rcApply': case 'rcAssist': recruitmentAction({ type: 'saveApplication', positionId: d.position, personId: d.person, ...values, assisted: d.form === 'rcAssist', consent: fields.has('consent'), submit: event.submitter?.value !== 'draft' }, 'application'); break;
     case 'rcRole': recruitmentAction({ type: 'savePosition', positionId: d.id || undefined, ...values, requirements: fields.getAll('requirements') }, d.program ? null : 'position'); break;
+    case 'rcInterest': {
+      try {
+        const position=state.recruitment.positions.find(position=>position.id===d.position&&position.orgId===d.org);
+        if(!position)throw Error('This role is no longer available.');
+        let next=state;
+        if(!sharedPassport(next,ui.person,d.org)) {
+          const records=next.passports.records.filter(record=>record.personId===ui.person&&record.status!=='withdrawn').map(record=>record.id);
+          next=transitionPassport(next,{type:'share',actor:ui.person,personId:ui.person,orgId:d.org,sections:['about','contact','preferences'],recordIds:records,expires:daysFromNow(365),purpose:`Interest in ${position.title}`}).state;
+        }
+        const result=transitionRecruitment(next,{type:'signalInterest',actor:ui.person,personId:ui.person,orgId:d.org,positionId:d.position});
+        localStorage.setItem(storageKey,JSON.stringify(result.state));state=result.state;closeDialog();render();toast(result.notice);
+      } catch(error) {
+        const output=form.querySelector('.form-error');output.textContent=error.message;output.focus();
+      }
+      break;
+    }
     case 'rcRequirement': recruitmentAction({ type: 'saveRequirement', requirementId: d.id || undefined, ...values, positionIds: fields.getAll('positionIds') }); break;
     case 'rcWelcome': recruitmentAction({ type: 'saveWelcome', ...values }); break;
     case 'rcDeleteRole': recruitmentAction({ type: 'deletePosition', positionId: d.id }); break;

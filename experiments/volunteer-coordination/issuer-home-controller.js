@@ -17,6 +17,7 @@ export function bindIssuerHome({context,render,commit,showDialog,closeDialog,nav
       case 'activity':h.activityId=d.id;h.chatActivityId='';render();break;
       case 'program':h.programId=d.id;h.programActivityId='';render();break;
       case 'programActivity':h.programActivityId=d.id;h.chatActivityId='';render();break;
+      case 'recruitmentRole':h.recruitmentRoleId=d.id;render();break;
       case 'programBack':h.programActivityId='';h.chatActivityId='';render();break;
       case 'chat':h.chatActivityId=d.id;render();document.querySelector('#home-chat-message')?.focus();break;
       case 'chatClose':h.chatActivityId='';render();document.querySelector('[data-home-action="chat"]')?.focus();break;

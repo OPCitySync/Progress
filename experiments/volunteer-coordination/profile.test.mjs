@@ -50,6 +50,15 @@ test('organization public profile defaults to the external view with one owner e
  assert.match(page,/class="btn profile-banner-edit"/);assert.doesNotMatch(page,/← Discover organizations/);
  assert.doesNotMatch(page,/ORGANIZATION INFORMATION/);assert.doesNotMatch(page,/Customize appearance/);
 });
+test('public profiles separate open roles and public activities into scrollable opportunity rails',()=>{
+ globalThis.location={origin:'http://localhost:4320'};
+ const page=renderProfile(renderContext({page:'org-profile',item:'berkeley-neighbors',mode:'volunteer',person:'robin'}));
+ assert.match(page,/profile-opportunity-rail/);assert.match(page,/Open Roles/);assert.match(page,/Open to the Public Activities/);
+ assert.match(page,/Signal Interest/);assert.match(page,/data-action="rcSignalInterest"/);assert.match(page,/View Activity/);
+ const emptyState=initial();emptyState.recruitment.positions.filter(position=>position.orgId==='berkeley-neighbors').forEach(position=>position.status='closed');emptyState.activities.filter(activity=>activity.visibility==='public').forEach(activity=>activity.archived=true);
+ const empty=renderProfile({...renderContext({page:'org-profile',item:'berkeley-neighbors',mode:'volunteer',person:'robin'}),state:emptyState});
+ assert.match(empty,/No open roles right now/);assert.match(empty,/No public activities right now/);
+});
 test('profile editor is explicit and external organization views have no edit control',()=>{
  globalThis.location={origin:'http://localhost:4320'};
  const editor=renderProfile(renderContext({page:'profile',item:'edit',mode:'coordinator'}));

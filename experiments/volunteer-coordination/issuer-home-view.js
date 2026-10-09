@@ -1,7 +1,8 @@
 import { homeQueue, calendarEntries, calendarRange, entriesOnDay } from './issuer-home-model.js';
-import { publicVolunteerPassport, today } from './passport-model.js';
+import { publicVolunteerPassport, sharedPassport, today } from './passport-model.js';
 import { ACTIVITY_TYPES, programActivities } from './program-model.js';
 import { assignmentModeOf } from './model.js';
+import { HOME_ORG, positionOpen } from './recruitment-model.js';
 
 const control=(label,action,attrs='',cls='btn secondary small')=>`<button class="${cls}" data-home-action="${action}" ${attrs}>${label}</button>`;
 const tone = entry => entry.kind==='note'?entry.tone:({event:'sage',shift:'sand',project:'lilac'})[entry.kind] || 'sage';
@@ -24,6 +25,7 @@ function homeHeroQueue(ctx) {
 const dashboardModules = [
   ['activities','calendar','Scheduled Activities','Schedule and staffing'],
   ['programs','work','Volunteer Programs','Initiatives and progress'],
+  ['recruitment','people','Volunteer Recruitment','Roles and interest'],
   ['documents','reports','Organizational Documents','Shared requirements'],
   ['passports','book','Passport Portal','Discover available people'],
 ];
@@ -74,8 +76,19 @@ function homeProgramsModule(ctx) {
   return `<section class="panel issuer-command-panel">${homePanelHeader('Volunteer Programs',button(icon('plus')+'Create Program','pgNew','','btn primary small'))}<div class="issuer-command-program-workspace ${activity?'is-activity':''}">${activity?'':programList}${activityList}${activityDetail}</div></section>`;
 }
 
+function homeRecruitmentModule(ctx) {
+  const {state,ui,e,icon,avatar,button,badge}=ctx,h=ui.home;
+  const roles=state.recruitment.positions.filter(position=>position.orgId===HOME_ORG&&position.pathway!=='event').sort((a,b)=>(positionOpen(a)?0:1)-(positionOpen(b)?0:1)||a.title.localeCompare(b.title));
+  const openRoles=roles.filter(position=>positionOpen(position));
+  const selected=openRoles.find(position=>position.id===h.recruitmentRoleId)||openRoles[0];
+  const interests=selected?(state.recruitment.roleInterests||[]).filter(interest=>interest.positionId===selected.id&&interest.status==='active').map(interest=>({...interest,person:state.people.find(person=>person.id===interest.personId)})).filter(interest=>interest.person):[];
+  const list=roles.length?`<div class="issuer-command-recruitment-list">${roles.map(position=>{const count=(state.recruitment.roleInterests||[]).filter(interest=>interest.positionId===position.id&&interest.status==='active').length;const open=positionOpen(position);return `<button type="button" class="issuer-command-recruitment-role ${selected?.id===position.id?'is-selected':''}" ${open?`data-home-action="recruitmentRole" data-id="${e(position.id)}"`:'disabled'}><span><strong>${e(position.title)}</strong><small>${e(position.programId?'Program role':'General role')}</small></span>${badge(open?'Open for Applications':'Applications Closed',open?'sage':'neutral')}${open?`<em>${count} interested</em>`:''}${open?icon('chevron'):''}</button>`;}).join('')}</div>`:homeEmpty(ctx,'No volunteer roles yet.','Create a role to define a clear pathway into your organization.');
+  const detail=selected?`<aside class="issuer-command-recruitment-detail"><header><span>INTERESTED VOLUNTEERS</span><strong>${interests.length}</strong></header><h3>${e(selected.title)}</h3>${interests.length?`<div class="issuer-command-interest-list">${interests.map(({person,createdAt})=>{const canView=Boolean(sharedPassport(state,person.id,HOME_ORG));return `<article>${avatar(person,'small')}<span><strong>${e(person.name)}</strong><small>${canView?`Signaled ${e(new Date(createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}))}`:'Passport access ended'}</small></span>${button(canView?'View Passport':'Passport Unavailable','ppOpen',`data-person="${e(person.id)}" ${canView?'':'disabled aria-disabled="true"'}`,'btn secondary small')}</article>`;}).join('')}</div>`:`<div class="issuer-command-interest-empty">${icon('people')}<p>No one has signaled interest in this role yet.</p></div>`}<div class="issuer-command-actions">${button(icon('settings')+'Role Settings','rcEditRole',`data-id="${e(selected.id)}"`,'btn secondary small')}</div></aside>`:`<aside class="issuer-command-recruitment-detail"><div class="issuer-command-interest-empty">${icon('people')}<p>Open a role for applications to begin receiving interest.</p></div></aside>`;
+  return `<section class="panel issuer-command-panel">${homePanelHeader('Volunteer Recruitment',button(icon('plus')+'Create Role','rcCreateRole','','btn primary small'))}<div class="issuer-command-recruitment-layout">${list}${detail}</div></section>`;
+}
+
 function homeModule(ctx) {
-  return ({activities:homeActivitiesModule,passports:homePassportsModule,documents:homeDocumentsModule,programs:homeProgramsModule})[ctx.ui.home.dashboardModule||'activities'](ctx);
+  return ({activities:homeActivitiesModule,passports:homePassportsModule,documents:homeDocumentsModule,programs:homeProgramsModule,recruitment:homeRecruitmentModule})[ctx.ui.home.dashboardModule||'activities'](ctx);
 }
 
 export function homeCommandCenter(ctx,{organizationName}={}) {

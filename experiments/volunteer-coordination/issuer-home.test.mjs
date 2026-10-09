@@ -60,6 +60,8 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/Passport Portal/);
   assert.match(html,/Organizational Documents/);
   assert.match(html,/Volunteer Programs/);
+  assert.match(html,/Volunteer Recruitment/);
+  assert.match(html,/data-module="recruitment"/);
   assert.ok(html.indexOf('Scheduled Activities')<html.indexOf('Volunteer Programs'));
   assert.ok(html.indexOf('Volunteer Programs')<html.indexOf('Organizational Documents'));
   assert.ok(html.indexOf('Organizational Documents')<html.indexOf('Passport Portal'));
@@ -82,6 +84,17 @@ test('organization command center renders connected dashboard modules from appli
   assert.ok(html.indexOf('issuer-command-divider')<html.indexOf('issuer-command-modules'));
   assert.doesNotMatch(html,/ORGANIZATION STATUS/);
   assert.doesNotMatch(html,/home-calendar/);
+});
+test('Volunteer Recruitment lists role status and reveals interested volunteers with role controls',()=>{
+  const state=ensurePrograms(initial());
+  state.recruitment.positions.find(position=>position.id==='delivery-team').status='closed';
+  state.recruitment.roleInterests.push({id:'interest-1',personId:'robin',orgId:HOME_ORG,positionId:'food-team',status:'active',createdAt:'2026-09-26T12:00:00.000Z'});
+  state.passports.grants.push({id:'grant-1',personId:'robin',orgId:HOME_ORG,sections:['about'],recordIds:[],purpose:'Interest in food team',expires:'2027-10-09',createdAt:'2026-09-26T12:00:00.000Z'});
+  const context={state,ui:{home:{dashboardModule:'recruitment',recruitmentRoleId:'food-team'}},platformContext:null,e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`,avatar:person=>`<span class="avatar">${person.name}</span>`,badge:(label,kind)=>`<span class="badge ${kind}">${label}</span>`,dateLabel:value=>value,confirmedCount:()=>0};
+  const html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
+  assert.match(html,/Open for Applications/);assert.match(html,/Applications Closed/);
+  assert.match(html,/Robin Ellis/);assert.match(html,/View Passport/);assert.match(html,/data-action="ppOpen"/);
+  assert.match(html,/Create Role/);assert.match(html,/Role Settings/);assert.match(html,/data-action="rcEditRole"/);
 });
 test('Assign Shift appears only for activities assigned by the organization',()=>{
   const state=ensurePrograms(initial()),activity=state.activities.find(item=>item.id==='pantry');
