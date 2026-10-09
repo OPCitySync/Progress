@@ -134,6 +134,9 @@ test('issuer feed opens its public profile from the avatar without an action que
     platformContext: null, integratedPlatform: false, assetBase: '',
   };
   const feed = renderFeed(context);
+  assert.match(feed, /city-profile-identity-card is-compact/);
+  assert.match(feed, /city-person-cover profile-banner-art/);
+  assert.match(feed, /city-profile-logo/);
   assert.match(feed, /class="city-profile-avatar" data-action="feedPublicProfile" data-view="profile"/);
   assert.match(feed, /aria-label="View Berkeley Neighbors public profile"/);
   assert.doesNotMatch(feed, /View Public Profile/);
@@ -165,13 +168,19 @@ test('issuer feed opens its public profile from the avatar without an action que
     ui.feedPublicProfile = true;
     const profile = renderFeed(context);
     assert.match(profile, /Embedded public profile/);
-    assert.match(profile, /PUBLIC VIEW/);
+    assert.match(profile, /city-layout city-layout-issuer is-profile-view/);
+    assert.match(profile, /city-profile-identity-card is-expanded/);
     assert.match(profile, /Berkeley Neighbors/);
     assert.match(profile, /Back to MyCity Feed/);
     assert.match(profile, /data-view="feed"/);
     assert.doesNotMatch(profile, /id="feed-posts"/);
-    assert.match(profile, /Discover City Network/);
-    assert.match(profile, /class="city-profile-avatar" data-action="feedPublicProfile" data-view="profile"/);
+    assert.doesNotMatch(profile, /aria-label="Your organization space"/);
+    assert.doesNotMatch(profile, /Discover City Network/);
+    assert.doesNotMatch(profile, /class="city-profile-avatar"/);
+    assert.doesNotMatch(profile, /public-profile-hero/);
+    assert.equal((profile.match(/profile-banner-art/g)||[]).length,1);
+    assert.match(profile, /aria-label="City context"/);
+    assert.match(profile, /CITY PULSE/);
     assert.doesNotMatch(profile, /city-feed-floating-actions/);
 
     const connectedShell = structuredClone(state);
@@ -179,6 +188,7 @@ test('issuer feed opens its public profile from the avatar without an action que
     const emptyProfile = renderFeed({ ...context, state: connectedShell, integratedPlatform: true, platformContext: { cityName: 'Berkeley', organization: { name: 'Riverside Food Bank' } } });
     assert.match(emptyProfile, /Riverside Food Bank/);
     assert.match(emptyProfile, /Your public profile is ready to be shaped/);
+    assert.match(emptyProfile, /city-profile-identity-card is-expanded/);
     assert.doesNotMatch(emptyProfile, /Organization not found/);
   } finally {
     if (originalLocation === undefined) delete globalThis.location;

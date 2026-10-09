@@ -62,8 +62,13 @@
 @media(max-width:560px){.city-feed-action-queue>header{align-items:center;flex-direction:row;gap:10px}.city-feed-action-queue article{align-items:flex-start;flex-wrap:wrap}.city-feed-action-queue article>div:first-child{flex-basis:100%}.participant-queue-actions{width:100%;justify-content:flex-end}.city-feed-action-queue article strong{white-space:normal}}
 
 /* The issuer Feed is also its home: identity and public presence stay in one frame. */
-.city-profile-avatar{display:block;width:58px;height:58px;margin-top:-24px;padding:0;border:0;border-radius:50%;background:transparent;position:relative;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease}
-.city-profile-avatar>.avatar{width:58px;height:58px;border:4px solid #fff;font-size:16px}
+.city-profile-identity-card .city-person-cover{padding:0;background:var(--profile-deep)}
+.city-profile-identity-card .city-person-cover.profile-original{background:linear-gradient(120deg,var(--profile-deep),var(--profile-mid))}
+.city-profile-identity-card.is-compact .city-person-cover{height:78px}
+.city-profile-logo{display:grid;place-items:center;overflow:hidden;width:58px;height:58px;border:4px solid #fff;border-radius:18px;background:var(--profile-light);color:var(--profile-deep);font-size:17px;font-weight:800;box-shadow:0 4px 15px #17271f18}
+.city-profile-logo img{width:100%;height:100%;object-fit:cover}
+.city-profile-avatar{display:block;width:58px;height:58px;margin-top:-24px;padding:0;border:0;border-radius:18px;background:transparent;position:relative;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease}
+.city-profile-avatar>.city-profile-logo{width:58px;height:58px}
 .city-profile-avatar:hover{transform:translateY(-2px);box-shadow:0 0 0 3px #dd9e3340}
 .city-profile-avatar:focus-visible{outline:3px solid #dd9e33;outline-offset:3px}
 .city-network-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:11px;padding:15px 14px;border-radius:13px;color:#30303a;text-decoration:none}
@@ -77,6 +82,24 @@
 .city-network-card em{overflow:hidden;margin-top:3px;color:#77747b;font-size:8px;font-style:normal;line-height:1.45;text-overflow:ellipsis}
 
 .city-embedded-profile{min-width:0}
+.city-layout.city-layout-issuer.is-profile-view{grid-template-columns:minmax(0,1fr) 270px}
+.city-profile-identity-card.is-expanded{overflow:hidden;margin-bottom:18px;border-radius:15px;animation:city-profile-expand .24s ease-out;transform-origin:top left}
+.city-profile-identity-card.is-expanded .city-person-cover{height:215px}
+.city-profile-view-actions{position:absolute;z-index:4;top:18px;right:18px;display:flex;align-items:center;gap:8px}
+.city-profile-view-actions .btn{min-height:34px;padding:8px 12px;border-color:#ffffff55;background:#15151eb8;color:#fff;font-size:9px;backdrop-filter:blur(8px)}
+.city-profile-view-actions .city-profile-edit{border-color:#edb95f;background:#dd9e33;color:#15151e}
+.city-profile-identity-card.is-expanded .city-person-identity{padding:0 28px 28px}
+.city-profile-identity-card.is-expanded .city-profile-logo{position:relative;width:96px;height:96px;margin-top:-42px;border-width:5px;border-radius:23px;font-size:28px}
+.city-profile-identity-card.is-expanded .city-person-identity>.eyebrow{display:block;margin:18px 0 8px;color:#9b6c24;font-size:8px;font-weight:850;letter-spacing:.11em}
+.city-profile-identity-card.is-expanded .city-person-identity h1{margin:0;font-size:30px;letter-spacing:-.04em}
+.city-profile-identity-card.is-expanded .city-profile-tagline{margin:8px 0 0;color:#4f4c53;font-size:16px;font-weight:600;line-height:1.45}
+.city-profile-identity-card.is-expanded .city-profile-mission{max-width:720px;margin:12px 0 0;color:#6b6870;font-size:12px;line-height:1.75}
+.city-profile-identity-card.is-expanded .public-profile-meta{margin:18px 0;font-size:10px}
+.city-profile-identity-card.is-expanded .button-row{margin-top:6px}
+.city-profile-identity-card.is-expanded .button-row .btn{font-size:9px}
+.city-embedded-profile>.profile-public-grid{animation:city-profile-content-in .3s ease-out}
+@keyframes city-profile-expand{from{opacity:.7;transform:scale(.985) translateX(-8px)}to{opacity:1;transform:none}}
+@keyframes city-profile-content-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .city-embedded-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding:10px 13px;border:1px solid #e4e1dc;border-radius:12px;background:#fff}
 .city-embedded-profile-bar .text-button{display:flex;align-items:center;gap:5px;color:#65626a;font-size:9px;font-weight:750}
 .city-embedded-profile-bar>span{display:flex;align-items:center;gap:5px;color:#9b6c24;font-size:8px;font-weight:850;letter-spacing:.1em}
@@ -95,9 +118,11 @@
 .city-embedded-profile .profile-public-grid .recruit-role-grid{grid-template-columns:1fr}
 .city-embedded-profile .detail-section{border-radius:14px}
 
-@media(max-width:1100px){.city-layout.city-layout-issuer{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-personal{display:grid;position:static}.city-layout-issuer .city-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.city-layout-issuer .city-person-card{max-width:none}.city-layout-issuer .city-person-identity p{min-height:0}}
+@media(max-width:1100px){.city-layout.city-layout-issuer,.city-layout.city-layout-issuer.is-profile-view{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-personal{display:grid;position:static}.city-layout-issuer .city-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.city-layout-issuer .city-person-card{max-width:none}.city-layout-issuer .city-person-identity p{min-height:0}}
 @media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}}
-@media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}}
+@media(max-width:600px){.city-profile-identity-card.is-expanded .city-person-cover{height:160px}.city-profile-view-actions{top:12px;right:12px}.city-profile-view-actions .btn{padding:7px 9px}.city-profile-identity-card.is-expanded .city-person-identity{padding:0 19px 22px}.city-profile-identity-card.is-expanded .city-profile-logo{width:78px;height:78px;margin-top:-31px;border-radius:19px}.city-profile-identity-card.is-expanded .city-person-identity h1{font-size:25px}.city-profile-identity-card.is-expanded .city-profile-tagline{font-size:14px}}
+@media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}.city-profile-view-actions .city-profile-edit{display:none}}
+@media(prefers-reduced-motion:reduce){.city-profile-identity-card.is-expanded,.city-embedded-profile>.profile-public-grid{animation:none}}
 
 /* Side rails scroll normally until their final card reaches the app header. */
 @media(min-width:1001px){
