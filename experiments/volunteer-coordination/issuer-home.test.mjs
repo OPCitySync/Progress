@@ -44,6 +44,8 @@ test('issuer home hero keeps only the focused organization shortcuts',()=>{
   assert.doesNotMatch(html,/data-action="create"/);
   assert.match(html,/data-page="calendar"/);
   assert.match(html,/data-page="staff"/);
+  assert.match(html,/data-action="nav" data-page="calendar"/);
+  assert.match(html,/data-action="nav" data-page="staff"/);
   assert.doesNotMatch(html,/Schedule Activity/);
   assert.doesNotMatch(html,/MyCity Feed/);
   assert.doesNotMatch(html,/Create a Role/);
@@ -77,6 +79,8 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/issuer-hero-action-queue/);
   assert.match(html,/issuer-hero-action-track/);
   assert.match(html,/aria-label="Action Queue"/);
+  assert.doesNotMatch(html,/>Action Queue</);
+  assert.doesNotMatch(html,/Scroll to review/);
   assert.doesNotMatch(html,/data-home-action="acknowledge"/);
   assert.doesNotMatch(html,/data-home-action="history"/);
   assert.doesNotMatch(html,/data-home-action="collapse"/);
@@ -136,6 +140,7 @@ test('Volunteer Programs prioritizes the program list and reveals activity detai
   assert.doesNotMatch(html,/SELECTED PROGRAM/);
   assert.doesNotMatch(html,/issuer-command-program-number/);
   assert.doesNotMatch(html,/issuer-command-program-lead/);
+  assert.doesNotMatch(html,/>01</);
   if(activity){
     context.ui.home.programActivityId=activity.id;
     html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});

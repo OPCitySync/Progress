@@ -121,7 +121,7 @@
 /* Connected organization command center. */
 .issuer-command-center{--command-blue:#15151e;--command-gold:#dd9e33;--command-line:#e4e3df;--command-soft:#f8f7f4}
 .issuer-command-center>.issuer-home-hero{margin-bottom:0}
-.issuer-hero-action-queue{position:relative;z-index:1;margin-top:27px;padding-top:12px;border-top:1px solid rgba(255,255,255,.11)}
+.issuer-hero-action-queue{position:relative;z-index:1;margin-top:27px;padding-top:12px;border-top:1px solid rgba(255,255,255,.16)}
 .issuer-hero-action-queue>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
 .issuer-hero-action-queue h2{display:flex;align-items:center;gap:8px;margin:0;color:#fff;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
 .issuer-hero-action-queue h2 span{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:rgba(255,255,255,.12);color:#f0c675;font-size:8px;letter-spacing:0}
@@ -132,11 +132,11 @@
 .issuer-hero-action-button{display:inline-flex;align-items:center;gap:5px;min-height:29px;padding:6px 9px;border:1px solid rgba(255,255,255,.13);border-radius:7px;background:#fff;color:#25252d;font-size:8px;font-weight:800;white-space:nowrap}
 .issuer-hero-action-button:hover{background:#fbf0dc;color:#15151e}
 .issuer-hero-action-button .icon{width:11px;height:11px}
-.issuer-command-divider{display:flex;align-items:center;gap:10px;margin:18px 2px}
-.issuer-command-divider::before,.issuer-command-divider::after{height:1px;flex:1;background:linear-gradient(90deg,transparent,#d8d6d1)}
+.issuer-command-divider{display:flex;align-items:center;gap:12px;margin:24px 0 22px}
+.issuer-command-divider::before,.issuer-command-divider::after{height:2px;flex:1;background:linear-gradient(90deg,transparent,#bdb9b1)}
 .issuer-command-divider::before,.issuer-command-divider::after{content:''}
-.issuer-command-divider::after{background:linear-gradient(90deg,#d8d6d1,transparent)}
-.issuer-command-divider span{width:6px;height:6px;border-radius:50%;background:var(--command-gold);box-shadow:0 0 0 4px #f7efe1}
+.issuer-command-divider::after{background:linear-gradient(90deg,#bdb9b1,transparent)}
+.issuer-command-divider span{width:8px;height:8px;border-radius:50%;background:var(--command-gold);box-shadow:0 0 0 5px #f7efe1}
 .issuer-command-layout{display:block}
 .issuer-command-dashboard{min-width:0}
 .issuer-command-modules{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
@@ -162,15 +162,15 @@
 .issuer-command-empty h3{font-size:17px;color:#37343b}
 .issuer-command-empty p{max-width:420px;margin:8px 0 16px;font-size:10px}
 .issuer-command-activity-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.8fr);min-height:394px}
-.issuer-command-list{padding:8px 18px}
-.issuer-command-activity-row{display:grid;width:100%;grid-template-columns:48px minmax(0,1fr) auto 14px;align-items:center;gap:12px;min-height:78px;padding:10px 8px;border:0;border-bottom:1px solid #eeece8;background:transparent;color:#48454c;text-align:left}
-.issuer-command-activity-row:hover,.issuer-command-activity-row.is-selected{background:#fbfaf7}
-.issuer-command-activity-row.is-selected{box-shadow:inset 3px 0 var(--command-gold)}
-.issuer-command-date{display:grid;place-items:center;width:45px;height:52px;border:1px solid #e6dfd2;border-radius:9px;background:#fff}
+.issuer-command-list{padding:12px;background:#faf9f7}
+.issuer-command-activity-row{display:grid;width:100%;grid-template-columns:43px minmax(0,1fr) auto 14px;align-items:center;gap:10px;min-height:68px;margin-bottom:4px;padding:9px;border:1px solid transparent;border-radius:10px;background:transparent;color:#48454c;text-align:left}
+.issuer-command-activity-row:hover,.issuer-command-activity-row.is-selected{background:#fff}
+.issuer-command-activity-row.is-selected{border-color:#e1d6c4;box-shadow:0 5px 15px #25252d08}
+.issuer-command-date{display:flex;width:38px;flex-direction:column;align-items:center;justify-content:center;gap:3px}
 .issuer-command-date small{color:#9a6a22;font-size:7px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
 .issuer-command-date strong{font-size:17px}
 .issuer-command-activity-row>span:nth-child(2){display:flex;min-width:0;flex-direction:column;gap:6px}
-.issuer-command-activity-row>span:nth-child(2)>strong{overflow:hidden;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.issuer-command-activity-row>span:nth-child(2)>strong{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .issuer-command-activity-row>span:nth-child(2)>small{display:flex;align-items:center;gap:5px;overflow:hidden;color:#918d93;font-size:8px;text-overflow:ellipsis;white-space:nowrap}
 .issuer-command-activity-row>span:nth-child(2) .icon{width:11px;height:11px}
 .issuer-command-activity-row i{font-style:normal}
@@ -228,10 +228,9 @@
 .issuer-command-program-workspace{display:grid;grid-template-columns:minmax(300px,1.35fr) minmax(250px,.65fr);min-height:420px}
 .issuer-command-program-workspace.is-activity{grid-template-columns:minmax(260px,.9fr) minmax(300px,1.1fr)}
 .issuer-command-program-list{padding:12px;border-right:1px solid #e7e5e1;background:#faf9f7}
-.issuer-command-program-row{display:grid;width:100%;grid-template-columns:31px minmax(0,1fr) 16px;align-items:center;gap:10px;min-height:68px;padding:9px;border:1px solid transparent;border-radius:10px;background:transparent;color:#55515a;text-align:left}
-.issuer-command-program-row>span{color:#a06e25;font-size:9px;font-weight:900}
+.issuer-command-program-row{display:grid;width:100%;grid-template-columns:minmax(0,1fr) 16px;align-items:center;gap:10px;min-height:68px;padding:9px 11px;border:1px solid transparent;border-radius:10px;background:transparent;color:#55515a;text-align:left}
 .issuer-command-program-row>div{display:flex;min-width:0;flex-direction:column;gap:5px}
-.issuer-command-program-row strong{overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.issuer-command-program-row strong{overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap}
 .issuer-command-program-row small{overflow:hidden;color:#969299;font-size:8px;text-overflow:ellipsis;white-space:nowrap}
 .issuer-command-program-row>.icon{width:12px;height:12px;color:#aaa6ac}
 .issuer-command-program-row:hover,.issuer-command-program-row.is-selected{background:#fff}
