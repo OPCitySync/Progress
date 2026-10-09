@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
 import { coordinationIntegratedEnabled } from '@/lib/coordination-prototype'
 import { db } from '@/lib/db/client'
-import { orgs } from '@/lib/db/schema'
+import { orgs, users } from '@/lib/db/schema'
 import { organizationBannerPalette } from '@/lib/profile/organization-appearance'
 import { getActiveCity } from '@/lib/services/city-networks'
 import { activeSessionIsOrganizationOwner, getActorContexts, validateActiveSession } from '@/lib/services/identity-access'
@@ -19,6 +19,12 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Sign in to continue.' }, { status: 401 })
 
   const city = await getActiveCity(session)
+  const account = (await db.select({
+    name: users.name,
+    email: users.email,
+    username: users.username,
+    avatarUrl: users.avatarUrl,
+  }).from(users).where(eq(users.id, session.sub)).limit(1))[0]
   const identities = (await getActorContexts(session.sub))
     .filter((identity) => identity.role === 'participant' || identity.role === 'issuer')
     .map((identity) => ({
@@ -28,7 +34,7 @@ export async function GET() {
       active: identity.identityId === session.activeIdentityId,
     }))
   if (session.role !== 'issuer' || !session.orgId) {
-    return NextResponse.json({ role: session.role, accountName: session.name, cityName: city?.name ?? '', identities }, {
+    return NextResponse.json({ role: session.role, accountName: session.name, account, cityName: city?.name ?? '', identities }, {
       headers: { 'Cache-Control': 'no-store' },
     })
   }
@@ -43,6 +49,7 @@ export async function GET() {
   return NextResponse.json({
     role: session.role,
     accountName: session.name,
+    account,
     cityName: city?.name ?? '',
     identities,
     organization: {

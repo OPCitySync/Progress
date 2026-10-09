@@ -6,7 +6,7 @@ import { bindPlanning } from './planning-controller.js';
 import { assignDocument, deleteDocument, ensureDocuments, isLiabilityWaiver, liabilityWaiversForActivity, saveDocument, updateDocument } from './documents-model.js';
 import { loadDocumentFile, removeDocumentFile, saveDocumentFile } from './documents-files.js';
 import { renderDocuments, renderDocumentList, renderDocumentDetail, renderDocumentForm, renderDocumentAssignment } from './documents-view.js';
-import { loadMyCityContext, saveOrganizationSettings, switchMyCityIdentity, renderConnectedSettings } from './connected-settings.js';
+import { loadMyCityContext, loadMyCityReports, saveAccountSettings, saveOrganizationSettings, switchMyCityIdentity, renderAccountSettings, renderConnectedSettings, renderReports } from './connected-settings.js';
 import { loadMyCityResume, setMyCityResumeVisibility } from './connected-resume.js';
 import { renderResume, resumeSheet } from './resume-view.js';
 import { issuerNavigation, volunteerNavigation } from './navigation-view.js';
@@ -39,6 +39,9 @@ let connectedContextError = '';
 let connectedResume = null;
 let connectedResumeError = '';
 let connectedResumeLoading = false;
+let connectedReports = null;
+let connectedReportsError = '';
+let connectedReportsLoading = false;
 
 let state;
 const bootstrapParticipant = location.hash.replace(/^#\/?/, '').split('/')[0] === 'volunteer';
@@ -187,7 +190,7 @@ function readRoute() {
     ui.page = 'passport'; ui.item = '';
     history.replaceState(null, '', `${location.pathname}${location.search}#/volunteer/passport`);
   }
-  render(); window.scrollTo(0, 0); void refreshConnectedResume();
+  render(); window.scrollTo(0, 0); void refreshConnectedResume(); void refreshConnectedReports();
 }
 
 async function refreshConnectedResume(force = false) {
@@ -203,6 +206,22 @@ async function refreshConnectedResume(force = false) {
     connectedResumeError = error.message;
   } finally {
     connectedResumeLoading = false;
+    render();
+  }
+}
+async function refreshConnectedReports(force = false) {
+  if (!integratedPlatform || ui.mode !== 'coordinator' || ui.page !== 'reports') return;
+  if (!force && (connectedReports || connectedReportsLoading)) return;
+  connectedReportsLoading = true;
+  connectedReportsError = '';
+  render();
+  try {
+    connectedReports = await loadMyCityReports();
+  } catch (error) {
+    connectedReports = null;
+    connectedReportsError = error.message;
+  } finally {
+    connectedReportsLoading = false;
     render();
   }
 }
@@ -301,9 +320,9 @@ function messagesPage() {
 function render() {
   try { sessionStorage.setItem(storageKey + '-persona', ui.person); sessionStorage.setItem(storageKey + '-recruit-org', ui.recruitOrg); } catch {}
   state = ensureIssuerHome(ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(state)))))));
-  const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'calendar', 'staff', 'passport', 'feed', 'people', 'messages', 'activity', ...(integratedPlatform ? ['settings'] : [])] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'resume', 'feed', 'work', 'organization', 'messages', 'activity'];
+  const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'calendar', 'staff', 'passport', 'feed', 'people', 'messages', 'activity', 'settings', 'reports'] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'resume', 'feed', 'work', 'organization', 'messages', 'activity', 'settings'];
   if (!allowed.includes(ui.page)) ui.page = 'home';
-  const content = ui.page === 'settings' && integratedPlatform ? renderConnectedSettings(connectedContext, connectedContextError, e) : ui.page === 'staff' ? renderStaff(feedContext()) : ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ui.page === 'passport' ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'calendar' ? calendarPage() : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
+  const content = ui.page === 'settings' ? orgMode() ? renderConnectedSettings(feedContext(),connectedContext,connectedContextError) : renderAccountSettings(feedContext(),connectedContext,connectedContextError) : ui.page === 'reports' ? renderReports(feedContext(),connectedReports,connectedReportsError,connectedReportsLoading) : ui.page === 'staff' ? renderStaff(feedContext()) : ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ui.page === 'passport' ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'calendar' ? calendarPage() : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
   const issuerOverview = orgMode() && ui.page === 'home';
   const issues = !issuerOverview && ['home', 'applications', 'activity'].includes(ui.page) ? readinessIssues(state).filter(c => (orgMode() || c.personId === ui.person) && (ui.page !== 'activity' || c.activityId === ui.item)) : [];
   const readinessAlert = issues.length ? `<div class="callout sand"><strong>Preparation needs another look</strong><p>These commitments are still confirmed, but required preparation is no longer valid through the activity date. Agree on the next step with ${orgMode() ? 'the volunteer' : 'your coordinator'}.</p>${issues.map(c => `<div class="button-row"><span>${orgMode() ? e(state.people.find(p => p.id === c.personId).name) + ' · ' : ''}${e(state.activities.find(a => a.id === c.activityId).title)}</span>${button('Review plan', 'activity', `data-id="${e(c.activityId)}"`, 'text-button')}</div>`).join('')}</div>` : '';
@@ -926,6 +945,43 @@ document.addEventListener('submit', async event => {
         output.focus();
         submit.disabled = false;
       }
+      break;
+    }
+    case 'localOrganizationSettings': {
+      const organization=state.recruitment.organizations.find(item=>item.id===HOME_ORG);
+      if(!organization)break;
+      organization.name=String(values.name||'').trim()||organization.name;
+      organization.email=String(values.email||'').trim();
+      organization.location=String(values.location||'').trim();
+      organization.profile ||= {};
+      organization.profile.phone=String(values.phone||'').trim();
+      save();render();toast('Organization settings saved in this preview.');
+      break;
+    }
+    case 'accountSettings': {
+      const submit=form.querySelector('button[type="submit"]');
+      const output=form.querySelector('.form-error');
+      submit.disabled=true;output.textContent='';
+      try {
+        await saveAccountSettings(values);
+        connectedContext=await loadMyCityContext();
+        connectedContextError='';
+        applyConnectedContext(connectedContext);
+        render();toast('Account settings saved.');
+      } catch(error) {
+        output.textContent=error.message;output.focus();submit.disabled=false;
+      }
+      break;
+    }
+    case 'localAccountSettings': {
+      const person=currentPerson();
+      const name=String(values.name||'').trim();
+      const email=String(values.email||'').trim();
+      if(!name||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        const output=form.querySelector('.form-error');output.textContent='Enter a display name and valid email address.';output.focus();break;
+      }
+      Object.assign(person,{name,email,username:String(values.username||'').trim().toLowerCase().replace(/^@+/,'')});
+      save();render();toast('Account settings saved in this preview.');
       break;
     }
     case 'docAdd': {
