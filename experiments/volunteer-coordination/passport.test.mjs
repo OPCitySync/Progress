@@ -4,6 +4,7 @@ import { createInitialState, transition, missingRequirements } from './model.js'
 import { volunteerResume, ensurePassport, transitionPassport, sharedPassport, requirementReady, acceptedEvidence, passportExport, recordStatus, portableFoodEligible, readinessIssues } from './passport-model.js';
 import { renderPassport } from './passport-view.js';
 import { VOLUNTEER_SECTIONS } from './navigation-view.js';
+import { ensureRecruitment } from './recruitment-model.js';
 
 const date = '2026-09-23';
 const act = (state, action) => transitionPassport(state, { personId: 'elena', actor: 'elena', ...action }, date).state;
@@ -218,4 +219,21 @@ test('passport keeps experience on MyPassport and removes the standalone History
     icon: name => `<span class="icon">${name}</span>`,
   });
   assert.match(visibleOutput, /Remove from City Network/);
+});
+
+test('organization Volunteer Portal is full width without the filtering rail', () => {
+  const state = ensureRecruitment(ensurePassport(createInitialState()));
+  const output = renderPassport({
+    state,
+    ui: { mode: 'coordinator', page: 'passport', person: 'alex', recruitOrg: 'berkeley-neighbors' },
+    currentPerson: () => state.people.find(person => person.id === 'alex'),
+    e: value => String(value ?? ''),
+    button: (label, action, attrs = '', classes = 'btn') => `<button class="${classes}" data-action="${action}" ${attrs}>${label}</button>`,
+    badge: (label, tone = '') => `<span class="badge ${tone}">${label}</span>`,
+    avatar: () => '<span class="avatar"></span>',
+    icon: name => `<span class="icon">${name}</span>`,
+  });
+  assert.match(output, /<h1>Volunteer Portal<\/h1>/);
+  assert.match(output, /class="passport-layout passport-portal-layout"/);
+  assert.doesNotMatch(output, /Volunteer passports|Meet volunteers across your City Network|Open for Volunteering|Sort Passports|passport-sort-panel/);
 });

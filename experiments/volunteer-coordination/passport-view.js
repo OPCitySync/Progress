@@ -7,14 +7,13 @@ export function renderPassport(ctx) {
   const p = coordinator ? state.people.find(p => p.id === ui.item) : ctx.currentPerson();
   const shared = coordinator && p ? sharedPassport(state, p.id) : null;
   const volunteerProfile = !coordinator && p ? state.passports.profiles[p.id] : null;
-  const header = coordinator ? '<div class="page-heading"><div><h1>Volunteer passports<span class="heading-dot">.</span></h1><p>Meet volunteers across your City Network who are open to new opportunities.</p></div></div>' : '';
+  const header = coordinator ? '<div class="page-heading"><div><h1>Volunteer Portal</h1></div></div>' : '';
   if (coordinator && !shared) {
-    const sort = ui.passportSort || 'name';
-    const people = state.people.map(person => ({ person, passport: publicVolunteerPassport(state, person.id) })).filter(x => x.passport).sort((a,b) => comparePublicPassports(a,b,sort));
+    const people = state.people.map(person => ({ person, passport: publicVolunteerPassport(state, person.id) })).filter(x => x.passport).sort((a,b) => comparePublicPassports(a,b,'name'));
     const reviewNeeded = readinessIssues(state);
-    return header + `<div class="passport-layout"><div><section class="panel detail-section"><div class="section-heading"><div><span class="eyebrow">CITY NETWORK</span><h2>Open for Volunteering</h2></div>${badge(`${people.length} open`, 'sage')}</div><p class="muted">These volunteers chose to make their passport profile discoverable to organizations in their City Network. Offer a role or activity, or begin with a conversation; the volunteer chooses whether to continue.</p><div class="passport-directory" aria-live="polite">${people.length ? people.map(({ person, passport }) => publicPassportCard(ctx, person, passport)).join('') : '<div class="empty-state"><h3>No volunteers are open right now.</h3><p>Volunteers can make their passport discoverable from their Passport profile.</p></div>'}</div></section>${reviewNeeded.length ? `<section class="panel detail-section"><h2>Existing commitments need a readiness review</h2><p>Evidence has changed. These commitments remain confirmed; contact the volunteer before changing their plan.</p>${reviewNeeded.map(c => `<div class="simple-row"><span>${e(state.people.find(p => p.id === c.personId).name)}<small>${e(state.activities.find(a => a.id === c.activityId).title)}</small></span>${button('Review activity', 'activity', `data-id="${e(c.activityId)}"`, 'btn secondary small')}</div>`).join('')}</section>` : ''}</div>${passportSortPanel(ctx, sort)}</div>`;
+    return header + `<div class="passport-layout passport-portal-layout"><div><section class="panel detail-section"><div class="section-heading"><span class="eyebrow">CITY NETWORK</span>${badge(`${people.length} available`, 'sage')}</div><p class="muted">These volunteers chose to make their passport profile discoverable to organizations in their City Network. Offer a role or activity, or begin with a conversation; the volunteer chooses whether to continue.</p><div class="passport-directory" aria-live="polite">${people.length ? people.map(({ person, passport }) => publicPassportCard(ctx, person, passport)).join('') : '<div class="empty-state"><h3>No volunteers are available right now.</h3><p>Volunteers can make their passport discoverable from their Passport profile.</p></div>'}</div></section>${reviewNeeded.length ? `<section class="panel detail-section"><h2>Existing commitments need a readiness review</h2><p>Evidence has changed. These commitments remain confirmed; contact the volunteer before changing their plan.</p>${reviewNeeded.map(c => `<div class="simple-row"><span>${e(state.people.find(p => p.id === c.personId).name)}<small>${e(state.activities.find(a => a.id === c.activityId).title)}</small></span>${button('Review activity', 'activity', `data-id="${e(c.activityId)}"`, 'btn secondary small')}</div>`).join('')}</section>` : ''}</div></div>`;
   }
-  if (coordinator) return header + `<button class="back-link" data-action="nav" data-page="passport">← Volunteer passports</button><div class="passport-layout"><div>${recipient(ctx, shared, true)}</div>${policy(ctx)}</div>`;
+  if (coordinator) return header + `<button class="back-link" data-action="nav" data-page="passport">← Volunteer Portal</button><div class="passport-layout"><div>${recipient(ctx, shared, true)}</div>${policy(ctx)}</div>`;
   const profile = volunteerProfile || { city: '', languages: '', skills: '', bio: '', openForVolunteering: false };
   const records = state.passports.records.filter(r => r.personId === p.id).sort((a,b) => b.date.localeCompare(a.date));
   const grants = state.passports.grants.filter(g => g.personId === p.id);
@@ -42,16 +41,6 @@ function experienceCard(ctx, records) {
   return `<section class="panel passport-experience-card"><div class="passport-experience-header"><div><span class="eyebrow">CONTRIBUTION HISTORY</span><h2>Volunteer Experience</h2><p>Completed contributions and learning, with their source and status.</p></div></div><div class="passport-experience-list">${rows || '<div class="empty-state compact">There is no minimum to get started. Add training or a contribution when it is useful to you.</div>'}</div></section>`;
 }
 
-const publicPassportSorts = [
-  ['name', 'Name'],
-  ['city', 'City / Area'],
-  ['skills', 'Skills & Interests'],
-  ['languages', 'Languages'],
-  ['availability', 'Availability'],
-  ['preference', 'Volunteering Preferences'],
-  ['records', 'Most Passport Records'],
-];
-
 function comparePublicPassports(a, b, sort) {
   if (sort === 'records') return b.passport.records.length - a.passport.records.length || a.passport.name.localeCompare(b.passport.name);
   const left = String(a.passport[sort] || '').trim();
@@ -59,11 +48,6 @@ function comparePublicPassports(a, b, sort) {
   if (!left && right) return 1;
   if (left && !right) return -1;
   return left.localeCompare(right, undefined, { sensitivity: 'base' }) || a.passport.name.localeCompare(b.passport.name);
-}
-
-function passportSortPanel(ctx, sort) {
-  const { button, icon } = ctx;
-  return `<aside><section class="panel passport-sort-panel"><div class="passport-sort-header"><span class="eyebrow">DIRECTORY CONTROLS</span><h2>Sort Passports</h2></div><div class="passport-sort-body"><p>Order available volunteers using information they chose to include in their public passport.</p><div class="passport-sort-options" role="group" aria-label="Sort available volunteer passports">${publicPassportSorts.map(([key,label]) => button(`<span>${label}</span>${sort===key?icon('check'):''}`,'ppSort',`data-sort="${key}" aria-pressed="${sort===key}"`,`passport-sort-option ${sort===key?'active':''}`)).join('')}</div><p class="microcopy">Blank fields appear last. Passport records are ordered from most to fewest.</p></div></section></aside>`;
 }
 
 function publicPassportCard(ctx, person, passport) {
@@ -74,7 +58,7 @@ function publicPassportCard(ctx, person, passport) {
 
 function publicPassportDetail(ctx, passport) {
   const { e, badge } = ctx;
-  return `<section class="passport-cover"><div class="passport-cover-top"><span class="eyebrow">MYCITY · OPEN VOLUNTEER PASSPORT</span><span class="passport-seal" aria-hidden="true">${ctx.icon('leaf')}</span></div><div class="passport-identity"><span class="avatar large ${e(passport.color)}">${e(passport.name.split(' ').map(part => part[0]).join('').slice(0, 2))}</span><div><h2>${e(passport.name)}</h2><p>${e(passport.city || 'City Network volunteer')}</p></div></div><p>${e(passport.bio || 'Open to finding a useful way to contribute.')}</p><div class="passport-cover-bottom"><span>${passport.records.length} ${passport.records.length === 1 ? 'record' : 'records'}</span><span>Open for Volunteering</span></div></section><section class="panel detail-section"><h2>Profile</h2><dl class="passport-facts"><div><dt>Skills & interests</dt><dd>${e(passport.skills || 'Not added')}</dd></div><div><dt>Languages</dt><dd>${e(passport.languages || 'Not added')}</dd></div><div><dt>Availability</dt><dd>${e(passport.availability || 'Not added')}</dd></div><div><dt>Volunteering preferences</dt><dd>${e(passport.preference || 'Not added')}</dd></div></dl></section><section class="panel detail-section"><h2>Passport records</h2>${passport.records.length ? passport.records.map(record => `<article class="passport-record"><div class="section-heading"><span class="eyebrow">${record.kind === 'training' ? 'TRAINING' : 'CONTRIBUTION'}</span>${badge(record.status, record.status === 'attested' ? 'sage' : 'sand')}</div><h3>${e(record.title)}</h3><p class="passport-issuer">${e(record.issuer)} · ${e(record.date)}</p><p>${e(record.summary)}</p></article>`).join('') : '<p class="muted">This volunteer has not added passport records yet.</p>'}</section><p class="microcopy">The volunteer chose to show this directory profile across the City Network. Contact details and private sharing history are not included.</p>`;
+  return `<section class="passport-cover"><div class="passport-cover-top"><span class="eyebrow">MYCITY · OPEN VOLUNTEER PASSPORT</span><span class="passport-seal" aria-hidden="true">${ctx.icon('leaf')}</span></div><div class="passport-identity"><span class="avatar large ${e(passport.color)}">${e(passport.name.split(' ').map(part => part[0]).join('').slice(0, 2))}</span><div><h2>${e(passport.name)}</h2><p>${e(passport.city || 'City Network volunteer')}</p></div></div><p>${e(passport.bio || 'Open to finding a useful way to contribute.')}</p><div class="passport-cover-bottom"><span>${passport.records.length} ${passport.records.length === 1 ? 'record' : 'records'}</span></div></section><section class="panel detail-section"><h2>Profile</h2><dl class="passport-facts"><div><dt>Skills & interests</dt><dd>${e(passport.skills || 'Not added')}</dd></div><div><dt>Languages</dt><dd>${e(passport.languages || 'Not added')}</dd></div><div><dt>Availability</dt><dd>${e(passport.availability || 'Not added')}</dd></div><div><dt>Volunteering preferences</dt><dd>${e(passport.preference || 'Not added')}</dd></div></dl></section><section class="panel detail-section"><h2>Passport records</h2>${passport.records.length ? passport.records.map(record => `<article class="passport-record"><div class="section-heading"><span class="eyebrow">${record.kind === 'training' ? 'TRAINING' : 'CONTRIBUTION'}</span>${badge(record.status, record.status === 'attested' ? 'sage' : 'sand')}</div><h3>${e(record.title)}</h3><p class="passport-issuer">${e(record.issuer)} · ${e(record.date)}</p><p>${e(record.summary)}</p></article>`).join('') : '<p class="muted">This volunteer has not added passport records yet.</p>'}</section><p class="microcopy">The volunteer chose to show this directory profile across the City Network. Contact details and private sharing history are not included.</p>`;
 }
 
 function policy(ctx) {

@@ -232,7 +232,7 @@ test('onboarding signatures bind the volunteer to the current document version',
   state.documentLibrary.items.find(item=>item.id===signature.documentId).updatedAt='2026-09-24';
   assert.equal(onboardingSteps(state,application).find(step=>step.key==='waiver').done,false);
 });
-test('application management separates Passport, public, and invite-link pathways',()=>{
+test('application management puts invite links first and combines organization and volunteer interest',()=>{
   let start=initial();start.passports.profiles.robin.openForVolunteering=true;
   start=act(start,{type:'inviteToPosition',actor:'coordinator',personId:'robin',positionId:'food-team',message:'Your experience may fit this role.'}).state;
   let result=apply(start);
@@ -246,7 +246,11 @@ test('application management separates Passport, public, and invite-link pathway
   assert.equal(reviewed.recruitment.applications.find(application=>application.id===linkApplication.id).status,'reviewing');
   const ctx={state:reviewed,ui:{page:'recruitment',mode:'coordinator',recruitOrg:'berkeley-neighbors',recruitmentTab:'applications'},e:value=>String(value??''),button:text=>text,badge:text=>text,icon:()=>''};
   const page=renderRecruitment(ctx);
-  for(const title of ['Passport Invitations & Interest','Public Applications & Interest','Volunteer Invite Links'])assert.ok(page.includes(title));
+  for(const title of ['Invite Volunteers','Interest & Passport Invitations','Passport Invitations','Public Applications'])assert.ok(page.includes(title));
+  assert.ok(page.indexOf('Invite Volunteers')<page.indexOf('Interest & Passport Invitations'));
+  assert.equal((page.match(/class="panel detail-section recruit-management-card engagement-lane"/g)||[]).length,2);
+  assert.equal(page.includes('Passport Invitations & Interest'),false);
+  assert.equal(page.includes('Public Applications & Interest'),false);
   assert.equal(page.includes('recruitment-stage-flow'),false);
 });
 test('Passport outreach can invite a role, invite a public activity, or begin only a conversation',()=>{
