@@ -117,7 +117,26 @@
 
 /* Connected organization command center. */
 .issuer-command-center{--command-blue:#15151e;--command-gold:#dd9e33;--command-line:#e4e3df;--command-soft:#f8f7f4}
-.issuer-command-center>.issuer-home-hero{margin-bottom:22px}
+.issuer-command-center>.issuer-home-hero{margin-bottom:0}
+.issuer-command-center .issuer-home-hero-actions{justify-content:flex-end}
+.issuer-command-queue-buffer{padding:18px 0 20px;background:transparent}
+.issuer-command-queue-buffer .home-action-queue{margin:0;overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none}
+.issuer-command-queue-buffer .home-panel-heading{min-height:38px;padding:0 3px 8px;border:0;background:transparent}
+.issuer-command-queue-buffer .home-panel-heading h2{margin:0;color:#49464d;font-size:12px;font-weight:800;letter-spacing:.01em}
+.issuer-command-queue-buffer .home-count{height:21px;min-width:21px;background:#e5e6df;color:#56545a;font-size:9px}
+.issuer-command-queue-buffer .home-panel-heading .button-row{gap:5px}
+.issuer-command-queue-buffer .icon-button{width:29px;height:29px;padding:7px;border-color:#deddd8;background:rgba(255,255,255,.58);color:#68656b}
+.issuer-command-queue-buffer #home-queue-items{display:grid;gap:6px}
+.issuer-command-queue-buffer .home-queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto;min-height:47px;gap:12px;padding:7px 8px 7px 13px;border:1px solid rgba(218,217,211,.9);border-radius:10px;background:rgba(255,255,255,.68);box-shadow:0 4px 14px rgba(21,21,30,.025);backdrop-filter:blur(6px)}
+.issuer-command-queue-buffer .home-queue-copy strong{font-size:10.5px;font-weight:650;line-height:1.4}
+.issuer-command-queue-buffer .home-queue-actions{flex-direction:row;align-items:center;gap:5px}
+.issuer-command-queue-buffer .home-queue-actions .btn{min-width:0;min-height:30px;padding:6px 10px;font-size:8.5px;white-space:nowrap}
+.issuer-command-queue-buffer .home-queue-more{padding:5px 0 0}
+.issuer-command-queue-buffer .home-queue-more .text-button{font-size:9px}
+.issuer-command-queue-buffer .home-queue-empty-compact{min-height:47px;padding:8px 13px;border:1px solid rgba(218,217,211,.9);border-radius:10px;background:rgba(255,255,255,.58)}
+.issuer-command-queue-buffer .home-queue-empty-compact>.icon{width:18px;height:18px}
+.issuer-command-queue-buffer .home-queue-empty-compact strong{font-size:11px}
+.issuer-command-queue-buffer .home-queue-empty-compact p{margin-top:2px;font-size:9px}
 .issuer-command-layout{display:block}
 .issuer-command-dashboard{min-width:0}
 .issuer-command-modules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
@@ -243,7 +262,7 @@
 .issuer-command-program-detail>p{display:flex;align-items:center;gap:6px;margin:5px 0;color:#77737a;font-size:9px;line-height:1.6}
 .issuer-command-program-detail>p .icon{width:12px;height:12px}
 @media(max-width:1200px){.issuer-command-modules{grid-template-columns:repeat(3,minmax(0,1fr))}.issuer-command-passport-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.issuer-command-program-workspace{grid-template-columns:minmax(260px,1.2fr) minmax(230px,.8fr)}}
-@media(max-width:800px){.issuer-command-modules{grid-template-columns:repeat(2,minmax(0,1fr))}.issuer-command-activity-layout{grid-template-columns:1fr}.issuer-command-detail{border:0;border-top:1px solid #e7e5e1}.issuer-command-program-workspace,.issuer-command-program-workspace.is-activity{grid-template-columns:1fr}.issuer-command-program-list,.issuer-command-program-activities{border-right:0;border-bottom:1px solid #e7e5e1}.issuer-command-program-detail{min-height:300px}}
+@media(max-width:800px){.issuer-command-queue-buffer .home-queue-row{grid-template-columns:1fr}.issuer-command-queue-buffer .home-queue-actions{width:auto;padding-left:0;justify-content:flex-start}.issuer-command-modules{grid-template-columns:repeat(2,minmax(0,1fr))}.issuer-command-activity-layout{grid-template-columns:1fr}.issuer-command-detail{border:0;border-top:1px solid #e7e5e1}.issuer-command-program-workspace,.issuer-command-program-workspace.is-activity{grid-template-columns:1fr}.issuer-command-program-list,.issuer-command-program-activities{border-right:0;border-bottom:1px solid #e7e5e1}.issuer-command-program-detail{min-height:300px}}
 @media(max-width:600px){.issuer-command-panel-header{align-items:center;flex-wrap:wrap}.issuer-command-passport-grid{grid-template-columns:1fr}.issuer-command-document-list article{grid-template-columns:42px minmax(0,1fr) auto}.issuer-command-document-list article>em{display:none}.issuer-command-program-activity{grid-template-columns:38px minmax(0,1fr) 13px}.issuer-command-program-activity em{display:none}}
 @media(max-width:430px){.issuer-command-modules{grid-template-columns:1fr}.issuer-command-module{min-height:62px}}
 @media(prefers-reduced-motion:reduce){.issuer-command-module{transition:none}.issuer-command-content{animation:none}}

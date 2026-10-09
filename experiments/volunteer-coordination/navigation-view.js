@@ -4,7 +4,7 @@ const ISSUER_HEADER_PALETTE = ['#15151e', '#34343f', '#fbf0dc'];
 export const ISSUER_SECTIONS = [
   {id:'home',label:'Home',icon:'home',page:'home',tabs:[]},
   {id:'volunteers',label:'Volunteers',icon:'people',page:'people',tabs:[['people','Roster'],['recruitment','Recruitment & onboarding'],['passport','Passports']]},
-  {id:'mycity',label:'MyCity',icon:'feed',page:'feed',tabs:[]},
+  {id:'mycity',label:'MyCity Feed',icon:'feed',page:'feed',tabs:[]},
 ];
 const ISSUER_WORKSPACE = {id:'workspace',label:'Workspace',tabs:[['programs','Programs'],['documents','Documents'],['planning','Planning']]};
 export function issuerSection(page) {

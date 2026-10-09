@@ -37,15 +37,16 @@ test('issuer action queue remains attached to the header when no actions are wai
   assert.match(html,/home-count">0/);
   assert.match(html,/You’re all caught up/);
 });
-test('issuer home hero exposes the experimental shortcuts with real application actions',()=>{
+test('issuer home hero keeps only the focused organization shortcuts',()=>{
   const html=homeHero({organizationName:'Riverside Food Bank',dateLabel:()=> 'Monday, October 5, 2026',e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`});
   assert.match(html,/>Riverside Food Bank</);
-  assert.match(html,/data-page="feed"/);
-  assert.match(html,/data-action="create"/);
+  assert.doesNotMatch(html,/data-page="feed"/);
+  assert.doesNotMatch(html,/data-action="create"/);
   assert.match(html,/data-action="rcCreateRole"/);
   assert.match(html,/data-page="calendar"/);
   assert.match(html,/data-page="planning"/);
-  assert.match(html,/Schedule Activity/);
+  assert.doesNotMatch(html,/Schedule Activity/);
+  assert.doesNotMatch(html,/MyCity Feed/);
   assert.match(html,/Create a Role/);
   assert.match(html,/>Calendar</);
   assert.match(html,/>Staff</);
@@ -66,14 +67,16 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/Scheduled Activities/);
   assert.doesNotMatch(html,/Upcoming Activities/);
   assert.match(html,/data-action="create"/);
-  assert.match(html,/data-page="feed"/);
+  assert.doesNotMatch(html,/data-page="feed"/);
   assert.match(html,/data-page="calendar"/);
   assert.doesNotMatch(html,/aria-label="Organization profile"/);
   assert.doesNotMatch(html,/issuer-command-profile/);
-  assert.doesNotMatch(html,/issuer-command-queue/);
-  assert.doesNotMatch(html,/aria-label="Action Queue"/);
+  assert.match(html,/issuer-command-queue-buffer/);
+  assert.match(html,/home-action-queue issuer-command-queue/);
+  assert.match(html,/aria-label="Action Queue"/);
+  assert.ok(html.indexOf('issuer-home-hero')<html.indexOf('issuer-command-queue-buffer'));
+  assert.ok(html.indexOf('issuer-command-queue-buffer')<html.indexOf('issuer-command-modules'));
   assert.doesNotMatch(html,/ORGANIZATION STATUS/);
-  assert.doesNotMatch(html,/home-action-queue/);
   assert.doesNotMatch(html,/home-calendar/);
 });
 test('Assign Shift appears only for activities assigned by the organization',()=>{

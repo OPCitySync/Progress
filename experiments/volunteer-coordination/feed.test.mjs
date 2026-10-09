@@ -198,16 +198,16 @@ test('issuer Home opens the command center without a duplicated quick-action sub
   assert.deepEqual(ISSUER_SECTIONS.map(section => [section.label, section.page]), [
     ['Home', 'home'],
     ['Volunteers', 'people'],
-    ['MyCity', 'feed'],
+    ['MyCity Feed', 'feed'],
   ]);
   assert.equal(ISSUER_SECTIONS.some(section => section.id === 'profile'), false);
   assert.match(html, /href="#\/coordinator\/home"[^>]*aria-label="MyCity home"/);
-  assert.match(html, /href="#\/coordinator\/feed" class="issuer-section-link is-active" aria-current="true"[^>]*>.*?<span>MyCity<\/span>/s);
+  assert.match(html, /href="#\/coordinator\/feed" class="issuer-section-link is-active" aria-current="true"[^>]*>.*?<span>MyCity Feed<\/span>/s);
   assert.doesNotMatch(html, /class="issuer-quickbar"/);
   assert.doesNotMatch(html, /Schedule Activity/);
   assert.doesNotMatch(html, /Invite Volunteers/);
   assert.doesNotMatch(html, />Overview</);
-  assert.doesNotMatch(html, />MyCity Feed</);
+  assert.match(html, />MyCity Feed</);
   assert.doesNotMatch(html, />City Network</);
   assert.doesNotMatch(html, />Public Profile</);
 });
