@@ -1066,7 +1066,7 @@ document.addEventListener('submit', async event => {
     case 'staffRole': staffAction({type:'saveRole',roleId:d.id||undefined,...values,permissions:fields.getAll('permissions')}); break;
     case 'rcSearch': break;
     case 'rcApply': case 'rcAssist': recruitmentAction({ type: 'saveApplication', positionId: d.position, personId: d.person, ...values, assisted: d.form === 'rcAssist', consent: fields.has('consent'), submit: event.submitter?.value !== 'draft' }, 'application'); break;
-    case 'rcRole': recruitmentAction({ type: 'savePosition', positionId: d.id || undefined, ...values, requirements: fields.getAll('requirements') }, d.program ? null : 'position'); break;
+    case 'rcRole': recruitmentAction({ type: 'savePosition', positionId: d.id || undefined, ...values, requirements: form.elements.requirements ? fields.getAll('requirements') : undefined }, d.source==='home'||d.program ? null : 'position'); break;
     case 'rcInterest': {
       try {
         const position=state.recruitment.positions.find(position=>position.id===d.position&&position.orgId===d.org);

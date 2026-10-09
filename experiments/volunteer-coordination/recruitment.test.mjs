@@ -313,3 +313,20 @@ test('program roles are saved in the volunteer recruitment workspace and linked 
   assert.equal(published.recruitment.positions.find(position=>position.id===id).status,'open');
   assert.match(published.programWorkspace.history[0].text,/published/);
 });
+test('role editing assigns a program without changing public availability',()=>{
+  let state=ensurePrograms(initial());
+  const role=state.recruitment.positions.find(position=>position.id==='delivery-team');
+  const program=state.programWorkspace.programs.find(item=>!['complete','archived'].includes(item.status));
+  role.status='closed';
+  const ctx={state,ui:{recruitOrg:'berkeley-neighbors'},e:value=>String(value??''),button:text=>text,errorOutput:()=>'',currentPerson:()=>state.people.find(person=>person.id==='robin')};
+  const dialog=recruitmentDialog(ctx,'Role',{id:role.id});
+  assert.match(dialog.content,/Assign to Program/);assert.match(dialog.content,/General · no program/);assert.match(dialog.content,new RegExp(`value="${program.id}"`));
+  state=act(state,{type:'savePosition',actor:'coordinator',positionId:role.id,programId:program.id,title:role.title,tasks:role.tasks,mode:role.mode,requirements:role.requirements}).state;
+  const assigned=state.recruitment.positions.find(position=>position.id===role.id);
+  assert.equal(assigned.programId,program.id);assert.equal(assigned.status,'closed');
+  state=act(state,{type:'positionStatus',actor:'coordinator',positionId:role.id,status:'open'}).state;
+  assert.equal(state.recruitment.positions.find(position=>position.id===role.id).status,'open');
+  state=act(state,{type:'savePosition',actor:'coordinator',positionId:role.id,programId:'',title:role.title,tasks:role.tasks,mode:role.mode}).state;
+  const general=state.recruitment.positions.find(position=>position.id===role.id);
+  assert.equal(general.programId,'');assert.equal(general.status,'open');assert.deepEqual(general.requirements,role.requirements);
+});

@@ -103,6 +103,11 @@ test('Volunteer Recruitment lists role status and reveals interested volunteers 
   assert.match(html,/Robin Ellis/);assert.match(html,/View Passport/);assert.match(html,/data-action="ppOpen"/);
   assert.match(html,/Create Role/);assert.match(html,/Volunteer Portal/);assert.match(html,/data-action="nav" data-page="passport"/);
   assert.match(html,/Role Settings/);assert.match(html,/data-action="rcEditRole"/);
+  assert.match(html,/Close Role to the Public/);assert.match(html,/data-action="rcRoleStatus" data-id="food-team" data-status="closed"/);
+  context.ui.home.recruitmentRoleId='delivery-team';
+  const closed=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
+  assert.match(closed,/data-home-action="recruitmentRole" data-id="delivery-team"/);
+  assert.match(closed,/Open Role to Public/);assert.match(closed,/data-action="rcRoleStatus" data-id="delivery-team" data-status="open"/);
 });
 test('Assign Shift appears only for activities assigned by the organization',()=>{
   const state=ensurePrograms(initial()),activity=state.activities.find(item=>item.id==='pantry');

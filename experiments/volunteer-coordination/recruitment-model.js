@@ -144,29 +144,40 @@ export function transitionRecruitment(current, action, date = today()) {
     reviewOrg(action.orgId);
     let position = action.positionId && r.positions.find(p => p.id === action.positionId);
     if (position) reviewOrg(position.orgId);
+    const previousProgramId = position?.programId || '';
     const programRole = Boolean(action.programId);
-    const requirements = [...new Set(['welcome', ...(action.requirements || (programRole&&position?position.requirements:[]))])];
+    const requirements = [...new Set(['welcome', ...(action.requirements ?? position?.requirements ?? [])])];
     assert(requirements.every(key => volunteerRequirement(state, action.orgId, key)), 'Unknown onboarding step.');
     const pathway = action.pathway || position?.pathway || 'application';
     const mode = action.mode || position?.mode || 'In person';
     assert(['application','conversation'].includes(pathway), 'Choose a short application or a conversation-first pathway.');
     assert(['In person','Remote','Hybrid'].includes(mode), 'Choose a work mode.');
+    const title=clean(action.title||position?.title,120),impact=clean(action.impact||position?.impact),tasks=clean(action.tasks||position?.tasks),commitment=clean(action.commitment||position?.commitment),experience=clean(action.experience||position?.experience),support=clean(action.support||position?.support);
     if (programRole) {
-      assert(clean(action.title,120) && clean(action.tasks), 'Add a role title and description.');
+      assert(title && tasks, 'Add a role title and description.');
     } else {
-      assert(clean(action.title,120) && clean(action.impact) && clean(action.tasks) && clean(action.commitment) && clean(action.experience) && clean(action.support), 'Describe the role, impact, time, experience and support before saving.');
-      assert(Number.isInteger(Number(action.capacity)) && Number(action.capacity)>0 && Number(action.capacity)<=100, 'Choose between 1 and 100 onboarding places.');
-      assert(Number.isInteger(Number(action.responseDays)) && Number(action.responseDays)>0 && Number(action.responseDays)<=30, 'Set an initial reply target between 1 and 30 calendar days.');
+      assert(title && impact && tasks && commitment && experience && support, 'Describe the role, impact, time, experience and support before saving.');
+      assert(Number.isInteger(Number(action.capacity||position?.capacity)) && Number(action.capacity||position?.capacity)>0 && Number(action.capacity||position?.capacity)<=100, 'Choose between 1 and 100 onboarding places.');
+      assert(Number.isInteger(Number(action.responseDays||position?.responseDays)) && Number(action.responseDays||position?.responseDays)>0 && Number(action.responseDays||position?.responseDays)<=30, 'Set an initial reply target between 1 and 30 calendar days.');
       assert(!action.deadline || dateValid(action.deadline) && action.deadline>=date, 'Use a closing date today or later.');
     }
     if (action.activityId) assert(action.orgId === HOME_ORG && state.activities.some(a => a.id === action.activityId), 'Choose an activity belonging to this organization.');
     const programId = action.programId || '';
-    if (programId) assert(action.orgId === HOME_ORG && state.programWorkspace?.programs.some(program => program.id === programId && program.status !== 'complete'), 'Choose an active or draft program in this organization.');
-    if (programId && action.activityId) assert(state.activities.some(activity => activity.id === action.activityId && activity.programId === programId), 'Choose an activity in this program.');
-    const values = { title: clean(action.title,120), impact: clean(action.impact || position?.impact || action.tasks,500), tasks: clean(action.tasks), commitment: clean(action.commitment || position?.commitment || 'Program activity',300), experience: clean(action.experience || position?.experience || 'Open to learning',600), support: clean(action.support || position?.support || 'A coordinator will share the next step.',600), mode, pathway, capacity: Number(action.capacity || position?.capacity || 1), responseDays: Number(action.responseDays || position?.responseDays || 7), deadline: action.deadline || position?.deadline || '', question: clean(action.question || position?.question,240), check: clean(action.check || position?.check,200), requirements, activityId: action.activityId || position?.activityId || '', programId };
-    if (position) Object.assign(position, values, programRole ? { status: 'open' } : {}); else { position = { id: uid(), orgId: org.id, status: programRole ? 'open' : 'draft', version: 1, ...values }; r.positions.unshift(position); }
+    if (programId) assert(action.orgId === HOME_ORG && state.programWorkspace?.programs.some(program => program.id === programId && !['complete','archived'].includes(program.status)), 'Choose an active or draft program in this organization.');
+    let activityId = action.activityId || position?.activityId || '';
+    if (programId && activityId && !state.activities.some(activity => activity.id === activityId && activity.programId === programId)) {
+      assert(position && previousProgramId!==programId, 'Choose an activity in this program.');
+      activityId='';
+    }
+    const values = { title, impact: clean(impact || tasks,500), tasks, commitment: clean(commitment || 'Program activity',300), experience: clean(experience || 'Open to learning',600), support: clean(support || 'A coordinator will share the next step.',600), mode, pathway, capacity: Number(action.capacity || position?.capacity || 1), responseDays: Number(action.responseDays || position?.responseDays || 7), deadline: action.deadline || position?.deadline || '', question: clean(action.question || position?.question,240), check: clean(action.check || position?.check,200), requirements, activityId, programId };
+    if (position) Object.assign(position, values); else { position = { id: uid(), orgId: org.id, status: programRole ? 'open' : 'draft', version: 1, ...values }; r.positions.unshift(position); }
+    if (previousProgramId && previousProgramId!==programId) state.programWorkspace.history.unshift({ id: uid(), programId: previousProgramId, activityId: '', text: `${position.title} role moved ${programId?'to another program':'to General recruitment'}`, detail: '', actor: coordinatorName, date: new Date().toISOString() });
     if (programId) state.programWorkspace.history.unshift({ id: uid(), programId, activityId: '', text: `${position.title} role ${action.positionId ? 'updated' : 'created'}`, detail: '', actor: coordinatorName, date: new Date().toISOString() });
-    resultId = position.id; notice = programRole ? `Program role ${action.positionId ? 'updated' : 'created'}.` : 'Role draft saved. Preview it before publishing.';
+    resultId = position.id;
+    const assignedProgram=programId&&state.programWorkspace.programs.find(program=>program.id===programId);
+    notice = action.positionId
+      ? assignedProgram?`Role updated and assigned to ${assignedProgram.name}.`:previousProgramId?'Role updated and moved to General recruitment.':'Role updated.'
+      : programRole?'Program role created.':'Role draft saved. Preview it before publishing.';
   } else if (action.type === 'deletePosition') {
     const position = r.positions.find(position => position.id === action.positionId); assert(position,'Position not found.'); reviewOrg(position.orgId);
     assert(position.programId,'Only roles created within a program can be deleted here.');
