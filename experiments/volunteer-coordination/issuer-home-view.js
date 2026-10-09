@@ -1,5 +1,5 @@
 import { homeQueue, calendarEntries, calendarRange, entriesOnDay } from './issuer-home-model.js';
-import { publicVolunteerPassport, sharedPassport, today } from './passport-model.js';
+import { sharedPassport, today } from './passport-model.js';
 import { ACTIVITY_TYPES, programActivities } from './program-model.js';
 import { assignmentModeOf } from './model.js';
 import { HOME_ORG, positionOpen } from './recruitment-model.js';
@@ -25,14 +25,13 @@ function homeHeroQueue(ctx) {
 const dashboardModules = [
   ['activities','calendar','Scheduled Activities','Schedule and staffing'],
   ['programs','work','Volunteer Programs','Initiatives and progress'],
-  ['recruitment','people','Volunteer Recruitment','Roles and interest'],
   ['documents','reports','Organizational Documents','Shared requirements'],
-  ['passports','book','Passport Portal','Discover available people'],
+  ['recruitment','people','Volunteer Recruitment','Roles and interest'],
 ];
 const activeCommitments = (state,activityId) => state.commitments.filter(commitment=>commitment.activityId===activityId&&['confirmed','verified'].includes(commitment.status));
 const rosterCommitments = (state,activityId) => state.commitments.filter(commitment=>commitment.activityId===activityId&&['proposed','confirmed','verified'].includes(commitment.status));
 
-function homePanelHeader(title,action='') { return `<header class="issuer-command-panel-header"><h2>${title}</h2>${action}</header>`; }
+function homePanelHeader(title,actions='') { return `<header class="issuer-command-panel-header"><h2>${title}</h2>${actions?`<div class="issuer-command-panel-actions">${actions}</div>`:''}</header>`; }
 function homeEmpty(ctx,title,copy,action='') { return `<div class="issuer-command-empty">${ctx.icon('spark')}<h3>${title}</h3><p>${copy}</p>${action}</div>`; }
 function homeRoster(ctx,activity) {
   const {state,e,avatar,badge}=ctx,people=rosterCommitments(state,activity.id).map(commitment=>({commitment,person:state.people.find(person=>person.id===commitment.personId)})).filter(item=>item.person);
@@ -52,11 +51,6 @@ function homeActivitiesModule(ctx) {
   if(!selected)return `<section class="panel issuer-command-panel">${homePanelHeader('Scheduled Activities',button(icon('plus')+'Schedule Activity','create','','btn primary small'))}${homeEmpty(ctx,'No activities are scheduled.','Create an activity when your organization is ready to coordinate people and time.',button('Schedule Activity','create','','btn primary small'))}</section>`;
   const assign=assignmentModeOf(selected)==='manual'&&selected.workStatus!=='Complete'?button(icon('people')+'Assign Shift','assignShift',`data-id="${e(selected.id)}"`,'btn secondary small'):'';
   return `<section class="panel issuer-command-panel">${homePanelHeader('Scheduled Activities',button(icon('plus')+'Schedule Activity','create','','btn primary small'))}<div class="issuer-command-activity-layout"><div class="issuer-command-list">${list.map(activity=>`<button type="button" class="issuer-command-activity-row ${activity.id===selected.id?'is-selected':''}" data-home-action="activity" data-id="${e(activity.id)}"><span class="issuer-command-date"><small>${e(dateLabel(activity.date,{month:'short'}))}</small><strong>${e(dateLabel(activity.date,{day:'2-digit'}))}</strong></span><span><strong>${e(activity.title)}</strong><small>${icon('clock')} ${e(activity.time)} <i>·</i> ${icon('pin')} ${e(activity.location)}</small></span><em>${activeCommitments(state,activity.id).length} confirmed</em>${icon('chevron')}</button>`).join('')}</div><aside class="issuer-command-detail"><div class="issuer-command-detail-title"><span>SHIFT TEAM</span><strong>${rosterCommitments(state,selected.id).length}</strong></div><h3>${e(selected.title)}</h3>${homeRoster(ctx,selected)}<div class="issuer-command-actions">${control(icon('message')+'Message Team','chat',`data-id="${e(selected.id)}" aria-expanded="${h.chatActivityId===selected.id}"`,'btn secondary small')}${assign}${button('Open Activity '+icon('arrow'),'activity',`data-id="${e(selected.id)}"`,'btn primary small')}</div>${h.chatActivityId===selected.id?homeInlineChat(ctx,selected):''}</aside></div></section>`;
-}
-
-function homePassportsModule(ctx) {
-  const {state,e,icon,avatar,button,badge}=ctx,people=state.people.map(person=>({person,passport:publicVolunteerPassport(state,person.id)})).filter(item=>item.passport).sort((a,b)=>a.person.name.localeCompare(b.person.name));
-  return `<section class="panel issuer-command-panel">${homePanelHeader('Passport Portal',button('Open Passport Portal '+icon('arrow'),'nav','data-page="passport"','btn secondary small'))}${people.length?`<div class="issuer-command-passport-grid">${people.slice(0,8).map(({person,passport})=>`<article class="issuer-command-passport-card"><div>${avatar(person,'large')}${badge('Open','sage')}</div><h3>${e(person.name)}</h3><p>${e(passport.skills||person.role||'Open to finding a useful way to contribute.')}</p><small>${icon('clock')} ${e(passport.availability||'Availability not shared')}</small><div class="issuer-command-card-actions">${button('View Passport','ppPublic',`data-person="${e(person.id)}"`,'btn secondary small')}${button(icon('plus')+'Connect','ppInvite',`data-person="${e(person.id)}"`,'btn primary small')}</div></article>`).join('')}</div>`:homeEmpty(ctx,'No open Passports right now.','Volunteers appear here when they share their MyPassport with the City Network.')}</section>`;
 }
 
 function homeDocumentsModule(ctx) {
@@ -84,16 +78,17 @@ function homeRecruitmentModule(ctx) {
   const interests=selected?(state.recruitment.roleInterests||[]).filter(interest=>interest.positionId===selected.id&&interest.status==='active').map(interest=>({...interest,person:state.people.find(person=>person.id===interest.personId)})).filter(interest=>interest.person):[];
   const list=roles.length?`<div class="issuer-command-recruitment-list">${roles.map(position=>{const count=(state.recruitment.roleInterests||[]).filter(interest=>interest.positionId===position.id&&interest.status==='active').length;const open=positionOpen(position);return `<button type="button" class="issuer-command-recruitment-role ${selected?.id===position.id?'is-selected':''}" ${open?`data-home-action="recruitmentRole" data-id="${e(position.id)}"`:'disabled'}><span><strong>${e(position.title)}</strong><small>${e(position.programId?'Program role':'General role')}</small></span>${badge(open?'Open for Applications':'Applications Closed',open?'sage':'neutral')}${open?`<em>${count} interested</em>`:''}${open?icon('chevron'):''}</button>`;}).join('')}</div>`:homeEmpty(ctx,'No volunteer roles yet.','Create a role to define a clear pathway into your organization.');
   const detail=selected?`<aside class="issuer-command-recruitment-detail"><header><span>INTERESTED VOLUNTEERS</span><strong>${interests.length}</strong></header><h3>${e(selected.title)}</h3>${interests.length?`<div class="issuer-command-interest-list">${interests.map(({person,createdAt})=>{const canView=Boolean(sharedPassport(state,person.id,HOME_ORG));return `<article>${avatar(person,'small')}<span><strong>${e(person.name)}</strong><small>${canView?`Signaled ${e(new Date(createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}))}`:'Passport access ended'}</small></span>${button(canView?'View Passport':'Passport Unavailable','ppOpen',`data-person="${e(person.id)}" ${canView?'':'disabled aria-disabled="true"'}`,'btn secondary small')}</article>`;}).join('')}</div>`:`<div class="issuer-command-interest-empty">${icon('people')}<p>No one has signaled interest in this role yet.</p></div>`}<div class="issuer-command-actions">${button(icon('settings')+'Role Settings','rcEditRole',`data-id="${e(selected.id)}"`,'btn secondary small')}</div></aside>`:`<aside class="issuer-command-recruitment-detail"><div class="issuer-command-interest-empty">${icon('people')}<p>Open a role for applications to begin receiving interest.</p></div></aside>`;
-  return `<section class="panel issuer-command-panel">${homePanelHeader('Volunteer Recruitment',button(icon('plus')+'Create Role','rcCreateRole','','btn primary small'))}<div class="issuer-command-recruitment-layout">${list}${detail}</div></section>`;
+  const actions=button(icon('plus')+'Create Role','rcCreateRole','','btn primary small')+button(icon('book')+'Volunteer Portal','nav','data-page="passport"','btn secondary small');
+  return `<section class="panel issuer-command-panel">${homePanelHeader('Volunteer Recruitment',actions)}<div class="issuer-command-recruitment-layout">${list}${detail}</div></section>`;
 }
 
-function homeModule(ctx) {
-  return ({activities:homeActivitiesModule,passports:homePassportsModule,documents:homeDocumentsModule,programs:homeProgramsModule,recruitment:homeRecruitmentModule})[ctx.ui.home.dashboardModule||'activities'](ctx);
+function homeModule(ctx,module) {
+  return ({activities:homeActivitiesModule,documents:homeDocumentsModule,programs:homeProgramsModule,recruitment:homeRecruitmentModule})[module](ctx);
 }
 
 export function homeCommandCenter(ctx,{organizationName}={}) {
-  const {ui,icon}=ctx,module=ui.home.dashboardModule||'activities';
-  return `<div class="issuer-command-center">${homeHero({...ctx,organizationName})}<div class="issuer-command-divider" aria-hidden="true"><span></span></div><div class="issuer-command-layout"><section class="issuer-command-dashboard" aria-label="Organization command center"><div class="issuer-command-modules" role="tablist" aria-label="Dashboard areas">${dashboardModules.map(([id,glyph,label,note])=>`<button type="button" role="tab" aria-selected="${module===id}" class="issuer-command-module ${module===id?'is-active':''}" data-home-action="module" data-module="${id}"><span>${icon(glyph)}</span><span><strong>${label}</strong><small>${note}</small></span>${icon('chevron')}</button>`).join('')}</div><div class="issuer-command-content">${homeModule(ctx)}</div></section></div></div>`;
+  const {ui,icon}=ctx,requested=ui.home.dashboardModule||'activities',module=dashboardModules.some(([id])=>id===requested)?requested:'activities';
+  return `<div class="issuer-command-center">${homeHero({...ctx,organizationName})}<div class="issuer-command-divider" aria-hidden="true"><span></span></div><div class="issuer-command-layout"><section class="issuer-command-dashboard" aria-label="Organization command center"><div class="issuer-command-modules" role="tablist" aria-label="Dashboard areas">${dashboardModules.map(([id,glyph,label,note])=>`<button type="button" role="tab" aria-selected="${module===id}" class="issuer-command-module ${module===id?'is-active':''}" data-home-action="module" data-module="${id}"><span>${icon(glyph)}</span><span><strong>${label}</strong><small>${note}</small></span>${icon('chevron')}</button>`).join('')}</div><div class="issuer-command-content">${homeModule(ctx,module)}</div></section></div></div>`;
 }
 function queueRow(ctx,item) {
   const {e,icon,button}=ctx;

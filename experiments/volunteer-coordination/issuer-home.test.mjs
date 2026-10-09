@@ -59,14 +59,14 @@ test('organization command center renders connected dashboard modules from appli
   const html=homeCommandCenter({state,ui,platformContext:null,e:value=>String(value??''),icon:name=>`<i data-icon="${name}"></i>`,button:(label,action,attrs='',cls='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`,avatar:person=>`<span class="avatar">${person.name}</span>`,badge:label=>`<span class="badge">${label}</span>`,dateLabel:value=>value,confirmedCount:()=>0},{organizationName:'Riverside Food Bank'});
   assert.match(html,/Riverside Food Bank/);
   assert.match(html,/data-home-action="module" data-module="activities"/);
-  assert.match(html,/Passport Portal/);
   assert.match(html,/Organizational Documents/);
   assert.match(html,/Volunteer Programs/);
   assert.match(html,/Volunteer Recruitment/);
   assert.match(html,/data-module="recruitment"/);
+  assert.doesNotMatch(html,/data-module="passports"/);
   assert.ok(html.indexOf('Scheduled Activities')<html.indexOf('Volunteer Programs'));
   assert.ok(html.indexOf('Volunteer Programs')<html.indexOf('Organizational Documents'));
-  assert.ok(html.indexOf('Organizational Documents')<html.indexOf('Passport Portal'));
+  assert.ok(html.indexOf('Organizational Documents')<html.indexOf('Volunteer Recruitment'));
   assert.doesNotMatch(html,/data-module="volunteers"/);
   assert.match(html,/Scheduled Activities/);
   assert.doesNotMatch(html,/Upcoming Activities/);
@@ -98,7 +98,8 @@ test('Volunteer Recruitment lists role status and reveals interested volunteers 
   const html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
   assert.match(html,/Open for Applications/);assert.match(html,/Applications Closed/);
   assert.match(html,/Robin Ellis/);assert.match(html,/View Passport/);assert.match(html,/data-action="ppOpen"/);
-  assert.match(html,/Create Role/);assert.match(html,/Role Settings/);assert.match(html,/data-action="rcEditRole"/);
+  assert.match(html,/Create Role/);assert.match(html,/Volunteer Portal/);assert.match(html,/data-action="nav" data-page="passport"/);
+  assert.match(html,/Role Settings/);assert.match(html,/data-action="rcEditRole"/);
 });
 test('Assign Shift appears only for activities assigned by the organization',()=>{
   const state=ensurePrograms(initial()),activity=state.activities.find(item=>item.id==='pantry');

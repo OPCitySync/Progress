@@ -139,7 +139,7 @@
 .issuer-command-divider span{width:8px;height:8px;border-radius:50%;background:var(--command-gold);box-shadow:0 0 0 5px #f7efe1}
 .issuer-command-layout{display:block}
 .issuer-command-dashboard{min-width:0}
-.issuer-command-modules{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+.issuer-command-modules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
 .issuer-command-module{display:grid;min-width:0;grid-template-columns:35px minmax(0,1fr) 15px;align-items:center;gap:10px;min-height:68px;padding:10px 11px;border:1px solid #deddda;border-radius:12px;background:#fff;color:#46434b;text-align:left;box-shadow:0 6px 20px #25252d07;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
 .issuer-command-module:hover{transform:translateY(-1px);border-color:#cdb17b;box-shadow:0 10px 25px #25252d0d}
 .issuer-command-module>span:first-child{display:grid;place-items:center;width:35px;height:35px;border:1px solid #ead9b9;border-radius:9px;background:#fbf0dc;color:#93631d}
@@ -157,6 +157,7 @@
 .issuer-command-panel{min-height:390px;overflow:hidden;border-color:var(--command-line);border-radius:17px;box-shadow:0 8px 26px #20202708}
 .issuer-command-panel-header{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:64px;padding:13px 19px;border-bottom:1px solid #e9e7e3;background:#fbfaf8}
 .issuer-command-panel-header h2{margin:0;font-size:17px;font-weight:700}
+.issuer-command-panel-actions{display:flex;align-items:center;gap:7px}
 .issuer-command-empty{display:grid;place-items:center;min-height:320px;padding:40px;text-align:center;color:#7e7a81}
 .issuer-command-empty>.icon{width:28px;height:28px;margin-bottom:12px;color:#ae8951}
 .issuer-command-empty h3{font-size:17px;color:#37343b}
@@ -208,15 +209,6 @@
 .issuer-command-chat>form input{min-width:0;padding:9px 10px;border-color:#dfdcd7;background:#fff;font-size:9px}
 .issuer-command-chat>form .btn{padding-inline:12px}
 @keyframes issuer-command-chat-up{from{opacity:0;transform:translateY(28%)}to{opacity:1;transform:none}}
-.issuer-command-passport-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:17px}
-.issuer-command-passport-card{min-width:0;padding:16px;border:1px solid #e4e1dc;border-radius:13px;background:#fff}
-.issuer-command-passport-card>div:first-child{display:flex;align-items:flex-start;justify-content:space-between}
-.issuer-command-passport-card h3{margin:14px 0 5px;font-size:12px}
-.issuer-command-passport-card>p{min-height:46px;margin:0;color:#6f6b72;font-size:9px;line-height:1.5}
-.issuer-command-passport-card>small{display:flex;align-items:center;gap:5px;margin-top:8px;color:#969299;font-size:8px}
-.issuer-command-passport-card>small .icon{width:11px;height:11px}
-.issuer-command-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:13px}
-.issuer-command-card-actions .btn{min-width:0;padding-inline:7px;font-size:8px}
 .issuer-command-document-list{padding:6px 18px 15px}
 .issuer-command-document-list article{display:grid;grid-template-columns:42px minmax(0,1fr) 180px auto;align-items:center;gap:12px;min-height:68px;padding:9px 6px;border-bottom:1px solid #eeece8}
 .issuer-command-document-list article:last-child{border:0}
@@ -261,12 +253,13 @@
 .issuer-command-program-detail>p{display:flex;align-items:center;gap:6px;margin:5px 0;color:#77737a;font-size:9px;line-height:1.6}
 .issuer-command-program-detail>p .icon{width:12px;height:12px}
 .issuer-command-recruitment-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(310px,.65fr);min-height:420px}
-.issuer-command-recruitment-list{padding:10px 17px}
-.issuer-command-recruitment-role{display:grid;width:100%;grid-template-columns:minmax(0,1fr) auto auto 14px;align-items:center;gap:10px;min-height:69px;padding:10px 9px;border:0;border-bottom:1px solid #ece9e4;background:transparent;color:#4d4951;text-align:left}
-.issuer-command-recruitment-role:not(:disabled):hover,.issuer-command-recruitment-role.is-selected{background:#fbfaf7;box-shadow:inset 3px 0 var(--command-gold)}
+.issuer-command-recruitment-list{padding:12px;background:#faf9f7}
+.issuer-command-recruitment-role{display:grid;width:100%;grid-template-columns:minmax(0,1fr) auto auto 14px;align-items:center;gap:10px;min-height:68px;margin-bottom:4px;padding:9px 11px;border:1px solid transparent;border-radius:10px;background:transparent;color:#4d4951;text-align:left}
+.issuer-command-recruitment-role:not(:disabled):hover,.issuer-command-recruitment-role.is-selected{background:#fff}
+.issuer-command-recruitment-role.is-selected{border-color:#e1d6c4;box-shadow:0 5px 15px #25252d08}
 .issuer-command-recruitment-role:disabled{cursor:default;opacity:.68}
 .issuer-command-recruitment-role>span:first-child{display:flex;min-width:0;flex-direction:column;gap:5px}
-.issuer-command-recruitment-role>span:first-child strong{overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.issuer-command-recruitment-role>span:first-child strong{overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap}
 .issuer-command-recruitment-role>span:first-child small{color:#99959b;font-size:8px}
 .issuer-command-recruitment-role>.badge{font-size:7px;white-space:nowrap}
 .issuer-command-recruitment-role>em{color:#7b777d;font-size:8px;font-style:normal;white-space:nowrap}
@@ -284,9 +277,9 @@
 .issuer-command-interest-empty{display:grid;flex:1;place-items:center;align-content:center;gap:10px;min-height:185px;color:#8e8a91;text-align:center}
 .issuer-command-interest-empty .icon{width:25px;height:25px;color:#ac8750}
 .issuer-command-interest-empty p{max-width:230px;margin:0;font-size:9px;line-height:1.6}
-@media(max-width:1200px){.issuer-command-modules{grid-template-columns:repeat(3,minmax(0,1fr))}.issuer-command-passport-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.issuer-command-program-workspace{grid-template-columns:minmax(260px,1.2fr) minmax(230px,.8fr)}}
+@media(max-width:1200px){.issuer-command-modules{grid-template-columns:repeat(2,minmax(0,1fr))}.issuer-command-program-workspace{grid-template-columns:minmax(260px,1.2fr) minmax(230px,.8fr)}}
 @media(max-width:800px){.issuer-command-modules{grid-template-columns:repeat(2,minmax(0,1fr))}.issuer-command-activity-layout{grid-template-columns:1fr}.issuer-command-detail{border:0;border-top:1px solid #e7e5e1}.issuer-command-program-workspace,.issuer-command-program-workspace.is-activity,.issuer-command-recruitment-layout{grid-template-columns:1fr}.issuer-command-program-list,.issuer-command-program-activities{border-right:0;border-bottom:1px solid #e7e5e1}.issuer-command-program-detail{min-height:300px}.issuer-command-recruitment-detail{min-height:300px;border-left:0;border-top:1px solid #e7e5e1}}
-@media(max-width:600px){.issuer-command-panel-header{align-items:center;flex-wrap:wrap}.issuer-command-passport-grid{grid-template-columns:1fr}.issuer-command-document-list article{grid-template-columns:42px minmax(0,1fr) auto}.issuer-command-document-list article>em{display:none}.issuer-command-program-activity{grid-template-columns:38px minmax(0,1fr) 13px}.issuer-command-program-activity em{display:none}}
+@media(max-width:600px){.issuer-command-panel-header{align-items:center;flex-wrap:wrap}.issuer-command-panel-actions{flex-wrap:wrap}.issuer-command-document-list article{grid-template-columns:42px minmax(0,1fr) auto}.issuer-command-document-list article>em{display:none}.issuer-command-program-activity{grid-template-columns:38px minmax(0,1fr) 13px}.issuer-command-program-activity em{display:none}}
 @media(max-width:430px){.issuer-command-modules{grid-template-columns:1fr}.issuer-command-module{min-height:62px}}
 @media(max-width:580px){.issuer-hero-action-item{flex-basis:88%}.issuer-hero-action-queue header small{display:none}}
 @media(prefers-reduced-motion:reduce){.issuer-command-module{transition:none}.issuer-command-content{animation:none}}
