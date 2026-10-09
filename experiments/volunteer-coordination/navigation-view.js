@@ -88,7 +88,7 @@ function headerAccount(ctx) {
           ${!issuer&&!ctx.integratedPlatform?`<label class="header-profile-persona">Exploring as<select id="persona" aria-label="Explore as volunteer">${state.people.map(person=>`<option value="${e(person.id)}" ${person.id===ctx.currentPerson().id?'selected':''}>${e(person.name)}</option>`).join('')}</select></label>`:''}
         </div>
         <div class="header-profile-section"><p class="header-profile-label">${issuer?'Organization':'Account'}</p>
-          ${issuer?`<a href="#/coordinator/profile" class="header-profile-item">${icon('leaf')}<span>Organization Profile</span>${icon('chevron')}</a>
+          ${issuer?`<a href="#/coordinator/feed/profile" class="header-profile-item">${icon('leaf')}<span>Organization Profile</span>${icon('chevron')}</a>
           <a href="#/coordinator/reports" class="header-profile-item">${icon('reports')}<span>Reports<small>Participation, service, and exports</small></span>${icon('chevron')}</a>
           <a href="#/coordinator/settings" class="header-profile-item">${icon('settings')}<span>Organization Settings<small>Identity, access, and workspace controls</small></span>${icon('chevron')}</a>`:
           `<a href="#/volunteer/settings" class="header-profile-item">${icon('settings')}<span>Account Settings<small>Identity and account access</small></span>${icon('chevron')}</a>`}

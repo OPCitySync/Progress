@@ -199,14 +199,23 @@ test('issuer feed opens its public profile from the avatar without an action que
     assert.match(profile, /Berkeley Neighbors/);
     assert.match(profile, /Back to MyCity Feed/);
     assert.match(profile, /data-view="feed"/);
+    assert.match(profile, /data-action="pfAppearance"/);
+    assert.match(profile, /data-action="pfOverview"/);
+    assert.match(profile, /data-action="pfAbout"/);
+    assert.match(profile, /data-action="pfContact"/);
+    assert.match(profile, /data-action="pfLinks"/);
+    assert.match(profile, /A PERSON YOU CAN TURN TO/);
+    assert.match(profile, />Socials</);
+    assert.doesNotMatch(profile, /Edit Public Profile|data-action="pfEditor"/);
+    assert.doesNotMatch(profile, /FIND YOUR WAY IN|Ways to get involved/);
     assert.doesNotMatch(profile, /id="feed-posts"/);
     assert.doesNotMatch(profile, /aria-label="Your organization space"/);
     assert.doesNotMatch(profile, /Discover City Network/);
     assert.doesNotMatch(profile, /class="city-profile-avatar"/);
     assert.doesNotMatch(profile, /public-profile-hero/);
     assert.equal((profile.match(/profile-banner-art/g)||[]).length,1);
-    assert.match(profile, /aria-label="City context"/);
-    assert.match(profile, /CITY PULSE/);
+    assert.match(profile, /aria-label="Public profile details"/);
+    assert.doesNotMatch(profile, /CITY PULSE/);
     assert.doesNotMatch(profile, /city-feed-floating-actions/);
 
     const connectedShell = structuredClone(state);

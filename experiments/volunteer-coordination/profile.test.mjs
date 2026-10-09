@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createInitialState} from './model.js';
 import {ensureProfiles,transitionProfile,publicRoles,publicActivities,safeWebLink,safeProfileImage} from './profile-model.js';
-import {renderProfile} from './profile-view.js';
+import {renderEmbeddedProfileRail,renderEmbeddedPublicProfile,renderProfile} from './profile-view.js';
 const initial=()=>ensureProfiles(createInitialState());
 const act=(s,a)=>transitionProfile(s,{actor:'coordinator',editorOrgId:'berkeley-neighbors',orgId:'berkeley-neighbors',...a}).state;
 const org=s=>s.recruitment.organizations[0];
@@ -17,6 +17,16 @@ test('profile migration preserves coordination, existing organization edits, and
 });
 test('edits share canonical mission and contact data with discovery and recruitment',()=>{
  const before=initial();let s=act(before,{type:'field',field:'mission',value:'Help neighbors flourish.'});s=act(s,{type:'field',field:'email',value:'volunteer@example.org'});assert.equal(org(s).mission,'Help neighbors flourish.');assert.equal(org(s).email,'volunteer@example.org');assert.notEqual(org(before).mission,org(s).mission);assert.deepEqual(s.commitments,before.commitments);assert.deepEqual(s.recruitment.applications,before.recruitment.applications);
+});
+test('inline profile sections save grouped public information atomically',()=>{
+ let s=initial();
+ s=act(s,{type:'overview',tagline:'Neighbors helping neighbors.',mission:'Make food access dependable.',location:'Downtown Berkeley'});
+ assert.equal(org(s).profile.tagline,'Neighbors helping neighbors.');assert.equal(org(s).mission,'Make food access dependable.');assert.equal(org(s).location,'Downtown Berkeley');
+ s=act(s,{type:'about',description:'We organize practical ways to help.',causes:'Food access, Community care',support:'Step-free access and flexible roles.',welcome:'A teammate will meet you when you arrive.'});
+ assert.deepEqual(org(s).profile.causes,['Food access','Community care']);assert.equal(org(s).description,'We organize practical ways to help.');assert.equal(org(s).support,'Step-free access and flexible roles.');
+ s=act(s,{type:'contact',contact:'Maya Thompson',email:'maya@example.org',phone:'510-555-0100',website:'https://example.org'});
+ assert.equal(org(s).contact,'Maya Thompson');assert.equal(org(s).profile.website,'https://example.org');
+ const before=structuredClone(s);assert.throws(()=>act(s,{type:'overview',tagline:'Changed',mission:'Changed',location:''}),/information/);assert.deepEqual(s,before);
 });
 test('only the scoped coordinator edits the organization',()=>{
  const s=initial();for(const extra of [{actor:'alex'},{orgId:'tool-library'},{editorOrgId:'tool-library'}])assert.throws(()=>act(s,{type:'field',field:'mission',value:'Other mission',...extra}),/workspace/);
@@ -42,13 +52,12 @@ test('featured pathways are scoped and closed roles disappear without changing a
 test('public profile excludes draft, archived, member-only and completed activities',()=>{
  const s=initial();assert.deepEqual(publicActivities(s,org(s).id).map(a=>a.id),['garden']);s.programWorkspace.programs.find(p=>p.id===s.activities.find(a=>a.id==='garden').programId).status='draft';assert.equal(publicActivities(s,org(s).id).length,0);assert.ok(!publicRoles(s,org(s).id).some(r=>r.pathway==='event'));assert.deepEqual(publicActivities(s,'tool-library'),[]);
 });
-test('organization public profile defaults to the external view with one owner edit control',()=>{
+test('organization public profile uses the external view without the retired editor surface',()=>{
  globalThis.location={origin:'http://localhost:4320'};
  const page=renderProfile(renderContext({page:'profile',mode:'coordinator'}));
- assert.match(page,/ABOUT US/);assert.match(page,/Ways to get involved/);assert.match(page,/Edit Public Profile/);
- assert.equal((page.match(/data-action="pfEditor"/g)||[]).length,1);
- assert.match(page,/class="btn profile-banner-edit"/);assert.doesNotMatch(page,/← Discover organizations/);
- assert.doesNotMatch(page,/ORGANIZATION INFORMATION/);assert.doesNotMatch(page,/Customize appearance/);
+ assert.match(page,/ABOUT US/);assert.match(page,/Open Roles/);assert.match(page,/Socials/);
+ assert.doesNotMatch(page,/Edit Public Profile|data-action="pfEditor"|ORGANIZATION INFORMATION|Customize appearance/);
+ assert.doesNotMatch(page,/FIND YOUR WAY IN|Ways to get involved|← Discover organizations/);
 });
 test('public profiles separate open roles and public activities into scrollable opportunity rails',()=>{
  globalThis.location={origin:'http://localhost:4320'};
@@ -59,13 +68,16 @@ test('public profiles separate open roles and public activities into scrollable 
  const empty=renderProfile({...renderContext({page:'org-profile',item:'berkeley-neighbors',mode:'volunteer',person:'robin'}),state:emptyState});
  assert.match(empty,/No open roles right now/);assert.match(empty,/No public activities right now/);
 });
-test('profile editor is explicit and external organization views have no edit control',()=>{
+test('expanded owner profile provides contextual editing while external views remain read-only',()=>{
  globalThis.location={origin:'http://localhost:4320'};
- const editor=renderProfile(renderContext({page:'profile',item:'edit',mode:'coordinator'}));
- assert.match(editor,/ORGANIZATION INFORMATION/);assert.match(editor,/View Public Profile/);assert.match(editor,/http:\/\/localhost:4320\/mycity\/#\/volunteer\/org-profile\/berkeley-neighbors/);
- assert.doesNotMatch(editor,/id="profile-org"/);
+ const ownerContext=renderContext({page:'feed',item:'profile',mode:'coordinator'});
+ const owner=renderEmbeddedPublicProfile(ownerContext)+renderEmbeddedProfileRail(ownerContext);
+ for(const action of ['pfAppearance','pfOverview','pfAbout','pfContact','pfLinks'])assert.match(owner,new RegExp(`data-action="${action}"`));
+ assert.match(owner,/Back to MyCity Feed/);assert.match(owner,/A PERSON YOU CAN TURN TO/);assert.match(owner,/Socials/);
+ assert.doesNotMatch(owner,/Edit Public Profile|data-action="pfEditor"|FIND YOUR WAY IN|Ways to get involved/);
  const visitor=renderProfile(renderContext({page:'org-profile',item:'berkeley-neighbors',mode:'volunteer'}));
  assert.match(visitor,/ABOUT US/);assert.match(visitor,/← Discover organizations/);assert.doesNotMatch(visitor,/Edit Public Profile/);assert.doesNotMatch(visitor,/data-action="pfEditor"/);
+ assert.doesNotMatch(visitor,/data-action="pfAppearance"|data-action="pfOverview"|data-action="pfAbout"|data-action="pfContact"|data-action="pfLinks"/);
  const otherOrganization=renderProfile(renderContext({page:'org-profile',item:'tool-library',mode:'coordinator'}));
  assert.doesNotMatch(otherOrganization,/data-action="pfEditor"/);
 });

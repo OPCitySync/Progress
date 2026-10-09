@@ -20,7 +20,7 @@ test('issuer account menu keeps current MyCity destinations and removes the lega
   assert.match(html,/Sam left a handoff for the garden team/);
   assert.match(html,/data-icon="bell"/);
   assert.match(html,/Civic-Participant role/);
-  assert.match(html,/href="#\/coordinator\/profile"[^>]*>[\s\S]*Organization Profile/);
+  assert.match(html,/href="#\/coordinator\/feed\/profile"[^>]*>[\s\S]*Organization Profile/);
   assert.match(html,/href="#\/coordinator\/reports"/);
   assert.match(html,/href="#\/coordinator\/settings"/);
   assert.match(html,/Help &amp; Support/);

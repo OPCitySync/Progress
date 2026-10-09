@@ -81,7 +81,7 @@ export function renderConnectedSettings(ctx, context, error) {
         ${org.canEdit ? `<form data-form="${connected?'organizationSettings':'localOrganizationSettings'}" class="connected-settings-form"><div class="connected-settings-fields">${fields.map(([key,label,value,type,max])=>`<label>${e(label)}<input name="${key}" type="${type}" maxlength="${max}" value="${e(value || '')}" ${key==='name'?'required':''}></label>`).join('')}</div><p class="form-error" role="alert" tabindex="-1"></p><div class="connected-settings-actions"><span>${connected?'Changes are saved to the organization record.':'Changes are saved in this local preview.'}</span><button type="submit" class="btn primary">Save Organization</button></div></form>` : `<div class="connected-settings-readonly"><p>Only an organization owner can change these settings.</p>${fields.map(([,label,value])=>`<div><span>${e(label)}</span><strong>${e(value || 'Not provided')}</strong></div>`).join('')}</div>`}
       </section>
       <aside class="workspace-settings-aside" aria-label="Organization controls">
-        ${settingLink(ctx,'#/coordinator/profile','leaf','Public Profile','Control what residents and volunteers see.')}
+        ${settingLink(ctx,'#/coordinator/feed/profile','leaf','Public Profile','Control what residents and volunteers see.')}
         ${settingLink(ctx,'#/coordinator/staff','people','Staff & Roles','Invite organization members and manage access.')}
         ${settingLink(ctx,'#/coordinator/reports','reports','Reports','Review participation, service, and exports.')}
         ${settingLink(ctx,'data-page="documents"','book','Documents & Waivers','Maintain reusable organizational resources.','nav')}

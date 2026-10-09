@@ -2,7 +2,7 @@ import { today } from './passport-model.js';
 import { availableActivity } from './program-model.js';
 import { feedActor, heartCount, participantQueueItems, selectFeedPosts } from './feed-model.js';
 import { HOME_ORG } from './recruitment-model.js';
-import { issuerProfileIdentity, issuerProfileOrganization, renderEmbeddedPublicProfile } from './profile-view.js';
+import { issuerProfileIdentity, issuerProfileOrganization, renderEmbeddedProfileRail, renderEmbeddedPublicProfile } from './profile-view.js';
 
 function postCard(ctx, post) {
   const { state, ui, e, icon, avatar, button, badge, dateLabel, confirmedCount } = ctx;
@@ -51,9 +51,9 @@ export function renderFeed(ctx) {
   const profileView=coordinator&&ui.feedPublicProfile;
   return `<div class="city-layout ${coordinator ? 'city-layout-issuer' : ''} ${profileView?'is-profile-view':''}">${profileView?'':coordinator ? issuerFeedAside(ctx) : volunteerFeedAside(ctx)}<section class="city-stream" aria-label="${profileView?'Public Profile':'MyCity Feed'}">
       ${coordinator&&ui.feedPublicProfile?renderEmbeddedPublicProfile(ctx):feedContent}
-    </section><aside class="city-rail" aria-label="City context">
-      ${!coordinator && myCommitments.length ? `<section class="panel city-rail-card"><div class="section-heading"><div><span class="eyebrow">MY CALENDAR</span><h2>Your next plans</h2></div>${icon('calendar')}</div>${events(myCommitments)}${button('My Volunteering ' + icon('arrow'), 'nav', 'data-page="applications"', 'text-button')}</section>` : ''}
-      ${coordinator ? cityPulseCard(ctx, publicActivities, true) : `<section class="panel city-rail-card city-neighbors"><span class="eyebrow">GET TO KNOW YOUR CITY</span><h2>Local organizations</h2>${state.recruitment.organizations.slice(0,3).map(org=>`<button class="city-neighbor" data-action="rcOrg" data-id="${e(org.id)}">${ctx.avatar({name:org.name,color:'sage'},'small')}<span><strong>${e(org.name)}</strong><small>${e(org.location)}</small></span>${icon('chevron')}</button>`).join('')}${button('Discover organizations →','nav','data-page="discover"','text-button')}</section>${cityPulseCard(ctx, publicActivities, true)}`}
+    </section><aside class="city-rail ${profileView?'city-profile-owner-rail':''}" aria-label="${profileView?'Public profile details':'City context'}">
+      ${profileView?renderEmbeddedProfileRail(ctx):!coordinator && myCommitments.length ? `<section class="panel city-rail-card"><div class="section-heading"><div><span class="eyebrow">MY CALENDAR</span><h2>Your next plans</h2></div>${icon('calendar')}</div>${events(myCommitments)}${button('My Volunteering ' + icon('arrow'), 'nav', 'data-page="applications"', 'text-button')}</section>` : ''}
+      ${profileView?'':coordinator ? cityPulseCard(ctx, publicActivities, true) : `<section class="panel city-rail-card city-neighbors"><span class="eyebrow">GET TO KNOW YOUR CITY</span><h2>Local organizations</h2>${state.recruitment.organizations.slice(0,3).map(org=>`<button class="city-neighbor" data-action="rcOrg" data-id="${e(org.id)}">${ctx.avatar({name:org.name,color:'sage'},'small')}<span><strong>${e(org.name)}</strong><small>${e(org.location)}</small></span>${icon('chevron')}</button>`).join('')}${button('Discover organizations →','nav','data-page="discover"','text-button')}</section>${cityPulseCard(ctx, publicActivities, true)}`}
     </aside></div>`;
 }
 

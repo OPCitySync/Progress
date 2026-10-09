@@ -88,6 +88,7 @@ const icons = {
   pin: '<path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 0 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
   leaf: '<path d="M20 3C10 2 3 6 4 13c1 7 10 8 14 1 2-4 2-8 2-11ZM4 21l11-12"/>',
   search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
@@ -191,6 +192,11 @@ function readRoute() {
     ui.page = 'passport'; ui.item = '';
     history.replaceState(null, '', `${location.pathname}${location.search}#/volunteer/passport`);
   }
+  if (ui.mode === 'coordinator' && ui.page === 'profile') {
+    ui.page = 'feed'; ui.item = 'profile';
+    history.replaceState(null, '', `${location.pathname}${location.search}#/coordinator/feed/profile`);
+  }
+  ui.feedPublicProfile = ui.mode === 'coordinator' && ui.page === 'feed' && ui.item === 'profile';
   render(); window.scrollTo(0, 0); void refreshConnectedResume(); void refreshConnectedReports();
 }
 
@@ -693,17 +699,13 @@ document.addEventListener('click', async event => {
       break;
     }
     case 'issuerSkip': event.preventDefault(); document.querySelector('#main-content').focus(); document.querySelector('#main-content').scrollIntoView({block:'start'}); break;
-    case 'pfField': openProfileDialog('Field',d.field); break;
+    case 'pfOverview': openProfileDialog('Overview'); break;
+    case 'pfAbout': openProfileDialog('About'); break;
+    case 'pfContact': openProfileDialog('Contact'); break;
     case 'pfAppearance': openProfileDialog('Appearance'); break;
     case 'pfLinks': openProfileDialog('Links'); break;
-    case 'pfFeatured': openProfileDialog('Featured'); break;
     case 'pfRemoveImage': ui.profileImages[d.kind]=''; dialog.querySelector(`[data-profile-image="${d.kind}"]`).value=''; profileAppearancePreview(); break;
-    case 'pfViewPublic': navigate('profile'); break;
-    case 'pfEditor': ui.recruitOrg=d.id; navigate('profile','edit'); break;
-    case 'pfRecruit': navigate('recruitment'); break;
     case 'pfWays': document.querySelector('#profile-ways')?.scrollIntoView({behavior:'smooth',block:'start'}); document.querySelector('#profile-ways')?.focus({preventScroll:true}); break;
-    case 'pfCopy': { const text=document.querySelector(d.kind==='code'?'#profile-button-code':'#profile-link').value; try {await navigator.clipboard.writeText(text);toast('Copied. This is a local preview link.');}catch{showDialog('Copy your local profile link',`<div class="dialog-body"><label>Copy this text<textarea readonly>${e(text)}</textarea></label></div>`);} break; }
-    case 'pfCode': {const base=location.pathname==='/'?'':location.pathname;const link=`${location.origin}${base}/#/volunteer/org-profile/${encodeURIComponent(ui.recruitOrg)}`;const code=`<a href="${link}" target="_blank" rel="noopener noreferrer">Volunteer with us</a>`;showDialog('Volunteer button for this local preview',`<div class="dialog-body"><label>HTML link code<textarea id="profile-button-code" readonly rows="4">${e(code)}</textarea></label><p class="microcopy">For local exploration only. Replace this localhost address with a hosted profile URL before using it on a public website.</p></div><div class="dialog-footer">${button('Close','close','','btn secondary')}${button('Copy button code','pfCopy','data-kind="code"','btn primary')}</div>`);break;}
     case 'pgOpen': ui.programTab=d.tab||'overview'; ui.programFilter='all'; navigate('program',d.id); break;
     case 'pgTab': ui.programTab=d.tab; render(); break;
     case 'pgFilter': ui.programFilter=d.filter; render(); break;
@@ -838,7 +840,7 @@ document.addEventListener('click', async event => {
     case 'mode': { if(ui.page==='profile'&&d.mode==='volunteer'){ui.mode='volunteer';navigate('org-profile',ui.recruitOrg);break;} const page = ['program','programs','feed', 'passport','discover','org-profile','position','application'].includes(ui.page) ? ui.page : 'home'; const item = ['program','feed','org-profile','position','application'].includes(page) ? ui.item : d.mode === 'coordinator' && page === 'passport' ? ui.person : undefined; ui.mode = d.mode; if (page === 'application' && orgMode()) ui.recruitOrg = state.recruitment.applications.find(a => a.id === item)?.orgId || HOME_ORG; if (page === 'position' && orgMode()) ui.recruitOrg = state.recruitment.positions.find(p => p.id === item)?.orgId || HOME_ORG; if (page === 'passport' && orgMode() && sharedPassport(state, ui.person)) passportAction({ type: 'view', personId: ui.person }); navigate(page, item); break; }
     case 'feedCompose': feedComposer(); break;
     case 'feedSearchToggle': ui.feedSearchOpen=!ui.feedSearchOpen;if(!ui.feedSearchOpen)ui.feedQuery='';render();if(ui.feedSearchOpen)document.querySelector('#feed-search')?.focus();break;
-    case 'feedPublicProfile': ui.feedPublicProfile=d.view==='profile';render();window.scrollTo({top:0,behavior:'smooth'});break;
+    case 'feedPublicProfile': navigate('feed',d.view==='profile'?'profile':undefined);break;
     case 'feedFilter': ui.feedPublicProfile=false; ui.feedFilter = d.filter; ui.feedSaved = false; navigate(orgMode() ? 'feed' : 'home'); break;
     case 'feedQueueToggle': ui.feedQueueCollapsed = !ui.feedQueueCollapsed; render(); document.querySelector('[data-action="feedQueueToggle"]')?.focus(); break;
     case 'feedQueueAcknowledge': if (feedAction({ type: 'acknowledgeQueue', key: d.key })) document.querySelector('#participant-queue-title')?.focus(); break;
@@ -1052,9 +1054,10 @@ document.addEventListener('submit', async event => {
       break;
     }
     case 'docAssign': documentAssignmentAction(d.id,d.waiver==='true'?{programIds:fields.getAll('programIds'),allVolunteerActivities:false}:{programId:values.programId}); break;
-    case 'pfField': profileAction({type:'field',orgId:d.org,field:d.field,value:values.value}); break;
+    case 'pfOverview': profileAction({type:'overview',orgId:d.org,...values}); break;
+    case 'pfAbout': profileAction({type:'about',orgId:d.org,...values}); break;
+    case 'pfContact': profileAction({type:'contact',orgId:d.org,...values}); break;
     case 'pfLinks': profileAction({type:'links',orgId:d.org,...values}); break;
-    case 'pfFeatured': profileAction({type:'featured',orgId:d.org,...values}); break;
     case 'pfAppearance': if(!ui.profileImageBusy)profileAction({type:'appearance',orgId:d.org,...values,logo:ui.profileImages.logo,cover:ui.profileImages.cover}); break;
     case 'pgProgram': programAction({type:'saveProgram',programId:d.id,...values},true); break;
     case 'pgUpdate': programAction({type:'update',programId:d.id,...values}); break;

@@ -15,6 +15,16 @@ export function safeWebLink(value) {
 export const safeProfileImage = value => /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(value||'') && value.length<=700000;
 export const publicRoles = (state,orgId) => state.recruitment.positions.filter(p=>p.orgId===orgId&&positionOpen(p)&& (p.pathway!=='event'||state.activities.some(a=>a.id===p.activityId&&a.visibility==='public'&&availableActivity(state,a)&&a.workStatus!=='Complete')));
 export const publicActivities = (state,orgId) => orgId==='berkeley-neighbors'?state.activities.filter(a=>a.visibility==='public'&&availableActivity(state,a)&&a.workStatus!=='Complete'):[];
+function setProfileField(o,p,field,rawValue) {
+  const spec=PROFILE_FIELDS[field];if(!spec)throw Error('Unknown profile field.');
+  const value=String(rawValue||'').trim();if(value.length>spec[1])throw Error(`Keep ${spec[0].toLowerCase()} under ${spec[1]} characters.`);
+  if(['mission','location','contact','support','welcome','causes'].includes(field)&&!value)throw Error('Add this information so volunteers know what to expect.');
+  if(field==='email'&&value&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('Enter a valid public email address.');
+  if(field==='website'&&value&&!safeWebLink(value))throw Error('Use a full http or https website address.');
+  if(field==='causes') { const causes=[...new Set(value.split(',').map(s=>s.trim()).filter(Boolean))];if(!causes.length||causes.length>6)throw Error('Add between one and six cause areas.');p.causes=causes;o.cause=causes[0]; }
+  else if(['tagline','phone','website'].includes(field))p[field]=value;
+  else o[field]=value;
+}
 export function transitionProfile(current,action) {
   const state=ensureProfiles(structuredClone(current));
   if(action.actor!=='coordinator'||action.orgId!==action.editorOrgId)throw Error('Use this organization’s coordinator profile workspace.');
@@ -22,14 +32,13 @@ export function transitionProfile(current,action) {
   if(!o)throw Error('Organization not found.');
   const p=o.profile;
   if(action.type==='field') {
-    const spec=PROFILE_FIELDS[action.field];if(!spec)throw Error('Unknown profile field.');
-    const value=String(action.value||'').trim();if(value.length>spec[1])throw Error(`Keep ${spec[0].toLowerCase()} under ${spec[1]} characters.`);
-    if(['mission','location','contact','support','welcome','causes'].includes(action.field)&&!value)throw Error('Add this information so volunteers know what to expect.');
-    if(action.field==='email'&&value&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('Enter a valid public email address.');
-    if(action.field==='website'&&value&&!safeWebLink(value))throw Error('Use a full http or https website address.');
-    if(action.field==='causes') { const causes=[...new Set(value.split(',').map(s=>s.trim()).filter(Boolean))];if(!causes.length||causes.length>6)throw Error('Add between one and six cause areas.');p.causes=causes;o.cause=causes[0]; }
-    else if(['tagline','phone','website'].includes(action.field))p[action.field]=value;
-    else o[action.field]=value;
+    setProfileField(o,p,action.field,action.value);
+  } else if(action.type==='overview') {
+    for(const field of ['tagline','mission','location'])setProfileField(o,p,field,action[field]);
+  } else if(action.type==='about') {
+    for(const field of ['description','causes','support','welcome'])setProfileField(o,p,field,action[field]);
+  } else if(action.type==='contact') {
+    for(const field of ['contact','email','phone','website'])setProfileField(o,p,field,action[field]);
   } else if(action.type==='appearance') {
     if(!PALETTES[action.palette]||!BANNERS[action.banner])throw Error('Choose an available palette and banner style.');
     for(const name of ['logo','cover'])if(action[name]&&!safeProfileImage(action[name]))throw Error('Choose a PNG, JPEG, or WebP image under 500 KB.');

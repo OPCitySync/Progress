@@ -89,7 +89,11 @@
 .city-profile-view-actions .btn{min-height:34px;padding:8px 12px;border-color:#ffffff55;background:#15151eb8;color:#fff;font-size:9px;backdrop-filter:blur(8px)}
 .city-profile-view-actions .city-profile-edit{border-color:#edb95f;background:#dd9e33;color:#15151e}
 .city-profile-identity-card.is-expanded .city-person-identity{padding:0 28px 28px}
-.city-profile-identity-card.is-expanded .city-profile-logo{position:relative;width:96px;height:96px;margin-top:-42px;border-width:5px;border-radius:23px;font-size:28px}
+.city-profile-identity-card.is-expanded .city-person-identity>.city-profile-logo{position:relative;width:96px;height:96px;margin-top:-42px;border-width:5px;border-radius:23px;font-size:28px}
+.city-profile-identity-card.is-expanded .city-profile-logo-button{position:relative;display:block;width:96px;height:96px;margin-top:-42px;padding:0;border:0;border-radius:23px;background:transparent;cursor:pointer}
+.city-profile-identity-card.is-expanded .city-profile-logo-button .city-profile-logo{width:96px;height:96px;margin:0;border-width:5px;border-radius:23px;font-size:28px;transition:box-shadow .16s ease,transform .16s ease}
+.city-profile-identity-card.is-expanded .city-profile-logo-button:hover .city-profile-logo{box-shadow:0 0 0 4px #dd9e3352,0 7px 20px #17271f20;transform:translateY(-2px)}
+.city-profile-identity-card.is-expanded .city-profile-logo-button:focus-visible{outline:3px solid #dd9e33;outline-offset:4px}
 .city-profile-identity-card.is-expanded .city-person-identity>.eyebrow{display:block;margin:18px 0 8px;color:#9b6c24;font-size:8px;font-weight:850;letter-spacing:.11em}
 .city-profile-identity-card.is-expanded .city-person-identity h1{margin:0;font-size:30px;letter-spacing:-.04em}
 .city-profile-identity-card.is-expanded .city-profile-tagline{margin:8px 0 0;color:#4f4c53;font-size:16px;font-weight:600;line-height:1.45}
@@ -117,10 +121,16 @@
 .city-embedded-profile .profile-public-grid>aside{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .city-embedded-profile .profile-public-grid .recruit-role-grid{grid-template-columns:1fr}
 .city-embedded-profile .detail-section{border-radius:14px}
+.city-profile-owner-rail .city-profile-side-card{padding:20px}
+.city-profile-owner-rail .city-profile-side-card h2{font-size:16px;line-height:1.35}
+.city-profile-owner-rail .city-profile-side-card>p{margin-top:6px;color:#79777d;font-size:10px}
+.city-profile-owner-rail .profile-contact{margin:18px 0 0}
+.city-profile-owner-rail .profile-contact dd{margin-bottom:16px;font-size:10px;line-height:1.55}
+.city-profile-owner-rail .recruit-explainer{font-size:10px}
 
 @media(max-width:1100px){.city-layout.city-layout-issuer,.city-layout.city-layout-issuer.is-profile-view{grid-template-columns:minmax(0,1fr)}.city-layout-issuer .city-personal{display:grid;position:static}.city-layout-issuer .city-rail{grid-template-columns:repeat(2,minmax(0,1fr))}.city-layout-issuer .city-person-card{max-width:none}.city-layout-issuer .city-person-identity p{min-height:0}}
 @media(max-width:700px){.city-embedded-profile .profile-public-grid>aside{grid-template-columns:1fr}}
-@media(max-width:600px){.city-profile-identity-card.is-expanded .city-person-cover{height:160px}.city-profile-view-actions{top:12px;right:12px}.city-profile-view-actions .btn{padding:7px 9px}.city-profile-identity-card.is-expanded .city-person-identity{padding:0 19px 22px}.city-profile-identity-card.is-expanded .city-profile-logo{width:78px;height:78px;margin-top:-31px;border-radius:19px}.city-profile-identity-card.is-expanded .city-person-identity h1{font-size:25px}.city-profile-identity-card.is-expanded .city-profile-tagline{font-size:14px}}
+@media(max-width:600px){.city-profile-identity-card.is-expanded .city-person-cover{height:160px}.city-profile-view-actions{top:12px;right:12px}.city-profile-view-actions .btn{padding:7px 9px}.city-profile-identity-card.is-expanded .city-person-identity{padding:0 19px 22px}.city-profile-identity-card.is-expanded .city-person-identity>.city-profile-logo,.city-profile-identity-card.is-expanded .city-profile-logo-button{width:78px;height:78px;margin-top:-31px;border-radius:19px}.city-profile-identity-card.is-expanded .city-profile-logo-button .city-profile-logo{width:78px;height:78px;border-radius:19px}.city-profile-identity-card.is-expanded .city-person-identity h1{font-size:25px}.city-profile-identity-card.is-expanded .city-profile-tagline{font-size:14px}}
 @media(max-width:450px){.city-layout-issuer .city-rail{grid-template-columns:1fr}.city-profile-view-actions .city-profile-edit{display:none}}
 @media(prefers-reduced-motion:reduce){.city-profile-identity-card.is-expanded,.city-embedded-profile>.profile-public-grid{animation:none}}
 
