@@ -36,6 +36,18 @@ const nextConfig = (phase) => ({
       },
     ]
   },
+  async rewrites() {
+    return [
+      {
+        source: '/docs',
+        destination: '/docs.html',
+      },
+      {
+        source: '/docs/:path*',
+        destination: '/docs.html',
+      },
+    ]
+  },
   experimental: {
     outputFileTracingIncludes: {
       '/coordination/[[...asset]]': ['./experiments/volunteer-coordination/**/*'],
