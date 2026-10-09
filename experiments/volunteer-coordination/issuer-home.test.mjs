@@ -42,14 +42,14 @@ test('issuer home hero keeps only the focused organization shortcuts',()=>{
   assert.match(html,/>Riverside Food Bank</);
   assert.doesNotMatch(html,/data-page="feed"/);
   assert.doesNotMatch(html,/data-action="create"/);
-  assert.match(html,/data-action="rcCreateRole"/);
   assert.match(html,/data-page="calendar"/);
-  assert.match(html,/data-page="planning"/);
+  assert.match(html,/data-page="staff"/);
   assert.doesNotMatch(html,/Schedule Activity/);
   assert.doesNotMatch(html,/MyCity Feed/);
-  assert.match(html,/Create a Role/);
+  assert.doesNotMatch(html,/Create a Role/);
   assert.match(html,/>Calendar</);
   assert.match(html,/>Staff</);
+  assert.match(html,/issuer-home-staff-action/);
   assert.doesNotMatch(html,/Invite Volunteers/);
 });
 test('organization command center renders connected dashboard modules from application state',()=>{
@@ -71,11 +71,15 @@ test('organization command center renders connected dashboard modules from appli
   assert.match(html,/data-page="calendar"/);
   assert.doesNotMatch(html,/aria-label="Organization profile"/);
   assert.doesNotMatch(html,/issuer-command-profile/);
-  assert.match(html,/issuer-command-queue-buffer/);
-  assert.match(html,/home-action-queue issuer-command-queue/);
+  assert.doesNotMatch(html,/issuer-command-queue-buffer/);
+  assert.match(html,/issuer-hero-action-queue/);
+  assert.match(html,/issuer-hero-action-track/);
   assert.match(html,/aria-label="Action Queue"/);
-  assert.ok(html.indexOf('issuer-home-hero')<html.indexOf('issuer-command-queue-buffer'));
-  assert.ok(html.indexOf('issuer-command-queue-buffer')<html.indexOf('issuer-command-modules'));
+  assert.doesNotMatch(html,/data-home-action="acknowledge"/);
+  assert.doesNotMatch(html,/data-home-action="history"/);
+  assert.doesNotMatch(html,/data-home-action="collapse"/);
+  assert.ok(html.indexOf('issuer-hero-action-queue')<html.indexOf('issuer-command-divider'));
+  assert.ok(html.indexOf('issuer-command-divider')<html.indexOf('issuer-command-modules'));
   assert.doesNotMatch(html,/ORGANIZATION STATUS/);
   assert.doesNotMatch(html,/home-calendar/);
 });

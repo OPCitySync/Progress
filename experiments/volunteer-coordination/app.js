@@ -13,6 +13,8 @@ import { issuerNavigation, volunteerNavigation } from './navigation-view.js';
 import { ensureProfiles, transitionProfile } from './profile-model.js';
 import { renderProfile, profileDialog, appearancePreview } from './profile-view.js';
 import { ensurePrograms, transitionProgram, ACTIVITY_TYPES } from './program-model.js';
+import { ensureStaff, transitionStaff } from './staff-model.js';
+import { renderStaff, staffDialog } from './staff-view.js';
 import { renderPrograms, programDialog, programActivityContext } from './program-view.js';
 import { ensureRecruitment, transitionRecruitment, HOME_ORG, volunteerRequirements, volunteerRequirement } from './recruitment-model.js';
 import { renderRecruitment, recruitmentDialog, discoveryResults } from './recruitment-view.js';
@@ -46,7 +48,7 @@ try {
   const saved = JSON.parse(localStorage.getItem(storageKey));
   state = saved?.version === 1 && Array.isArray(saved.people) && Array.isArray(saved.activities) && Array.isArray(saved.commitments) ? saved : newState();
 } catch { state = newState(); }
-state = ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state)))))));
+state = ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state))))))));
 try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
 const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false,dashboardModule:'activities',activityId:'',programId:'',programActivityId:'',chatActivityId:''}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, passportSort: 'name', feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedPublicProfile: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
 try { const savedPerson = sessionStorage.getItem(storageKey + '-persona'); if (state.people.some(p => p.id === savedPerson)) ui.person = savedPerson; } catch {}
@@ -150,7 +152,7 @@ function applyConnectedContext(context) {
     Object.assign(person, { name: context.accountName || 'Your Account', connectedAccount: true });
     ui.person = person.id;
   }
-  state = ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state)))))));
+  state = ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state))))))));
   const person = state.people.find(item => item.connectedAccount);
   if (person) {
     const profile = state.passports.profiles[person.id] ||= { city: '', languages: '', skills: '', bio: '', openForVolunteering: false };
@@ -298,10 +300,10 @@ function messagesPage() {
 }
 function render() {
   try { sessionStorage.setItem(storageKey + '-persona', ui.person); sessionStorage.setItem(storageKey + '-recruit-org', ui.recruitOrg); } catch {}
-  state = ensureIssuerHome(ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(state))))));
-  const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'calendar', 'passport', 'feed', 'people', 'messages', 'activity', ...(integratedPlatform ? ['settings'] : [])] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'resume', 'feed', 'work', 'organization', 'messages', 'activity'];
+  state = ensureIssuerHome(ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(state)))))));
+  const allowed = orgMode() ? ['planning', 'documents', 'profile', 'programs', 'program', 'recruitment', 'discover', 'org-profile', 'position', 'application', 'home', 'calendar', 'staff', 'passport', 'feed', 'people', 'messages', 'activity', ...(integratedPlatform ? ['settings'] : [])] : ['programs', 'program', 'discover', 'org-profile', 'position', 'application', 'applications', 'home', 'passport', 'resume', 'feed', 'work', 'organization', 'messages', 'activity'];
   if (!allowed.includes(ui.page)) ui.page = 'home';
-  const content = ui.page === 'settings' && integratedPlatform ? renderConnectedSettings(connectedContext, connectedContextError, e) : ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ui.page === 'passport' ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'calendar' ? calendarPage() : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
+  const content = ui.page === 'settings' && integratedPlatform ? renderConnectedSettings(connectedContext, connectedContextError, e) : ui.page === 'staff' ? renderStaff(feedContext()) : ui.page === 'planning' ? renderPlanning(feedContext()) : ui.page === 'documents' ? renderDocuments(feedContext()) : ['profile','org-profile'].includes(ui.page) ? renderProfile(feedContext()) : ['programs','program'].includes(ui.page) ? renderPrograms(feedContext()) : ['discover','org-profile','position','applications','application','recruitment'].includes(ui.page) ? renderRecruitment(feedContext()) : ui.page === 'passport' ? renderPassport(feedContext()) : ui.page === 'resume' ? renderResume(feedContext()) : ui.page === 'feed' ? renderFeed(feedContext()) : ui.page === 'calendar' ? calendarPage() : ui.page === 'home' ? orgMode() ? dashboard() : renderFeed(feedContext()) : ui.page === 'people' ? peoplePage() : ui.page === 'work' ? workPage() : ui.page === 'activity' ? activityPage() : ui.page === 'organization' ? organizationPage() : messagesPage();
   const issuerOverview = orgMode() && ui.page === 'home';
   const issues = !issuerOverview && ['home', 'applications', 'activity'].includes(ui.page) ? readinessIssues(state).filter(c => (orgMode() || c.personId === ui.person) && (ui.page !== 'activity' || c.activityId === ui.item)) : [];
   const readinessAlert = issues.length ? `<div class="callout sand"><strong>Preparation needs another look</strong><p>These commitments are still confirmed, but required preparation is no longer valid through the activity date. Agree on the next step with ${orgMode() ? 'the volunteer' : 'your coordinator'}.</p>${issues.map(c => `<div class="button-row"><span>${orgMode() ? e(state.people.find(p => p.id === c.personId).name) + ' · ' : ''}${e(state.activities.find(a => a.id === c.activityId).title)}</span>${button('Review plan', 'activity', `data-id="${e(c.activityId)}"`, 'text-button')}</div>`).join('')}</div>` : '';
@@ -358,6 +360,17 @@ function programAction(action, route) {
     const result = transitionProgram(state,{...action,actor:orgMode()?'coordinator':ui.person});
     localStorage.setItem(storageKey,JSON.stringify(result.state));
     state=result.state; closeDialog(); if(route) { ui.programTab='overview'; navigate('program',result.id); } else render(); toast(result.notice); return true;
+  } catch(error) {
+    const output=dialog.open&&dialog.querySelector('.form-error');
+    if(output){output.textContent=error.message;output.focus();}else toast(error.message);
+    return false;
+  }
+}
+function staffAction(action) {
+  try {
+    const result=transitionStaff(state,{...action,actor:'coordinator'});
+    localStorage.setItem(storageKey,JSON.stringify(result.state));
+    state=result.state;closeDialog();render();toast(result.notice);return true;
   } catch(error) {
     const output=dialog.open&&dialog.querySelector('.form-error');
     if(output){output.textContent=error.message;output.focus();}else toast(error.message);
@@ -677,6 +690,16 @@ document.addEventListener('click', async event => {
     case 'pgAddActivity': createDialog(undefined,d.id); break;
     case 'pgCreateRole': ui.recruitOrg=HOME_ORG; openRecruitmentDialog('Role',{program:d.id}); break;
     case 'pgRole': ui.recruitOrg=HOME_ORG; navigate('position',d.id); break;
+    case 'staffInvite': {
+      const result=staffDialog(feedContext(),'invite');
+      if(result)showDialog(result.title,result.content);
+      break;
+    }
+    case 'staffRole': {
+      const result=staffDialog(feedContext(),'role',d.id);
+      if(result)showDialog(result.title,result.content,true);
+      break;
+    }
     case 'docAdd': if(orgMode())showDialog('Add a document',renderDocumentForm(feedContext())); break;
     case 'docWaiver': if(orgMode())showDialog('Add a liability waiver',renderDocumentForm(feedContext(),'liability-waiver')); break;
     case 'docOpen': {
@@ -971,6 +994,8 @@ document.addEventListener('submit', async event => {
     case 'pgProgram': programAction({type:'saveProgram',programId:d.id,...values},true); break;
     case 'pgUpdate': programAction({type:'update',programId:d.id,...values}); break;
     case 'pgArchive': programAction({type:'programStatus',programId:d.id,status:'archived',note:'Program archived'}); break;
+    case 'staffInvite': staffAction({type:'inviteMember',...values}); break;
+    case 'staffRole': staffAction({type:'saveRole',roleId:d.id||undefined,...values,permissions:fields.getAll('permissions')}); break;
     case 'rcSearch': break;
     case 'rcApply': case 'rcAssist': recruitmentAction({ type: 'saveApplication', positionId: d.position, personId: d.person, ...values, assisted: d.form === 'rcAssist', consent: fields.has('consent'), submit: event.submitter?.value !== 'draft' }, 'application'); break;
     case 'rcRole': recruitmentAction({ type: 'savePosition', positionId: d.id || undefined, ...values, requirements: fields.getAll('requirements') }, d.program ? null : 'position'); break;
@@ -1057,7 +1082,7 @@ document.addEventListener('submit', async event => {
 dialog.addEventListener('click', event => { if (event.target === dialog) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeDialog(); } });
 dialog.addEventListener('close', () => { if (!dialog.open) { releaseDocumentFileUrl(); ui.dialog = null; } });
 window.addEventListener('hashchange', readRoute);
-window.addEventListener('storage', event => { if (event.key === storageKey && event.newValue) { try { const incoming = JSON.parse(event.newValue); if (incoming.version === 1) { state = ensureCommunications(ensureDocuments(ensureProfiles(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(incoming))))))); render(); } } catch {} } });
+window.addEventListener('storage', event => { if (event.key === storageKey && event.newValue) { try { const incoming = JSON.parse(event.newValue); if (incoming.version === 1) { state = ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(incoming)))))))); render(); } } catch {} } });
 readRoute();
 if (integratedPlatform) loadMyCityContext().then(context => { connectedContext = context; connectedContextError = ''; applyConnectedContext(context); render(); }).catch(error => { connectedContextError = error.message; render(); });
 

@@ -8,9 +8,17 @@ const tone = entry => entry.kind==='note'?entry.tone:({event:'sage',shift:'sand'
 const kindLabel = entry => entry.kind==='note'?'Organization note':ACTIVITY_TYPES[entry.kind];
 const format = (ctx,date,options) => ctx.dateLabel(date,options);
 export function homeHero(ctx) {
-  const {e,icon,button,dateLabel,organizationName}=ctx;
+  const {e,icon,dateLabel,organizationName}=ctx;
   const currentDate=dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  return `<section class="issuer-home-hero"><div class="issuer-home-hero-copy"><p class="eyebrow">${icon('calendar')} ${e(currentDate)}</p><h1>${e(organizationName||'Organization')}</h1><p>Coordinate your organization’s people, commitments, and community presence.</p></div><div class="issuer-home-hero-actions"><div class="issuer-home-quick-actions">${button(icon('plus')+'Create a Role','rcCreateRole','','issuer-home-quick-action')}${button(icon('calendar')+'Calendar','nav','data-page="calendar"','issuer-home-quick-action')}${button(icon('people')+'Staff','nav','data-page="planning"','issuer-home-quick-action')}</div></div></section>`;
+  return `<section class="issuer-home-hero"><div class="issuer-home-hero-tools"><a class="issuer-home-quick-action issuer-home-staff-action" href="#/coordinator/staff" data-page="staff">${icon('people')}Staff</a><a class="issuer-home-quick-action" href="#/coordinator/calendar" data-page="calendar">${icon('calendar')}Calendar</a></div><div class="issuer-home-hero-copy"><p class="eyebrow">${icon('calendar')} ${e(currentDate)}</p><h1>${e(organizationName||'Organization')}</h1><p>Coordinate your organization’s people, commitments, and community presence.</p></div>${homeHeroQueue(ctx)}</section>`;
+}
+
+function homeHeroQueue(ctx) {
+  const {state,e,icon,button}=ctx;
+  if(!state)return '';
+  const items=homeQueue(state);
+  if(!items.length)return '';
+  return `<section class="issuer-hero-action-queue" aria-label="Action Queue"><header><h2>Action Queue <span>${items.length}</span></h2><small>Scroll to review</small></header><div class="issuer-hero-action-track" tabindex="0" aria-label="Scrollable action items">${items.map(item=>`<article class="issuer-hero-action-item"><strong title="${e(item.title)}">${e(item.title)}</strong>${button(e(item.label)+icon('arrow'),item.action,Object.entries(item.attrs).map(([key,value])=>`data-${key}="${e(value)}"`).join(' '),'issuer-hero-action-button')}</article>`).join('')}</div></section>`;
 }
 
 const dashboardModules = [
@@ -72,7 +80,7 @@ function homeModule(ctx) {
 
 export function homeCommandCenter(ctx,{organizationName}={}) {
   const {ui,icon}=ctx,module=ui.home.dashboardModule||'activities';
-  return `<div class="issuer-command-center">${homeHero({...ctx,organizationName})}<div class="issuer-command-queue-buffer">${homeActionQueue(ctx,{limit:3,variant:'issuer-command-queue'})}</div><div class="issuer-command-layout"><section class="issuer-command-dashboard" aria-label="Organization command center"><div class="issuer-command-modules" role="tablist" aria-label="Dashboard areas">${dashboardModules.map(([id,glyph,label,note])=>`<button type="button" role="tab" aria-selected="${module===id}" class="issuer-command-module ${module===id?'is-active':''}" data-home-action="module" data-module="${id}"><span>${icon(glyph)}</span><span><strong>${label}</strong><small>${note}</small></span>${icon('chevron')}</button>`).join('')}</div><div class="issuer-command-content">${homeModule(ctx)}</div></section></div></div>`;
+  return `<div class="issuer-command-center">${homeHero({...ctx,organizationName})}<div class="issuer-command-divider" aria-hidden="true"><span></span></div><div class="issuer-command-layout"><section class="issuer-command-dashboard" aria-label="Organization command center"><div class="issuer-command-modules" role="tablist" aria-label="Dashboard areas">${dashboardModules.map(([id,glyph,label,note])=>`<button type="button" role="tab" aria-selected="${module===id}" class="issuer-command-module ${module===id?'is-active':''}" data-home-action="module" data-module="${id}"><span>${icon(glyph)}</span><span><strong>${label}</strong><small>${note}</small></span>${icon('chevron')}</button>`).join('')}</div><div class="issuer-command-content">${homeModule(ctx)}</div></section></div></div>`;
 }
 function queueRow(ctx,item) {
   const {e,icon,button}=ctx;
