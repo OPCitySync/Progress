@@ -7,7 +7,7 @@ export const COORDINATION_ASSETS = [
   'styles.css', 'feed.css', 'passport.css', 'recruitment.css', 'program.css',
   'profile.css', 'navigation.css', 'volunteer.css', 'planning.css', 'issuer-home.css', 'documents.css', 'connected-settings.css', 'communication.css', 'brand-theme.css',
   'staff.css',
-  'app.js', 'model.js', 'navigation-view.js',
+  'app.js', 'model.js', 'navigation-view.js', 'connected-state.js',
   'feed-model.js', 'feed-view.js', 'passport-model.js', 'passport-view.js', 'resume-view.js',
   'recruitment-model.js', 'recruitment-view.js', 'program-model.js', 'program-view.js',
   'documents-model.js', 'documents-view.js', 'documents-files.js', 'connected-settings.js', 'connected-resume.js', 'communication-model.js', 'communication-view.js',

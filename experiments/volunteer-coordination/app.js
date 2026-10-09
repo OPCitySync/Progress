@@ -24,6 +24,7 @@ import { ensureFeed, feedActor, transitionFeed } from './feed-model.js';
 import { renderFeed, renderFeedResults, renderFeedComposer, renderVolunteerActionHistory } from './feed-view.js';
 import { ensureCommunications, transitionCommunication } from './communication-model.js';
 import { renderConversations, renderCommunicationComposer } from './communication-view.js';
+import { retainReferencedConnectedParticipants } from './connected-state.js';
 import { STORAGE_KEY, REQUIREMENTS, createEmptyState, createInitialState, transition, missingRequirements, confirmedCount, activeCommitment, assignmentModeOf, activityWaiverConsent, parseCSV } from './model.js';
 
 // The connected application and standalone prototype can share an origin in
@@ -119,7 +120,7 @@ function applyConnectedContext(context) {
     const organization = context.organization;
     const existing = state.recruitment.organizations.find(item => item.id === HOME_ORG) || {};
     const initial = organization.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'OR';
-    state.people = state.people.filter(person => !person.connectedAccount);
+    retainReferencedConnectedParticipants(state);
     state.recruitment.organizations = [
       {
         ...existing,
@@ -154,7 +155,7 @@ function applyConnectedContext(context) {
       person = emptyPerson();
       state.people.unshift(person);
     }
-    Object.assign(person, { name: context.accountName || 'Your Account', connectedAccount: true });
+    Object.assign(person, { name: context.accountName || 'Your Account', email: context.account?.email || person.email || '', connectedAccount: true });
     ui.person = person.id;
   }
   state = ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state))))))));
