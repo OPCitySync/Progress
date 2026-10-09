@@ -115,10 +115,13 @@ test('Assign Shift appears only for activities assigned by the organization',()=
   assert.match(html,/data-home-action="chat"/);
   assert.doesNotMatch(html,/Manage Roster/);
   context.state=transition(state,{type:'assignShift',activityId:activity.id,roleId:'packing',personIds:['jules'],actor:'coordinator'}).state;
+  context.state.passports.grants.push({id:'jules-home-grant',personId:'jules',orgId:HOME_ORG,sections:['about'],recordIds:[],purpose:'Volunteer coordination',expires:'2027-10-09',createdAt:'2026-10-09T12:00:00.000Z'});
   html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
   assert.match(html,/SHIFT TEAM/);
   assert.match(html,/Jules Okafor/);
   assert.match(html,/Invitation sent/);
+  assert.match(html,/class="issuer-command-roster-person has-passport" data-action="ppOpen" data-person="jules"/);
+  assert.match(html,/View Jules Okafor’s Volunteer Passport/);
   context.ui.home.chatActivityId=activity.id;
   html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
   assert.match(html,/class="issuer-command-chat"/);
@@ -150,6 +153,7 @@ test('Volunteer Programs prioritizes the program list and reveals activity detai
     html=homeCommandCenter(context,{organizationName:'Riverside Food Bank'});
     assert.doesNotMatch(html,/issuer-command-program-list/);
     assert.match(html,/ACTIVITY DETAILS/);
+    if(state.commitments.some(commitment=>commitment.activityId===activity.id))assert.match(html,/data-action="ppOpen"/);
   }
 });
 test('staffing need resurfaces when confirmed coverage changes; invitations alone do not fill places',()=>{
