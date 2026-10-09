@@ -42,12 +42,9 @@ test('issuer home hero keeps only the focused organization shortcuts',()=>{
   assert.match(html,/>Riverside Food Bank</);
   assert.doesNotMatch(html,/data-page="feed"/);
   assert.doesNotMatch(html,/data-action="create"/);
-  assert.match(html,/data-page="calendar"/);
-  assert.match(html,/data-page="staff"/);
-  assert.match(html,/href="#\/coordinator\/calendar"/);
-  assert.match(html,/href="#\/coordinator\/staff"/);
-  assert.match(html,/data-action="nav" data-page="calendar"/);
-  assert.match(html,/data-action="nav" data-page="staff"/);
+  assert.match(html,/href="\/mycity#\/coordinator\/calendar"/);
+  assert.match(html,/href="\/mycity#\/coordinator\/staff"/);
+  assert.doesNotMatch(html,/data-action="nav"/);
   assert.doesNotMatch(html,/Schedule Activity/);
   assert.doesNotMatch(html,/MyCity Feed/);
   assert.doesNotMatch(html,/Create a Role/);
@@ -74,7 +71,8 @@ test('organization command center renders connected dashboard modules from appli
   assert.doesNotMatch(html,/Upcoming Activities/);
   assert.match(html,/data-action="create"/);
   assert.doesNotMatch(html,/data-page="feed"/);
-  assert.match(html,/data-page="calendar"/);
+  assert.match(html,/href="\/mycity#\/coordinator\/calendar"/);
+  assert.match(html,/href="\/mycity#\/coordinator\/staff"/);
   assert.doesNotMatch(html,/aria-label="Organization profile"/);
   assert.doesNotMatch(html,/issuer-command-profile/);
   assert.doesNotMatch(html,/issuer-command-queue-buffer/);
