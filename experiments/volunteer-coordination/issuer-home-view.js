@@ -11,7 +11,7 @@ const format = (ctx,date,options) => ctx.dateLabel(date,options);
 export function homeHero(ctx) {
   const {e,icon,dateLabel,organizationName}=ctx;
   const currentDate=dateLabel(today(),{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  return `<section class="issuer-home-hero"><div class="issuer-home-hero-tools"><a class="issuer-home-quick-action issuer-home-staff-action" href="/mycity#/coordinator/staff">${icon('people')}Staff</a><a class="issuer-home-quick-action" href="/mycity#/coordinator/calendar">${icon('calendar')}Calendar</a></div><div class="issuer-home-hero-copy"><p class="eyebrow">${icon('calendar')} ${e(currentDate)}</p><h1>${e(organizationName||'Organization')}</h1><p>Coordinate your organization’s people, commitments, and community presence.</p></div>${homeHeroQueue(ctx)}</section>`;
+  return `<section class="issuer-home-hero"><div class="issuer-home-hero-tools"><a class="issuer-home-quick-action issuer-home-staff-action" href="#/coordinator/staff" data-action="nav" data-page="staff">${icon('people')}Staff</a><a class="issuer-home-quick-action" href="#/coordinator/calendar" data-action="nav" data-page="calendar">${icon('calendar')}Calendar</a></div><div class="issuer-home-hero-copy"><p class="eyebrow">${icon('calendar')} ${e(currentDate)}</p><h1>${e(organizationName||'Organization')}</h1><p>Coordinate your organization’s people, commitments, and community presence.</p></div>${homeHeroQueue(ctx)}</section>`;
 }
 
 function homeHeroQueue(ctx) {
