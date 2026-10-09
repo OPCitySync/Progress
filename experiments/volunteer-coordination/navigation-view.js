@@ -50,6 +50,22 @@ export function volunteerNavigation(ctx) {
 
 
 // Shared header utilities keep messages one click away from every workspace.
+function headerNotifications(ctx) {
+  const {state,ui,e,icon}=ctx,issuer=ui.mode==='coordinator',person=ctx.currentPerson();
+  const items=issuer
+    ? (state.activityLog||[]).slice(0,8).map((item,index)=>({id:`activity-${index}`,text:item.text,time:item.time||'Recent'}))
+    : (state.notifications||[]).filter(item=>item.personId===person.id).slice(0,8);
+  const list=items.length
+    ? items.map(item=>{
+      const content=`<span class="header-notification-symbol">${icon('bell')}</span><span><strong>${e(item.text)}</strong><small>${e(item.time||'New')}</small></span>${item.activityId?icon('chevron'):''}`;
+      return item.activityId
+        ? `<button type="button" class="header-notification-item" data-action="activity" data-id="${e(item.activityId)}">${content}</button>`
+        : `<article class="header-notification-item">${content}</article>`;
+    }).join('')
+    : `<div class="header-notification-empty">${icon('bell')}<strong>You’re all caught up.</strong><span>New updates will appear here.</span></div>`;
+  return `<details class="header-notifications"><summary aria-label="Notifications${items.length?` · ${items.length}`:''}" title="Notifications">${icon('bell')}${items.length?`<span class="header-notification-count" aria-hidden="true">${items.length>9?'9+':items.length}</span>`:''}</summary><section class="header-notification-dropdown" aria-label="Notifications"><header><strong>Notifications</strong><span>Recent updates</span></header><div class="header-notification-list">${list}</div></section></details>`;
+}
+
 function headerAccount(ctx) {
   const {state,ui,e,icon,button,avatar}=ctx,issuer=ui.mode==='coordinator';
   const org=ctx.contextOrg||state.recruitment.organizations.find(o=>o.id==='berkeley-neighbors')||{id:'',name:'Organization',location:'',profile:{}};
@@ -63,6 +79,7 @@ function headerAccount(ctx) {
     : button(icon('switch')+`<span><small>Switch to</small>${e(issuer?ctx.currentPerson().name:org.name)}<small>${issuer?'Civic-Participant role':'Issuer Organization'}</small></span>`,'mode',`data-mode="${issuer?'volunteer':'coordinator'}"`,'header-profile-item');
   const accountAvatar=()=>issuer&&safeProfileImage(logo)?`<span class="avatar small sage"><img src="${e(logo)}" alt=""></span>`:avatar(identity,'small');
   return `<div class="issuer-account header-account">
+    ${headerNotifications(ctx)}
     <a href="#/${ui.mode}/messages" class="header-conversations ${ui.page==='messages'?'is-active':''}" ${ui.page==='messages'?'aria-current="page"':''} aria-label="Messages" title="Messages">${icon('message')}<span>Messages</span></a>
     <details class="header-profile"><summary aria-label="Profile menu for ${e(identity.name)}" title="Profile menu">${accountAvatar()}${icon('down')}</summary>
       <section class="header-profile-dropdown" aria-label="Account menu"><div class="header-profile-identity">${accountAvatar()}<div><strong>${e(identity.name)}</strong><span>${issuer?'Issuer Organization':'Civic-Participant'} · ${e(ctx.platformContext?.cityName||'Berkeley')}</span></div></div>

@@ -53,7 +53,7 @@ try {
 } catch { state = newState(); }
 state = ensureCommunications(ensureDocuments(ensureProfiles(ensureStaff(ensurePrograms(ensureRecruitment(ensurePassport(ensureFeed(state))))))));
 try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
-const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false,dashboardModule:'activities',activityId:'',programId:'',programActivityId:'',recruitmentRoleId:'',chatActivityId:''}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, feedFilter: 'all', feedSaved: false, feedQuery: '', feedQueueCollapsed: false, feedPublicProfile: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
+const ui = { home: {anchor:today(),period:'month',day:'',selectedEntry:'',queueCollapsed:false,queueAll:false,dashboardModule:'activities',activityId:'',programId:'',programActivityId:'',recruitmentRoleId:'',chatActivityId:''}, planning: {mode:'programs',programId:'',query:'',personId:''}, documentsQuery: '', documentsCategory: 'all', recruitOrg: HOME_ORG, recruitmentTab: 'setup', discoveryQuery: '', discoveryCause: 'all', discoverySaved: false, feedFilter: 'all', feedSaved: false, feedQuery: '', feedSearchOpen: false, feedQueueCollapsed: false, feedPublicProfile: false, feedImage: null, communicationPane:'messages', communicationChatView:'active', communicationQuery:'', communicationSelection:'', mode: bootstrapParticipant ? 'volunteer' : 'coordinator', page: 'home', person: integratedPlatform ? 'connected-account' : 'alex', query: '', filter: 'all', dialog: null, csv: [] };
 try { const savedPerson = sessionStorage.getItem(storageKey + '-persona'); if (state.people.some(p => p.id === savedPerson)) ui.person = savedPerson; } catch {}
 try { const savedOrg = sessionStorage.getItem(storageKey + '-recruit-org'); if (state.recruitment.organizations.some(o => o.id === savedOrg)) ui.recruitOrg = savedOrg; } catch {}
 const app = document.querySelector('#app');
@@ -88,6 +88,7 @@ const icons = {
   pin: '<path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 0 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
   leaf: '<path d="M20 3C10 2 3 6 4 13c1 7 10 8 14 1 2-4 2-8 2-11ZM4 21l11-12"/>',
   search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 2M5 16a8 8 0 0 0 13 2"/>',
@@ -653,22 +654,29 @@ function editProgramActivityDialog(activityId,programId) {
 
 document.addEventListener('keydown', event => {
   const profile = document.querySelector('.header-profile[open]');
-  if (event.key === 'Escape' && profile && !dialog.open) {
-    profile.open = false; profile.querySelector('summary').focus(); event.preventDefault();
+  const notifications = document.querySelector('.header-notifications[open]');
+  const disclosure = notifications || profile;
+  if (event.key === 'Escape' && disclosure && !dialog.open) {
+    disclosure.open = false; disclosure.querySelector('summary').focus(); event.preventDefault();
   }
 });
 document.addEventListener('focusin', event => {
   const profile = document.querySelector('.header-profile[open]');
+  const notifications = document.querySelector('.header-notifications[open]');
   if (profile && !profile.contains(event.target)) profile.open = false;
+  if (notifications && !notifications.contains(event.target)) notifications.open = false;
 });
 document.addEventListener('click', async event => {
   const profile = document.querySelector('.header-profile[open]');
+  const notifications = document.querySelector('.header-notifications[open]');
   if (profile && !profile.contains(event.target)) profile.open = false;
+  if (notifications && !notifications.contains(event.target)) notifications.open = false;
   document.querySelectorAll('.program-row-menu[open],.documents-row-menu[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});
   if (profile && event.target.closest('.header-profile-dropdown a')) { profile.open = false; profile.querySelector('summary').focus(); }
   const b = event.target.closest('[data-action]'); if (!b || b.disabled) return;
   const rowMenu=b.closest('.program-row-menu');if(rowMenu)rowMenu.open=false;
   if (profile && profile.contains(b)) { profile.open = false; profile.querySelector('summary').focus(); }
+  if (notifications && notifications.contains(b)) { notifications.open = false; notifications.querySelector('summary').focus(); }
   const d = b.dataset;
   switch (d.action) {
     case 'connectedIdentity': {
@@ -829,6 +837,7 @@ document.addEventListener('click', async event => {
     case 'nav': if(d.page==='feed')ui.feedPublicProfile=false; navigate(d.page); break;
     case 'mode': { if(ui.page==='profile'&&d.mode==='volunteer'){ui.mode='volunteer';navigate('org-profile',ui.recruitOrg);break;} const page = ['program','programs','feed', 'passport','discover','org-profile','position','application'].includes(ui.page) ? ui.page : 'home'; const item = ['program','feed','org-profile','position','application'].includes(page) ? ui.item : d.mode === 'coordinator' && page === 'passport' ? ui.person : undefined; ui.mode = d.mode; if (page === 'application' && orgMode()) ui.recruitOrg = state.recruitment.applications.find(a => a.id === item)?.orgId || HOME_ORG; if (page === 'position' && orgMode()) ui.recruitOrg = state.recruitment.positions.find(p => p.id === item)?.orgId || HOME_ORG; if (page === 'passport' && orgMode() && sharedPassport(state, ui.person)) passportAction({ type: 'view', personId: ui.person }); navigate(page, item); break; }
     case 'feedCompose': feedComposer(); break;
+    case 'feedSearchToggle': ui.feedSearchOpen=!ui.feedSearchOpen;if(!ui.feedSearchOpen)ui.feedQuery='';render();if(ui.feedSearchOpen)document.querySelector('#feed-search')?.focus();break;
     case 'feedPublicProfile': ui.feedPublicProfile=d.view==='profile';render();window.scrollTo({top:0,behavior:'smooth'});break;
     case 'feedFilter': ui.feedPublicProfile=false; ui.feedFilter = d.filter; ui.feedSaved = false; navigate(orgMode() ? 'feed' : 'home'); break;
     case 'feedQueueToggle': ui.feedQueueCollapsed = !ui.feedQueueCollapsed; render(); document.querySelector('[data-action="feedQueueToggle"]')?.focus(); break;

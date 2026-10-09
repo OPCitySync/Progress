@@ -15,6 +15,10 @@ const base=(mode='coordinator')=>{
 
 test('issuer account menu keeps current MyCity destinations and removes the legacy workspace bridge',()=>{
   const html=issuerNavigation(base());
+  assert.ok(html.indexOf('header-notifications') < html.indexOf('header-conversations'));
+  assert.match(html,/aria-label="Notifications · 2"/);
+  assert.match(html,/Sam left a handoff for the garden team/);
+  assert.match(html,/data-icon="bell"/);
   assert.match(html,/Civic-Participant role/);
   assert.match(html,/href="#\/coordinator\/profile"[^>]*>[\s\S]*Organization Profile/);
   assert.match(html,/href="#\/coordinator\/reports"/);
@@ -28,7 +32,11 @@ test('issuer account menu keeps current MyCity destinations and removes the lega
 
 test('Civic-Participant account menu contains account access without duplicate feature shortcuts',()=>{
   const ctx=base('volunteer');ctx.ui.mode='volunteer';
+  ctx.state.notifications.unshift({id:'notice-1',personId:ctx.currentPerson().id,activityId:'pantry',text:'Your shift details changed.',time:'Just now'});
   const html=volunteerNavigation(ctx);
+  assert.ok(html.indexOf('header-notifications') < html.indexOf('header-conversations'));
+  assert.match(html,/Your shift details changed\./);
+  assert.match(html,/data-action="activity" data-id="pantry"/);
   const menu=html.slice(html.indexOf('<section class="header-profile-dropdown"'));
   assert.match(menu,/Issuer Organization/);
   assert.match(menu,/href="#\/volunteer\/settings"/);

@@ -109,7 +109,26 @@ test('participant feed places actionable work below the toolbar and City Pulse b
   assert.ok(html.indexOf('Local organizations') < html.indexOf('CITY PULSE'));
   assert.match(html, />Messages</);
   assert.doesNotMatch(html, />Conversations</);
+  assert.match(html, /data-action="feedSearchToggle"/);
+  assert.match(html, /aria-label="Search MyCity Feed"/);
+  assert.doesNotMatch(html, /id="feed-search"/);
+  assert.doesNotMatch(html, /city-search-row/);
+  assert.doesNotMatch(html, /feed-result-count/);
+  assert.match(html, /<span>Bookmarks<\/span>/);
+  assert.doesNotMatch(html, /<span>Bookmarks \d+<\/span>/);
+  assert.doesNotMatch(html, /data-action="feedCompose"/);
 
+  ui.feedSearchOpen = true;
+  const searching = renderFeed({
+    state, ui, e: escapeHtml, icon, button, badge, avatar, dateLabel: value => value,
+    currentPerson: () => state.people.find(person => person.id === ui.person),
+    confirmedCount,
+  });
+  assert.match(searching, /id="feed-toolbar-search"/);
+  assert.match(searching, /id="feed-search"/);
+  assert.match(searching, /aria-label="Close feed search"/);
+
+  ui.feedSearchOpen = false;
   ui.feedQueueCollapsed = true;
   const collapsed = renderFeed({
     state, ui, e: escapeHtml, icon, button, badge, avatar, dateLabel: value => value,
@@ -134,6 +153,13 @@ test('issuer feed opens its public profile from the avatar without an action que
     platformContext: null, integratedPlatform: false, assetBase: '',
   };
   const feed = renderFeed(context);
+  assert.match(feed, /data-action="feedSearchToggle"/);
+  assert.match(feed, /aria-label="Search MyCity Feed"/);
+  assert.doesNotMatch(feed, /city-search-row/);
+  assert.doesNotMatch(feed, /feed-result-count/);
+  assert.match(feed, /<span>Saved<\/span>/);
+  assert.doesNotMatch(feed, /<span>Saved \d+<\/span>/);
+  assert.match(feed, /data-action="feedCompose"/);
   assert.match(feed, /city-profile-identity-card is-compact/);
   assert.match(feed, /city-person-cover profile-banner-art/);
   assert.match(feed, /city-profile-logo/);
